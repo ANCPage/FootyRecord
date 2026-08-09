@@ -95,7 +95,10 @@ class MatchInfo:
         return Team(team_id=self.away, name=t_data['name'], primary_color=t_data['primary'], secondary_color=t_data['secondary'])
         
     @property
-    def winner(self) -> Team:
-        if self.home_score >= self.away_score:
+    def winner(self):
+        """Actual winner as a Team, or None on a draw (strict comparison)."""
+        if self.home_score > self.away_score:
             return self.home_team
-        return self.away_team
+        if self.away_score > self.home_score:
+            return self.away_team
+        return None  # draw

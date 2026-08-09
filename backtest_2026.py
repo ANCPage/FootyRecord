@@ -4,7 +4,7 @@ from collections import defaultdict
 
 sys.path.append(os.path.join(os.getcwd(), 'Core'))
 from engine_data import DataIngestor
-from engine_core import MatchupEngine
+from engine_core import MatchupEngine, home_favored
 from mappings import TEAM_DATA
 
 def run_backtest():
@@ -35,8 +35,9 @@ def run_backtest():
             
         delta = MatchupEngine.calculate_delta(m_a, m_b)
         net_delta = sum(delta.values())
-        
-        predicted_winner = h_team if net_delta > 0 else a_team
+        h_elo = ingestor.get_team_elo(h_team, 2026, info.round)
+        a_elo = ingestor.get_team_elo(a_team, 2026, info.round)
+        predicted_winner = h_team if home_favored(net_delta, h_elo, a_elo) else a_team
         actual_winner = ingestor.actual_winners.get(m_id)
         
         if actual_winner == 'DRAW' or not actual_winner:

@@ -6,7 +6,23 @@ most visible symptom: Norf's RBP->SCORE (a short kick at the left end) was
 drawn starting from the home LFP zone position, spanning the pitch — the
 'impossible LFP->FB ball movement'.
 """
-from engine_core import Graph, physical_placement
+from engine_core import Graph, physical_placement, home_favored
+
+
+def test_home_favored_elo_breaks_tie():
+    # Dead-even tactical score: the fitted Elo gap decides (audit #6, option A).
+    assert home_favored(0.0, 1550.0, 1500.0) is True   # home stronger by Elo
+    assert home_favored(0.0, 1500.0, 1550.0) is False  # away stronger by Elo
+
+
+def test_home_favored_no_venue_bias():
+    # Exactly even on both signals -> not home (prob_b0 = 0 by design).
+    assert home_favored(0.0, 1500.0, 1500.0) is False
+
+
+def test_home_favored_delta_dominates():
+    assert home_favored(0.2, 1400.0, 1600.0) is True   # big delta > elo gap
+    assert home_favored(-0.2, 1600.0, 1400.0) is False
 
 
 def test_away_scoring_edge_stays_at_own_zone():

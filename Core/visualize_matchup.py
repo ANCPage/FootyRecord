@@ -7,6 +7,7 @@ from theme import get_ordinal
 from mappings import TEAM_DATA
 from field_visualizer import FieldVisualizer
 from vector_renderer import VectorRenderer
+from engine_core import home_favored
 
 class MatchupVisualizer(FieldVisualizer):
     def __init__(self):
@@ -100,7 +101,7 @@ class MatchupVisualizer(FieldVisualizer):
         n_b = TEAM_DATA.get(team_b, {'name': team_b})['name']
         c_a, c_b = self.get_team_colors(team_a, team_b)
         net_delta = sum(delta_matrix.values())
-        winner_name = n_a if net_delta > 0 else n_b
+        winner_name = n_a if home_favored(net_delta, elo_a, elo_b) else n_b
         target_edges = [e for e, s in sorted(delta_matrix.items(), key=lambda x: abs(x[1]), reverse=True)[:20]]
         
         for suffix, edges, blur in [('', target_edges, False)]:
