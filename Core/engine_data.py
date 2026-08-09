@@ -9,6 +9,10 @@ from engine_core import Graph
 import config
 from elo_engine import EloEngine
 
+# Bump when profiling semantics change (normalization, decay, grid logic, ...)
+# so stale profile caches are rejected (audit E5).
+CACHE_VERSION = 1
+
 def _get_grid_cell(nx, ny, venue_length, venue_width):
     if nx == "" or ny == "" or not venue_length or not venue_width: return ""
     try:
@@ -43,6 +47,16 @@ class DataIngestor:
         self.team_elo_history = defaultdict(list) # team_id -> [(match_id, elo_before_match)]
         self.elo_engine = EloEngine()
 
+    @staticmethod
+    def _cache_fingerprint() -> str:
+        """Version stamp for the profile cache (audit E5): rejects pickles built
+        by older code OR with different engine settings, even when CSVs haven't
+        changed (the stale-cache footgun that bit the E2 normalization change)."""
+        import hashlib
+        c = config.config
+        raw = f"{CACHE_VERSION}|{c.decay_factor}|{c.time_decay_factor}|{c.window_size}"
+        return hashlib.sha1(raw.encode()).hexdigest()[:12]
+
     def load_all_data(self):
         import pickle
         cache_dir = os.path.join(self.csv_dir, '.cache')
@@ -54,11 +68,20 @@ class DataIngestor:
         
         if os.path.exists(cache_path):
             cache_mtime = os.path.getmtime(cache_path)
-            if all(os.path.getmtime(f) <= cache_mtime for f in files):
-                print('Loading data and profiled teams from cache...')
+            cache_fresh = all(os.path.getmtime(f) <= cache_mtime for f in files)
+            version_ok = False
+            payload = None
+            try:
                 with open(cache_path, 'rb') as f:
-                    state = pickle.load(f)
-                self.__dict__.update(state)
+                    payload = pickle.load(f)
+                version_ok = (isinstance(payload, dict)
+                              and payload.get('__cache_version__')
+                              == self._cache_fingerprint())
+            except Exception:
+                version_ok = False
+            if cache_fresh and version_ok:
+                print('Loading data and profiled teams from cache...')
+                self.__dict__.update(payload['state'])
                 if not hasattr(self, 'elo_engine') or self.elo_engine is None:
                     self.elo_engine = EloEngine()
                     sorted_matches = sorted(self.match_info.keys(), key=lambda x: (self.match_info[x].season, self.match_info[x].round))
@@ -201,7 +224,8 @@ class DataIngestor:
         cache_path = os.path.join(cache_dir, 'ingestor_state.pkl')
         print("Saving state to cache...")
         with open(cache_path, 'wb') as f:
-            pickle.dump(self.__dict__, f)
+            pickle.dump({'__cache_version__': self._cache_fingerprint(),
+                         'state': self.__dict__}, f)
 
     def get_team_average_matrix(self, team_id: str, window: int = None, up_to_match_id: str = None, up_to_season: int = None, up_to_round: int = None, return_history_info: bool = False) -> Any:
         if window is None:
