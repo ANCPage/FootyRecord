@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 from typing import Tuple, Dict
 from models import TransitionEdge
-from engine_core import Graph
+from engine_core import Graph, physical_placement
 
 class VectorRenderer:
     def __init__(self, node_positions: Dict[str, Tuple[float, float]], graph_helper: Graph, 
@@ -18,34 +18,10 @@ class VectorRenderer:
                       arrow_style: str = None, show_label: bool = True, max_lw: float = 12.0,
                       frame: str = 'home'):
         start, end = edge.source, edge.target
-        
-        # Physical placement (audit fix, Aug 2026):
-        #   frame='home' -> edge keys are already in the HOME team's frame
-        #       (delta matrices, home-team profiles). Draw zones as-is; only map
-        #       the goal endpoint to the away end for away-owned edges.
-        #   frame='team' -> edge keys are in the panel team's OWN frame (away-team
-        #       profile). Zones must be rotated 180 deg to land on the home-oriented
-        #       field; the goal maps to the goal the edge OWNER attacks (own move ->
-        #       AWAY_G, opponent contribution -> SCORE).
-        # Previously zones were rotated for every is_away_edge, which 180-deg
-        # mirrored away arrows in home-frame panels (the "LFP->FB" phantom).
-        if frame == 'team':
-            phys_start = self.graph_helper.rotate_node(start)
-            phys_end = self.graph_helper.rotate_node(end)
-        else:
-            phys_start = start
-            phys_end = end
 
-        # Map goals correctly between ends
-        if (frame == 'team' and not is_away_edge) or (frame == 'home' and is_away_edge):
-            if phys_start == 'SCORE':
-                phys_start = 'AWAY_G'
-            elif phys_start == 'AWAY_G':
-                phys_start = 'SCORE'
-            if phys_end == 'SCORE':
-                phys_end = 'AWAY_G'
-            elif phys_end == 'AWAY_G':
-                phys_end = 'SCORE'
+        # Placement math lives in engine_core.physical_placement (pure function,
+        # regression-tested in tests/test_placement.py — the LFP->FB fix).
+        phys_start, phys_end = physical_placement(start, end, is_away_edge, frame)
             
         p1 = self.node_positions.get(phys_start)
         p2 = self.node_positions.get(phys_end)

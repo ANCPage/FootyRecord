@@ -63,6 +63,35 @@ class Graph:
                 matrix[TransitionEdge(name, target)] = score
         return matrix
 
+def physical_placement(start: str, end: str, is_away_edge: bool = False,
+                       frame: str = 'home') -> Tuple[str, str]:
+    """Pure placement math used by vector_renderer (audit E4 / LFP->FB fix).
+
+    frame='home' -> edge keys are already in the HOME team's frame (delta
+        matrices, home-team profiles): draw zones as-is; only map the goal
+        endpoint to the away end for away-owned edges.
+    frame='team' -> keys are in the panel team's OWN frame (away-team profile):
+        zones rotate 180 deg onto the home-oriented field; the goal maps to the
+        goal the edge OWNER attacks (own move -> AWAY_G, opponent -> SCORE).
+    """
+    g = Graph("util")
+    if frame == 'team':
+        phys_start = g.rotate_node(start)
+        phys_end = g.rotate_node(end)
+    else:
+        phys_start = start
+        phys_end = end
+    if (frame == 'team' and not is_away_edge) or (frame == 'home' and is_away_edge):
+        if phys_start == 'SCORE':
+            phys_start = 'AWAY_G'
+        elif phys_start == 'AWAY_G':
+            phys_start = 'SCORE'
+        if phys_end == 'SCORE':
+            phys_end = 'AWAY_G'
+        elif phys_end == 'AWAY_G':
+            phys_end = 'SCORE'
+    return phys_start, phys_end
+
 class MatchupEngine:
     @staticmethod
     def calculate_delta(team_a_matrix: Dict[TransitionEdge, float], 
