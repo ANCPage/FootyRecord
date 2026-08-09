@@ -33,6 +33,10 @@ PROB_B2 = 0.0036
 # the shots*4 heuristic is meaningless (clamped 100% of the time). Use the
 # fitted league-average match total (fit_calibration.py).
 TOTAL_SCORE_MEAN = 159.26
+# Elo margin scaling: margin_mult = clamp(0.5, 3.0, |delta|/D + 1). D recalibrated
+# 2026-08-09 from actual-match deltas (median |delta| = 0.32 -> typical mult ~2.1;
+# D=0.1 overshot and clamped most matches at 3.0, hurting the baseline).
+ELO_MARGIN_DIVISOR = 0.3
 
 class Settings:
     def __init__(self):
@@ -48,6 +52,7 @@ class Settings:
         self.prob_b1 = PROB_B1
         self.prob_b2 = PROB_B2
         self.total_score_mean = TOTAL_SCORE_MEAN
+        self.elo_margin_divisor = ELO_MARGIN_DIVISOR
         self.data_dir = DATA_DIR
         self.output_dir = OUTPUT_DIR
         self.fonts_dir = FONTS_DIR

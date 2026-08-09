@@ -9,6 +9,34 @@ class EloEngine:
         self.team_elo_by_round = {}  # team_id -> {(season, round): elo}
         self.season_start_elos = {}  # team_id -> {season: elo}
 
+    @staticmethod
+    def elo_update(h_elo: float, a_elo: float, actual_delta: float,
+                   elo_k: float = None) -> Tuple[float, float, float]:
+        """Single source of truth for the Elo update formula (audit #1/#2).
+
+        Winner comes from the tactical delta sign (delta-Elo design, E1).
+        Margin scaling uses the recalibrated divisor (config.elo_margin_divisor)
+        so updates stay responsive on normalized deltas.
+        Returns (delta_home, delta_away, margin_mult).
+        """
+        if elo_k is None:
+            elo_k = config.config.elo_k
+        if actual_delta > 0:
+            elo_winner = 'H'
+        elif actual_delta < 0:
+            elo_winner = 'A'
+        else:
+            return 0.0, 0.0, 0.0  # draw -> no update
+        S_h = 1.0 if elo_winner == 'H' else 0.0
+        S_a = 1.0 - S_h
+        E_h = 1 / (1 + 10 ** ((a_elo - h_elo) / 400.0))
+        E_a = 1 - E_h
+        margin_mult = min(3.0, max(0.5,
+                                   abs(actual_delta) / config.config.elo_margin_divisor + 1.0))
+        return (elo_k * margin_mult * (S_h - E_h),
+                elo_k * margin_mult * (S_a - E_a),
+                margin_mult)
+
     def compute_elo_history(self, sorted_matches: List[str], match_info: Dict[str, Any], 
                             actual_match_matrices: Dict[str, Tuple[Dict, Dict]]) -> Dict[str, List[Tuple[str, float]]]:
         """
@@ -56,26 +84,9 @@ class EloEngine:
             if m_id in actual_match_matrices:
                 h_mat, a_mat = actual_match_matrices[m_id]
                 actual_delta = sum(MatchupEngine.calculate_delta(h_mat, a_mat).values())
-                
-                if actual_delta > 0:
-                    elo_winner = h_team
-                elif actual_delta < 0:
-                    elo_winner = a_team
-                else:
-                    elo_winner = 'DRAW'
-                
-                if elo_winner != 'DRAW':
-                    h_elo = ratings[h_team]
-                    a_elo = ratings[a_team]
-                    S_h = 1.0 if elo_winner == h_team else 0.0
-                    S_a = 1.0 if elo_winner == a_team else 0.0
-                    
-                    E_h = 1 / (1 + 10 ** ((a_elo - h_elo) / 400.0))
-                    E_a = 1 - E_h
-                    
-                    margin_mult = min(3.0, max(0.5, abs(actual_delta) / 10.0 + 1.0))
-                    ratings[h_team] = h_elo + (self.elo_k * margin_mult) * (S_h - E_h)
-                    ratings[a_team] = a_elo + (self.elo_k * margin_mult) * (S_a - E_a)
+                d_h, d_a, _ = self.elo_update(ratings[h_team], ratings[a_team], actual_delta)
+                ratings[h_team] += d_h
+                ratings[a_team] += d_a
             
             # Store post-match rating for the round
             for team in [h_team, a_team]:

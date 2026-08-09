@@ -141,25 +141,31 @@ def calculate_standings(season, round_num, simulated_results=None):
                 stats[a]['points'] += 2
                 winner = 'DRAW'
                 
-            # Compute ELO change for simulated game
+            # Compute ELO change for simulated game — single delta-based
+            # formula from EloEngine (audit #2 consolidation). The simulated
+            # scores drive the ladder (points/percentage) but NOT the Elo,
+            # which follows the tactical delta per the delta-Elo design.
             elo_h = team_elos[h]
             elo_a = team_elos[a]
-            
-            S_h = 1.0 if winner == h else (0.5 if winner == 'DRAW' else 0.0)
-            S_a = 1.0 - S_h
-            
-            E_h = 1 / (1 + 10 ** ((elo_a - elo_h) / 400.0))
-            E_a = 1 - E_h
-            
-            margin = abs(h_score - a_score)
-            margin_mult = min(3.0, max(0.5, margin / 10.0 + 1.0))
-            
-            delta_elo = config.config.elo_k * margin_mult * (S_h - E_h)
-            team_elos[h] += delta_elo
-            team_elos[a] -= delta_elo
-            
-            team_elo_changes[h] = delta_elo
-            team_elo_changes[a] = -delta_elo
+
+            actual_delta = 0.0
+            mm = ingestor.actual_match_matrices.get(m_id)
+            if mm:
+                actual_delta = sum(MatchupEngine.calculate_delta(mm[0], mm[1]).values())
+            else:
+                m_a = ingestor.get_team_average_matrix(h, up_to_season=season,
+                                                       up_to_round=round_num)
+                m_b = ingestor.get_team_average_matrix(a, up_to_season=season,
+                                                       up_to_round=round_num)
+                if m_a and m_b:
+                    actual_delta = sum(MatchupEngine.calculate_delta(m_a, m_b).values())
+
+            d_h, d_a, _ = EloEngine.elo_update(elo_h, elo_a, actual_delta)
+            team_elos[h] += d_h
+            team_elos[a] += d_a
+
+            team_elo_changes[h] = d_h
+            team_elo_changes[a] = d_a
             
         else:
             # Not simulated: check if played in reality

@@ -11,7 +11,7 @@ from elo_engine import EloEngine
 
 # Bump when profiling semantics change (normalization, decay, grid logic, ...)
 # so stale profile caches are rejected (audit E5).
-CACHE_VERSION = 1
+CACHE_VERSION = 2  # v2: Elo margin scaling recalibrated (elo_margin_divisor)
 
 def _get_grid_cell(nx, ny, venue_length, venue_width):
     if nx == "" or ny == "" or not venue_length or not venue_width: return ""
@@ -54,7 +54,8 @@ class DataIngestor:
         changed (the stale-cache footgun that bit the E2 normalization change)."""
         import hashlib
         c = config.config
-        raw = f"{CACHE_VERSION}|{c.decay_factor}|{c.time_decay_factor}|{c.window_size}"
+        raw = (f"{CACHE_VERSION}|{c.decay_factor}|{c.time_decay_factor}|{c.window_size}"
+               f"|{c.elo_k}|{c.elo_margin_divisor}")
         return hashlib.sha1(raw.encode()).hexdigest()[:12]
 
     def load_all_data(self):
