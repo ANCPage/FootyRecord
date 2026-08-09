@@ -2,37 +2,17 @@ from models import TransitionEdge, MatchInfo
 import csv
 import glob
 import os
-import math
 from collections import defaultdict
 from typing import List, Dict, Tuple, Any
 from engine_core import Graph
 import config
 from elo_engine import EloEngine
+from geometry import xy_to_grid
 
 # Bump when profiling semantics change (normalization, decay, grid logic, ...)
 # so stale profile caches are rejected (audit E5).
 CACHE_VERSION = 2  # v2: Elo margin scaling recalibrated (elo_margin_divisor)
 
-def _get_grid_cell(nx, ny, venue_length, venue_width):
-    if nx == "" or ny == "" or not venue_length or not venue_width: return ""
-    try:
-        nx, ny, venue_length, venue_width = float(nx), float(ny), float(venue_length), float(venue_width)
-    except ValueError: return ""
-    a = venue_length / 2.0; b = venue_width / 2.0
-    u = nx / a; v = ny / b
-    r_sq = u**2 + v**2
-    if r_sq > 1.0:
-        norm = math.sqrt(r_sq); u /= norm; v /= norm
-    if u == 0 and v == 0: sx, sy = 0.0, 0.0
-    elif abs(u) >= abs(v):
-        if u > 0: sx = math.sqrt(u**2 + v**2); sy = sx * (4 / math.pi) * math.atan2(v, u)
-        else: sx = -math.sqrt(u**2 + v**2); sy = -sx * (4 / math.pi) * math.atan2(v, -u)
-    else:
-        if v > 0: sy = math.sqrt(u**2 + v**2); sx = sy * (4 / math.pi) * math.atan2(u, v)
-        else: sy = -math.sqrt(u**2 + v**2); sx = -sy * (4 / math.pi) * math.atan2(u, -v)
-    col_idx = max(0, min(4, int((sx + 1.0) / 2.0 * 5)))
-    row_idx = max(0, min(2, int((sy + 1.0) / 2.0 * 3)))
-    return f"{['A', 'B', 'C', 'D', 'E'][col_idx]}{['1', '2', '3'][row_idx]}"
 
 class DataIngestor:
     def __init__(self, csv_dir: str):
@@ -119,7 +99,7 @@ class DataIngestor:
                         chains_raw[c_id]['outcome'] = row['chain_finalState_class']
                         chains_raw[c_id]['matchId'] = m_id
                         if row['x'] and row['y'] and row['stat_class'] in ['POSSESSION', 'DISPOSAL', 'SCORE']:
-                            grid_cell = _get_grid_cell(row['x'], row['y'], row['venueLength'], row['venueWidth'])
+                            grid_cell = xy_to_grid(row['x'], row['y'], row['venueLength'], row['venueWidth'])
                             if grid_cell:
                                 chains_raw[c_id]['grids'].append(grid_cell)
                                 chains_raw[c_id]['players'].append(row['stat_playerId'])

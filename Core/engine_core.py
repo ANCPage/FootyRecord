@@ -1,6 +1,6 @@
 from models import TransitionEdge, TeamProfile
 from typing import List, Dict, Tuple, Optional, Any
-from models import TransitionEdge, TeamProfile
+from geometry import rotate_node as _rotate_node
 
 class Node:
     def __init__(self, name: str):
@@ -23,23 +23,10 @@ class Graph:
             for name in row:
                 self.nodes[name] = Node(name)
         self.nodes["SCORE"] = Node("SCORE")
-        
-        self.max_r = 2
-        self.max_c = 4
-        
-        # Coordinate map for rotation
-        self.pos_map: Dict[str, Tuple[int, int]] = {
-            name: (r, c) for r, row in enumerate(self.grid_names) for c, name in enumerate(row)
-        }
 
     def rotate_node(self, name: str) -> str:
-        """Rotates a node name 180 degrees."""
-        if name == "SCORE": return "SCORE"
-        if name not in self.pos_map: return name
-        r, c = self.pos_map[name]
-        new_r = self.max_r - r
-        new_c = self.max_c - c
-        return self.grid_names[new_r][new_c]
+        """Rotates a node name 180 degrees (delegates to geometry, audit #13)."""
+        return _rotate_node(name)
 
     def add_edge_score(self, start: str, end: str, score: float, current_team: str):
         """Adds a score to an edge, handles perspective rotation if needed."""

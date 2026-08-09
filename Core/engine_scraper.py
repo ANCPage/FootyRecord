@@ -2,11 +2,11 @@
 import json
 import csv
 import time
-import math
 import threading
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import config
+from geometry import xy_to_grid as get_grid_cell
 
 # Defined classifications from user feedback and analysis
 DISPOSAL_DESC = {'Kick', 'Handball', 'Ground Kick'}
@@ -90,21 +90,6 @@ class AFLSpatialScraper:
             if seg == default: continue
             if self._has_chain_data(self._fetch_match(f'CD_M{year}{seg}0101')): return seg
         return None
-
-def get_grid_cell(nx, ny, v_l, v_w):
-    if nx in ('', None) or ny in ('', None) or not v_l or not v_w: return ''
-    a, b = v_l/2.0, v_w/2.0; u, v = nx/a, ny/b; r_sq = u**2+v**2
-    if r_sq > 1.0: norm = math.sqrt(r_sq); u /= norm; v /= norm
-    if u == 0 and v == 0: sx, sy = 0.0, 0.0
-    elif abs(u) >= abs(v):
-        if u > 0: sx = math.sqrt(u**2+v**2); sy = sx*(4/math.pi)*math.atan2(v, u)
-        else: sx = -math.sqrt(u**2+v**2); sy = -sx*(4/math.pi)*math.atan2(v, -u)
-    else:
-        if v > 0: sy = math.sqrt(u**2+v**2); sx = sy*(4/math.pi)*math.atan2(u, v)
-        else: sy = -math.sqrt(u**2+v**2); sx = -sy*(4/math.pi)*math.atan2(u, -v)
-    col = max(0, min(4, int((sx+1.0)/2.0*5))); row = max(0, min(2, int((sy+1.0)/2.0*3)))
-    cols = ['A','B','C','D','E']; rows = ['1','2','3']
-    return f'{cols[col]}{rows[row]}'
 
 def classify_stat(desc):
     if desc in DISPOSAL_DESC: return 'DISPOSAL'

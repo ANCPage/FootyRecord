@@ -18,38 +18,8 @@ class Coordinate:
     
     def to_grid(self, venue_length: float, venue_width: float) -> str:
         """Maps physical coordinates to the 5x3 AFL oval grid."""
-        import math
-        nx, ny = self.x, self.y
-        if not venue_length or not venue_width:
-            return ""
-        a = venue_length / 2.0
-        b = venue_width / 2.0
-        u = nx / a
-        v = ny / b
-        r_sq = u**2 + v**2
-        if r_sq > 1.0:
-            norm = math.sqrt(r_sq)
-            u /= norm
-            v /= norm
-        if u == 0 and v == 0:
-            sx, sy = 0.0, 0.0
-        elif abs(u) >= abs(v):
-            if u > 0:
-                sx = math.sqrt(u**2 + v**2)
-                sy = sx * (4 / math.pi) * math.atan2(v, u)
-            else:
-                sx = -math.sqrt(u**2 + v**2)
-                sy = -sx * (4 / math.pi) * math.atan2(v, -u)
-        else:
-            if v > 0:
-                sy = math.sqrt(u**2 + v**2)
-                sx = sy * (4 / math.pi) * math.atan2(u, v)
-            else:
-                sy = -math.sqrt(u**2 + v**2)
-                sx = -sy * (4 / math.pi) * math.atan2(u, -v)
-        col_idx = max(0, min(4, int((sx + 1.0) / 2.0 * 5)))
-        row_idx = max(0, min(2, int((sy + 1.0) / 2.0 * 3)))
-        return f"{['A', 'B', 'C', 'D', 'E'][col_idx]}{['1', '2', '3'][row_idx]}"
+        from geometry import xy_to_grid
+        return xy_to_grid(self.x, self.y, venue_length, venue_width)
 
 @dataclass
 class Player:

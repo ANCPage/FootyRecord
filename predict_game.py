@@ -5,6 +5,7 @@ from collections import defaultdict
 
 sys.path.append('Core')
 from models import TransitionEdge
+from geometry import rotate_node
 from engine_data import DataIngestor
 from engine_core import MatchupEngine
 from mappings import TEAM_DATA
@@ -130,14 +131,7 @@ def predict_game(round_num, game_num):
             actual_edge = (edge.source, edge.target)
             if not is_home:
                 # Away team's matrix is rotated in the delta calculation relative to home team
-                grid_names = [["A1", "B1", "C1", "D1", "E1"], ["A2", "B2", "C2", "D2", "E2"], ["A3", "B3", "C3", "D3", "E3"]]
-                pos_map = {name: (r, c) for r, r_names in enumerate(grid_names) for c, name in enumerate(r_names)}
-                def rotate(node):
-                    if node == "SCORE": return "SCORE"
-                    if node not in pos_map: return node
-                    r, c = pos_map[node]
-                    return grid_names[2 - r][4 - c]
-                actual_edge = (rotate(edge.source), rotate(edge.target))
+                actual_edge = (rotate_node(edge.source), rotate_node(edge.target))
             
             print(f"  Vector: {actual_edge[0]} -> {actual_edge[1]} (Matchup Advantage: {abs(delta_val):.2f})")
             
