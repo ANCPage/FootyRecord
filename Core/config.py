@@ -39,6 +39,25 @@ TOTAL_SCORE_MEAN = 159.26
 ELO_MARGIN_DIVISOR = 0.3
 
 class Settings:
+    # (min, max) validation for runtime-mutable settings (audit #15).
+    _RANGES = {
+        'decay_factor': (0.0, 1.0),
+        'time_decay_factor': (0.0, 1.0),
+        'window_size': (1, None),
+        'elo_k': (1.0, None),
+        'elo_weight': (0.0, None),
+        'elo_margin_divisor': (0.01, None),
+    }
+
+    def __setattr__(self, name, value):
+        if name in self._RANGES:
+            lo, hi = self._RANGES[name]
+            ok = value >= lo if hi is None else lo <= value <= hi
+            if not ok:
+                raise ValueError(
+                    f"config.{name} must be within [{lo}, {hi if hi is not None else 'inf'}], got {value}")
+        super().__setattr__(name, value)
+
     def __init__(self):
         self.decay_factor = DECAY_FACTOR
         self.time_decay_factor = TIME_DECAY_FACTOR
