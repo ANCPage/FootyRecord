@@ -1,5 +1,10 @@
 # FootyRecord Production Scripts: Flaw & Defect Analysis Report
 
+> **STATUS (2026-08-09): historical document.** Most items below are resolved
+> in the current codebase; several were misdiagnoses. See
+> `code_audit_2026-08.md` for the authoritative audit trail with per-item
+> FIXED / CLOSED / kept-by-design status.
+
 This report compiles the findings from in-depth analyses of the FootyRecord production scripts, including the orchestration scripts (`generate_round_images.py`, `Core/main.py`) and the visualization engines (`Core/visualize_*.py`). The issues are categorized by type, highlighting their locations, impact, and concrete recommendations for resolution.
 
 ---

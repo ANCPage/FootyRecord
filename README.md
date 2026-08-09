@@ -1,88 +1,98 @@
-# FootyRecord Strategic Prediction Engine
+# FootyRecord — AFL Tactical Prediction Engine
 
-The FootyRecord Tactical Prediction Engine models ball movement in Australian Rules Football (AFL) as directed edges (vectors) on a discrete 5x3 spatial grid. By translating continuous tracking data into historical transition matrices, the engine computes team matchup deltas, optimizes mathematical prediction strategies, integrates historical ELO ratings, and outputs rich presentation-ready graphics.
+Spatial chain analysis for Australian Rules Football: scrapes play-by-play
+tracking data, models each team's ball movement as a directed graph over a
+5×3 tactical grid, and predicts match winners, margins and probabilities.
 
----
+## Quickstart
 
-## Project Structure & Layout
-
-The project root is organized into clean, modular directories:
-
-```
-├── Core/               # The architectural and model layer
-│   ├── base_visualizer.py      # Base visualization configurations and fallback logic
-│   ├── config.py               # Global engine parameters and settings
-│   ├── elo_engine.py           # ELO calculations, regression, and lookup engine
-│   ├── engine_core.py          # Directed Graph and Matchup Delta calculations
-│   ├── engine_data.py          # Data ingestion, profiling, and caching logic
-│   ├── engine_scraper.py       # Threaded scraper for play-by-play/spatial data
-│   ├── field_visualizer.py     # AFL oval pitch and grid node drawing
-│   ├── mappings.py             # Team definitions, abbreviations, and color profiles
-│   ├── models.py               # Dataclasses (MatchInfo, TransitionEdge, Coordinate, etc.)
-│   ├── theme.py                # Visual styling, palettes, and typography
-│   ├── vector_renderer.py      # Scaling, blur, and styling of flow arrows
-│   ├── visualize_ladder.py     # Cumulative ladder and team journey chart renderer
-│   ├── visualize_matchup.py    # Matchup expectations and actual flow renderer
-│   ├── visualize_story.py      # Variance mapping and player performance bar renderer
-│   └── visualize_tips.py       # Tips card visualizer
-├── CSV_DATA/           # Normalized play-by-play tracking data files (2021-2026)
-├── Experiments/        # Experimental testing scripts for ELO, decay, and windows
-├── LegacyScripts/      # Obsolete patching, injection, and utility scripts
-├── PLANNING/           # Project planning and research reports
-├── ROUND_IMAGES_UPDATE/# Directory containing generated visualizer output graphics
-├── index.html          # Web-based interface frontend
-├── server.py           # Interactive local simulation web server
-├── requirements.txt    # Python package dependencies
-└── README.md           # Project documentation
-```
-
----
-
-## Core Entry Points
-
-### 1. Production Pipeline
-*   **[generate_round_images.py](file:///d:/Development/Projects/FootyRecord/generate_round_images.py)**: Renders matchup deltas, expectation-vs-actual diagrams, player performance bars, tipping summaries, seasonal cumulative ladders, and team journeys for a selected round. Output images are structured into Desktop and Mobile format subdirectories.
-    ```bash
-    python generate_round_images.py --round 2 --comp_id 2026014
-    ```
-
-### 2. Game Predictor
-*   **[predict_game.py](file:///d:/Development/Projects/FootyRecord/predict_game.py)**: Fetches live match fixture details, calculates expectations, and lists key player drivers/win conditions driving prediction results for both teams.
-    ```bash
-    python predict_game.py <round_num> <game_num>
-    ```
-
-### 3. Simulation Web Server
-*   **[server.py](file:///d:/Development/Projects/FootyRecord/server.py)**: Starts a local HTTP server hosting an interactive dashboard for AFL match simulation.
-    *   **Port**: `8000` (Visit: `http://localhost:8000`)
-    ```bash
-    python server.py
-    ```
-
-### 4. Backtesting & Analysis
-*   **[backtest_2025.py](file:///d:/Development/Projects/FootyRecord/backtest_2025.py)**: Evaluates the ELO model predictions over the entire 2025 AFL season, detailing round-by-round accuracy.
-    ```bash
-    python backtest_2025.py
-    ```
-*   **[backtest_2026.py](file:///d:/Development/Projects/FootyRecord/backtest_2026.py)**: Evaluates the model predictions over the active 2026 AFL season.
-    ```bash
-    python backtest_2026.py
-    ```
-*   **[analyze_margins.py](file:///d:/Development/Projects/FootyRecord/analyze_margins.py)**: Performs statistical regression comparing expected delta values against actual margins for the 2024-2025 seasons.
-    ```bash
-    python analyze_margins.py
-    ```
-*   **[analyze_wce_nm.py](file:///d:/Development/Projects/FootyRecord/analyze_wce_nm.py)**: Evaluates individual matches (e.g. West Coast vs North Melbourne) comparing pre-match expectations against final actual play-by-play tactical outputs.
-    ```bash
-    python analyze_wce_nm.py
-    ```
-
----
-
-## Setup & Dependencies
-
-Ensure you have Python installed, then install the package requirements:
 ```bash
-pip install -r requirements.txt
+# install (Python 3.10+)
+pip install -e ".[dev]"
+
+# 1. fetch match data (fresh scrape — CSV_DATA is intentionally empty,
+#    see "Fresh start" below)
+python Core/main.py update                # 2026 only
+python Core/main.py update --force        # full rebuild of 2026
+
+# 2. predict a matchup (uses historical profiles)
+python Core/main.py predict CD_T80 CD_T100
+python Core/main.py predict_full CD_T80 CD_T100
+
+# 3. evaluate the model walk-forward over all seasons
+python evaluate.py
+
+# 4. web dashboard
+python server.py                          # http://localhost:8080
+
+# 5. tests + lint
+pytest
+ruff check Core/ *.py --exclude LegacyScripts
 ```
-To run visualizers with the official stencil look, place font files (e.g., `Wallpoet`, `Roboto`) in the `downloaded_fonts/` directory. If not present, the visualization engine will seamlessly fall back to system fonts without failing.
+
+## Architecture
+
+```
+engine_scraper.py   AFL API -> flattened CSVs (per-team spatial frame)
+engine_data.py      CSV -> per-match transition matrices (decayed, normalized)
+engine_core.py      Graph + MatchupEngine (delta = tactical advantage per edge)
+elo_engine.py       delta-based Elo ratings (winner = delta sign, margin-scaled K)
+geometry.py         grid mapping + 180° rotation (single source of truth)
+visualize_*.py      matchup/story/ladder/tips graphics
+server.py           web dashboard (predictions, ladder, parameter sweep)
+evaluate.py         walk-forward evaluation (accuracy, Brier, margin MAE/RMSE)
+```
+
+## Design decisions (deliberate — see code_audit_2026-08.md for the full audit)
+
+- **Scoring chains only.** Profiles are built from chains that end in a score;
+  turnover/stoppage chains are excluded. Opponent scoring chains are embedded
+  (rotated + negated) into each team's profile, so defensive leakage *is*
+  visible — pressure and tempo are not.
+- **Delta-based Elo.** Ratings follow the tactical delta, not the scoreboard
+  (a team can win the scoreboard and lose the rating). No venue advantage
+  term — the AFL "home" label is unreliable across shared/neutral grounds.
+- **Round 0 is a real home-and-away round** (AFL Opening Round) and is
+  correctly included in history.
+- **Normalized matrices.** Each match's matrix is divided by its total weight,
+  so deltas measure pattern, not attack volume.
+- **All calibrations are fitted from data** (`config.py`): margin regression,
+  win-probability logistic, total score, Elo margin scaling. Re-fit after any
+  engine/data change:
+
+```bash
+python analyze_margins.py    # margin = b0 + b1*net_delta + b2*elo_diff
+python fit_calibration.py    # probability logistic + total score
+# then copy the printed coefficients into Core/config.py
+```
+
+## Fresh start (data)
+
+`CSV_DATA/` is empty by design (post-audit). Re-scrape all seasons:
+
+```bash
+python - <<'EOF'
+from Core.engine_scraper import update_all_data
+from Core.config import DATA_DIR
+for year in range(2021, 2027):
+    update_all_data(DATA_DIR, year=year)
+EOF
+```
+
+Expect a long run (6 seasons × ~200 matches, rate-limited). The scraper
+skips already-downloaded matches, so it can be resumed safely.
+
+## Project layout
+
+```
+Core/          engine, Elo, geometry, visualizers, config
+CSV_DATA/      raw match CSVs (gitignored, regenerable) + profile cache
+tests/         37 pytest tests (unit + integration, no real data needed)
+docs/          architecture/design assessments
+*.py           tools: predict_game, backtest_*, analyze_*, evaluate,
+               fit_calibration, generate_round_images, server
+```
+
+See `code_audit_2026-08.md` for the full audit trail (issues found, fixed,
+and kept-by-design), and `production_scripts_flaws.md` (historical, largely
+resolved).
