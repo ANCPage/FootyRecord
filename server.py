@@ -477,8 +477,12 @@ class SimulationHandler(BaseHTTPRequestHandler):
                     elo_diff = (h_elo - a_elo) / 100.0
                     combined_score = net_delta + (elo_weight * elo_diff)
                     
-                    # Calculate predicted margin and scores
-                    predicted_margin = round(combined_score * 12.0)
+                    # Calculate predicted margin via calibrated regression
+                    # (audit E4): Expected Margin = slope * combined + intercept
+                    predicted_margin = round(
+                        config.config.margin_slope * combined_score
+                        + config.config.margin_intercept
+                    )
                     
                     # Estimate total score from average matrices
                     shots_a = sum(score for edge, score in m_a.items() if edge.target == 'SCORE')

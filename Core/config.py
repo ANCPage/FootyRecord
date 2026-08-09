@@ -14,6 +14,11 @@ TIME_DECAY_FACTOR = 0.8
 WINDOW_SIZE = 25
 ELO_WEIGHT = 1.0
 ELO_K = 32
+# Margin calibration: Expected Margin = slope * combined_score + intercept.
+# Fitted 2026-08-09 via `python analyze_margins.py` on normalized matrices
+# (412 matches, r=0.538). Re-fit whenever the engine/data changes.
+MARGIN_SLOPE = 144.1387
+MARGIN_INTERCEPT = 6.1856
 
 class Settings:
     def __init__(self):
@@ -22,6 +27,8 @@ class Settings:
         self.window_size = WINDOW_SIZE
         self.elo_weight = ELO_WEIGHT
         self.elo_k = ELO_K
+        self.margin_slope = MARGIN_SLOPE
+        self.margin_intercept = MARGIN_INTERCEPT
         self.data_dir = DATA_DIR
         self.output_dir = OUTPUT_DIR
         self.fonts_dir = FONTS_DIR
