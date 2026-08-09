@@ -7,7 +7,6 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from engine_data import DataIngestor
 from engine_core import MatchupEngine
-from engine_visualizer import TacticalHUD
 from visualize_matchup import MatchupVisualizer
 from engine_scraper import update_all_data
 from mappings import TEAM_MAP
@@ -45,9 +44,9 @@ def main():
             print(f'Error: Could not find historical data for one or both teams: {team_a}, {team_b}')
             return
         delta_matrix = MatchupEngine.calculate_delta(matrix_a, matrix_b)
-        print(f'Matchup: {TEAM_MAP.get(team_a, team_a)} vs {TEAM_MAP.get(team_b, team_b)}')
-        hud = TacticalHUD()
-        hud.draw_matchup(team_a, team_b, delta_matrix)
+        print(f'Generating Full Tactical Analysis: {TEAM_MAP.get(team_a, team_a)} vs {TEAM_MAP.get(team_b, team_b)}')
+        viz = MatchupVisualizer()
+        viz.draw_full_matchup(team_a, team_b, matrix_a, matrix_b, delta_matrix)
 
     elif args.command == 'predict_full':
         if not args.teams:
