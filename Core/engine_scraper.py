@@ -136,13 +136,13 @@ def process_single_match(data, year, r, g, wf, ws):
             if key in seen: continue
             seen.add(key)
             gc = get_grid_cell(sx, sy, v_l, v_w)
-            wf.writerow([year, r, g, match_id, h_t, a_t, v_w, v_l, h_dir, c_idx, chain.get('teamId'), chain.get('initialState'), chain.get('finalState'), oc, to, period, chain.get('periodSeconds'), stat.get('displayOrder'), desc, sc, sec, pid, stat.get('teamId'), stat.get('disposal'), stat.get('shotAtGoal'), stat.get('behindInfo'), sx, sy, sx, sy, gc])
-            ws.writerow([match_id, c_idx, period, sec, pid, stat.get('teamId'), desc, sc, oc, to, sx, sy, gc])
+            wf.writerow([year, r, g, match_id, h_t, a_t, v_w, v_l, h_dir, c_idx, chain.get('teamId'), chain.get('initialState'), chain.get('finalState'), oc, to, period, chain.get('periodSeconds'), stat.get('displayOrder'), desc, sc, sec, pid, stat.get('teamId'), stat.get('disposal'), stat.get('shotAtGoal'), stat.get('behindInfo'), sx, sy, gc])
+            ws.writerow([match_id, c_idx, period, sec, pid, stat.get('teamId'), desc, sc, oc, to, gc])
 
 def update_all_data(output_dir, year=2026, force_rebuild=False, target_round=None):
     os.makedirs(output_dir, exist_ok=True); scraper = AFLSpatialScraper()
-    hf = ['season','round','game','matchId','homeTeamId','awayTeamId','venueWidth','venueLength','homeTeamDirectionQtr1','chain_index','chain_teamId','chain_initialState','chain_finalState','chain_finalState_class','chain_turnoverTo_chainId','chain_period','chain_periodSeconds','stat_displayOrder','stat_description','stat_class','stat_periodSeconds','stat_playerId','stat_teamId','stat_disposal','stat_shotAtGoal','stat_behindInfo','x','y','norm_x','norm_y','grid']
-    hs = ['matchId','chain_id','period','period_sec','player_id','team_id','description','stat_class','outcome','turnover_to_chain','x_norm','y_norm','grid']
+    hf = ['season','round','game','matchId','homeTeamId','awayTeamId','venueWidth','venueLength','homeTeamDirectionQtr1','chain_index','chain_teamId','chain_initialState','chain_finalState','chain_finalState_class','chain_turnoverTo_chainId','chain_period','chain_periodSeconds','stat_displayOrder','stat_description','stat_class','stat_periodSeconds','stat_playerId','stat_teamId','stat_disposal','stat_shotAtGoal','stat_behindInfo','x','y','grid']
+    hs = ['matchId','chain_id','period','period_sec','player_id','team_id','description','stat_class','outcome','turnover_to_chain','grid']
     
     print(f'Updating Season {year}...')
     seg = scraper._discover_segment(year)
