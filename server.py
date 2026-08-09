@@ -479,10 +479,12 @@ class SimulationHandler(BaseHTTPRequestHandler):
                     combined_score = net_delta + (elo_weight * elo_diff)
                     
                     # Calculate predicted margin via calibrated regression
-                    # (audit E4): Expected Margin = slope * combined + intercept
+                    # (audit E4): margin = b0 + b1*net_delta + b2*elo_diff,
+                    # fitted by analyze_margins.py on these exact features.
                     predicted_margin = round(
-                        config.config.margin_slope * combined_score
-                        + config.config.margin_intercept
+                        config.config.margin_intercept
+                        + config.config.margin_delta_coef * net_delta
+                        + config.config.margin_elo_coef * elo_diff
                     )
                     
                     # Estimate total score: normalized matrices no longer carry

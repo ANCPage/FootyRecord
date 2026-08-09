@@ -46,9 +46,9 @@ def main():
                 a_score = sum(pts for team, pts in chains.values() if team == a_team)
                 real_margins[m_id] = h_score - a_score
 
-    x_vals = []
-    y_vals = []
-    
+    x_vals = []   # [net_delta, elo_diff]
+    y_vals = []   # actual margin (home - away)
+
     print('\nRunning backtest and regression analysis...')
     for year in [2024, 2025]:
         matches = [m for m, info in ingestor.match_info.items() if info.season == year]
@@ -69,26 +69,33 @@ def main():
                 
             delta = MatchupEngine.calculate_delta(m_a, m_b)
             net_delta = sum(delta.values())
+            elo_diff = (ingestor.get_team_elo(h_team, year, info.round)
+                        - ingestor.get_team_elo(a_team, year, info.round)) / 100.0
             
             actual_margin = real_margins[m_id]
             
-            x_vals.append(net_delta)
+            x_vals.append([net_delta, elo_diff])
             y_vals.append(actual_margin)
-            
-    if len(x_vals) > 0:
-        slope, intercept = np.polyfit(x_vals, y_vals, 1)
-        correlation_matrix = np.corrcoef(x_vals, y_vals)
-        r_value = correlation_matrix[0,1]
+
+    if len(x_vals) >= 3:
+        X = np.column_stack([np.ones(len(x_vals)), np.array(x_vals)])
+        coef, res, rank, _ = np.linalg.lstsq(X, np.array(y_vals), rcond=None)
+        pred = X @ coef
+        r = np.corrcoef(pred, y_vals)[0, 1]
         print(f'\n==================================================')
         print(f' BACKTEST & MARGIN ANALYSIS: 2024-2025 SEASONS')
         print(f'==================================================')
         print(f'Analyzed Matches  : {len(x_vals)}')
-        print(f'Correlation (r)   : {r_value:.4f}')
-        print(f'R-squared (R^2)   : {r_value**2:.4f}')
+        print(f'Correlation (r)   : {r:.4f}')
+        print(f'R-squared (R^2)   : {r**2:.4f}')
         print(f'--------------------------------------------------')
-        print(f'PREDICTIVE EQUATION:')
-        print(f'Expected Margin = {slope:.4f} * (Tactical Score) + {intercept:.4f}')
+        print(f'PREDICTIVE EQUATION (margin = b0 + b1*net_delta + b2*elo_diff):')
+        print(f'  b0 (intercept)  = {coef[0]:+.4f}')
+        print(f'  b1 (net_delta)  = {coef[1]:+.4f}')
+        print(f'  b2 (elo_diff)   = {coef[2]:+.4f}')
         print(f'--------------------------------------------------')
+        print(f'Copy b0/b1/b2 into Core/config.py (margin_intercept /')
+        print(f'margin_delta_coef / margin_elo_coef).')
     else:
         print('No matches analyzed. Check data availability.')
 

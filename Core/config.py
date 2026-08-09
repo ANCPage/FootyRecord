@@ -14,11 +14,12 @@ TIME_DECAY_FACTOR = 0.8
 WINDOW_SIZE = 25
 ELO_WEIGHT = 1.0
 ELO_K = 32
-# Margin calibration: Expected Margin = slope * combined_score + intercept.
-# Fitted 2026-08-09 via `python analyze_margins.py` on normalized matrices
-# (412 matches, r=0.538). Re-fit whenever the engine/data changes.
-MARGIN_SLOPE = 144.1387
-MARGIN_INTERCEPT = 6.1856
+# Margin calibration: margin = b0 + b1*net_delta + b2*elo_diff, fitted via
+# `python analyze_margins.py` (412 matches 2024-25, r=0.540; elo_diff = (h-a)/100).
+# Re-fit whenever the engine/data changes.
+MARGIN_INTERCEPT = 6.2299
+MARGIN_DELTA_COEF = 107.4945
+MARGIN_ELO_COEF = 3.6828
 # Probability calibration: P(home win) = sigmoid(b0 + b1*net_delta + b2*(elo diff)).
 # Fitted 2026-08-09 via `python fit_calibration.py` (412 matches, Brier 0.2023
 # vs 0.2066 for the old net_delta*80 formula).
@@ -40,8 +41,9 @@ class Settings:
         self.window_size = WINDOW_SIZE
         self.elo_weight = ELO_WEIGHT
         self.elo_k = ELO_K
-        self.margin_slope = MARGIN_SLOPE
         self.margin_intercept = MARGIN_INTERCEPT
+        self.margin_delta_coef = MARGIN_DELTA_COEF
+        self.margin_elo_coef = MARGIN_ELO_COEF
         self.prob_b0 = PROB_B0
         self.prob_b1 = PROB_B1
         self.prob_b2 = PROB_B2
