@@ -7,7 +7,7 @@ from the forward pocket straight back to the full-back defensive zone in a
 single step, which would be unusual (a long kick backwards / turnover).
 """
 import csv
-from collections import defaultdict, Counter
+from collections import Counter, defaultdict
 
 MATCH = 'CD_M20260142106'
 CSV = 'CSV_DATA/flattened_stats_2026.csv'

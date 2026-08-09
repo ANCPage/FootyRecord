@@ -1,10 +1,13 @@
 import matplotlib
+
 matplotlib.use('Agg')
+from typing import Tuple
+
 import matplotlib.pyplot as plt
-from matplotlib.font_manager import FontProperties
-from typing import Tuple, Dict
-from theme import get_fonts, BG_COLOR, TEXT_COLOR, SUB_TEXT_COLOR, mute_color, is_dark_color
 from mappings import TEAM_DATA
+from matplotlib.font_manager import FontProperties
+from theme import BG_COLOR, SUB_TEXT_COLOR, TEXT_COLOR, get_fonts, is_dark_color, mute_color
+
 
 class BaseVisualizer:
     def __init__(self):
@@ -23,7 +26,7 @@ class BaseVisualizer:
         """Resolves readable contrast colors for two teams using centralized darkness check."""
         d_a = TEAM_DATA.get(team_a_id, {'primary': '#333333', 'secondary': '#dddddd'})
         d_b = TEAM_DATA.get(team_b_id, {'primary': '#555555', 'secondary': '#eeeeee'})
-        
+
         c_a = d_a['primary']
         if not is_dark_color(c_a):
             c_a = d_a['secondary']
@@ -35,7 +38,7 @@ class BaseVisualizer:
             c_b = d_b['secondary']
             if not is_dark_color(c_b) or c_a == c_b:
                 c_b = '#004B87'
-            
+
         return mute_color(c_a), mute_color(c_b)
 
     def create_canvas(self, is_mobile: bool = False, mobile_format: str = 'reel', default_desktop_size: Tuple[float, float] = (16, 10)) -> Tuple[plt.Figure, plt.Axes]:

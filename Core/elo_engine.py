@@ -1,5 +1,7 @@
-from typing import Dict, List, Tuple, Any
+from typing import Any, Dict, List, Tuple
+
 import config
+
 
 class EloEngine:
     def __init__(self, elo_k: float = None, regression_factor: float = 0.75, mean_rating: float = 1500.0):
@@ -37,7 +39,7 @@ class EloEngine:
                 elo_k * margin_mult * (S_a - E_a),
                 margin_mult)
 
-    def compute_elo_history(self, sorted_matches: List[str], match_info: Dict[str, Any], 
+    def compute_elo_history(self, sorted_matches: List[str], match_info: Dict[str, Any],
                             actual_match_matrices: Dict[str, Tuple[Dict, Dict]]) -> Dict[str, List[Tuple[str, float]]]:
         """
         Runs ELO simulation over all matches and returns:
@@ -45,22 +47,22 @@ class EloEngine:
         Additionally populates team_elo_by_round and season_start_elos.
         """
         from engine_core import MatchupEngine
-        
+
         ratings = {}  # team_id -> current_elo
         team_elo_history = {}  # team_id -> [(match_id, elo_before_match)]
         self.team_elo_by_round = {}
         self.season_start_elos = {}
-        
+
         current_season = None
-        
+
         for m_id in sorted_matches:
             info = match_info[m_id]
             h_team, a_team = info.home, info.away
-            
+
             # Initialize ratings if not present
             if h_team not in ratings: ratings[h_team] = self.mean_rating
             if a_team not in ratings: ratings[a_team] = self.mean_rating
-            
+
             # Handle season roll-over regression
             if info.season != current_season:
                 if current_season is not None:
@@ -72,14 +74,14 @@ class EloEngine:
                     if team not in self.season_start_elos:
                         self.season_start_elos[team] = {}
                     self.season_start_elos[team][current_season] = ratings[team]
-            
+
             # Record ELO rating BEFORE this match in team_elo_history
             if h_team not in team_elo_history: team_elo_history[h_team] = []
             if a_team not in team_elo_history: team_elo_history[a_team] = []
-            
+
             team_elo_history[h_team].append((m_id, ratings[h_team]))
             team_elo_history[a_team].append((m_id, ratings[a_team]))
-            
+
             # Update ratings if match was actually played
             if m_id in actual_match_matrices:
                 h_mat, a_mat = actual_match_matrices[m_id]
@@ -87,13 +89,13 @@ class EloEngine:
                 d_h, d_a, _ = self.elo_update(ratings[h_team], ratings[a_team], actual_delta)
                 ratings[h_team] += d_h
                 ratings[a_team] += d_a
-            
+
             # Store post-match rating for the round
             for team in [h_team, a_team]:
                 if team not in self.team_elo_by_round:
                     self.team_elo_by_round[team] = {}
                 self.team_elo_by_round[team][(info.season, info.round)] = ratings[team]
-                
+
         # Append final post-match ELO ratings
         if sorted_matches:
             last_mid = sorted_matches[-1]
@@ -102,7 +104,7 @@ class EloEngine:
                 post_mid = f"POST_{last_mid}"
                 if team not in team_elo_history: team_elo_history[team] = []
                 team_elo_history[team].append((post_mid, ratings[team]))
-                
+
         return team_elo_history
 
     def get_team_elo(self, team_id: str, season: int, round_num: int) -> float:
@@ -111,16 +113,16 @@ class EloEngine:
         """
         # Clamp round_num to prevent recursion stack overflow
         round_num = min(round_num, 25)
-        
+
         # If round_num is 1, return the rating at the start of this season
         if round_num <= 1:
             return self.season_start_elos.get(team_id, {}).get(season, 1500.0)
-        
+
         # Check if we have the ELO at the end of round_num - 1
         key = (season, round_num - 1)
         if team_id in self.team_elo_by_round and key in self.team_elo_by_round[team_id]:
             return self.team_elo_by_round[team_id][key]
-            
+
         # Fallback to the ELO of the previous round
         return self.get_team_elo(team_id, season, round_num - 1)
 
@@ -136,6 +138,6 @@ class EloEngine:
         for team_id in TEAM_DATA.keys():
             elo = self.get_team_elo(team_id, season, round_num)
             team_elos.append((team_id, elo))
-        
+
         team_elos.sort(key=lambda x: x[1], reverse=True)
         return {team_id: rank for rank, (team_id, elo) in enumerate(team_elos, 1)}

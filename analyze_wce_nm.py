@@ -1,9 +1,11 @@
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Core'))
-from engine_data import DataIngestor
 from engine_core import MatchupEngine
+from engine_data import DataIngestor
 from mappings import TEAM_DATA
+
 
 def main():
     ingestor = DataIngestor('CSV_DATA')
@@ -24,16 +26,16 @@ def main():
     m_b, _ = ingestor.get_team_average_matrix(a_id, up_to_season=2026, up_to_round=2, return_history_info=True)
 
     delta = MatchupEngine.calculate_delta(m_a, m_b)
-    
+
     if mid not in ingestor.actual_match_matrices:
         print("Actual data not found.")
         return
-        
+
     h_actual_mat, a_actual_mat = ingestor.actual_match_matrices[mid]
     actual_delta = MatchupEngine.calculate_delta(h_actual_mat, a_actual_mat)
 
     print(f"{h_n} (Positive) vs {a_n} (Negative)")
-    
+
     expected_net = sum(delta.values())
     actual_net = sum(actual_delta.values())
     print(f"\nNet Expected Advantage: {expected_net:.2f}")
@@ -56,7 +58,7 @@ def main():
         exp_v = delta.get(e, 0)
         act_v = actual_delta.get(e, 0)
         diff[e] = act_v - exp_v
-        
+
     diff_sorted = sorted(diff.items(), key=lambda x: abs(x[1]), reverse=True)
     for k, v in diff_sorted[:10]:
         exp_v = delta.get(k, 0)

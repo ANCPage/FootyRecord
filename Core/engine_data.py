@@ -1,14 +1,15 @@
-from models import TransitionEdge, MatchInfo
 import csv
 import glob
 import logging
 import os
 from collections import defaultdict
-from typing import List, Dict, Tuple, Any
-from engine_core import Graph
+from typing import Any, Dict
+
 import config
 from elo_engine import EloEngine
+from engine_core import Graph
 from geometry import xy_to_grid
+from models import MatchInfo, TransitionEdge
 
 logger = logging.getLogger(__name__)
 
@@ -46,10 +47,10 @@ class DataIngestor:
         cache_dir = os.path.join(self.csv_dir, '.cache')
         os.makedirs(cache_dir, exist_ok=True)
         cache_path = os.path.join(cache_dir, 'ingestor_state.pkl')
-        
+
         files = glob.glob(os.path.join(self.csv_dir, 'flattened_stats_202*.csv'))
         files = [f for f in files if 'simple' not in f]
-        
+
         if os.path.exists(cache_path):
             cache_mtime = os.path.getmtime(cache_path)
             cache_fresh = all(os.path.getmtime(f) <= cache_mtime for f in files)
@@ -72,7 +73,7 @@ class DataIngestor:
                     self.team_elo_history = self.elo_engine.compute_elo_history(sorted_matches, self.match_info, self.actual_match_matrices)
                 self._skip_profiling = True
                 return
-                
+
         self._skip_profiling = False
         logger.info(f'Loading {len(files)} seasonal data files...')
         chains_raw = defaultdict(lambda: {'team': '', 'outcome': '', 'grids': [], 'players': [], 'matchId': ''})
@@ -86,7 +87,7 @@ class DataIngestor:
                         m_id = row['matchId']
                         if not m_id: continue
                         r_num = int(row['round'])
-                        if r_num > 24: continue 
+                        if r_num > 24: continue
                         if m_id not in self.match_info:
                             self.match_info[m_id] = MatchInfo(season=int(row['season']), round=r_num, home=row['homeTeamId'], away=row['awayTeamId'])
                         stat_key = (row['chain_period'], row['stat_periodSeconds'], row['x'], row['y'], row['stat_playerId'])
@@ -124,15 +125,15 @@ class DataIngestor:
     def profile_all_teams(self):
         if getattr(self, '_skip_profiling', False):
             return
-            
+
         sorted_matches = sorted(self.match_info.keys(), key=lambda x: (self.match_info[x].season, self.match_info[x].round))
         logger.info('Profiling teams using integrated edge-based decay logic...')
-        
+
         for m_id in sorted_matches:
             info = self.match_info[m_id]
             h_team, a_team = info.home, info.away
             h_graph, a_graph = Graph(h_team), Graph(a_team)
-            
+
             # Calculate expectations based on previous state
             m_a = self.get_team_average_matrix(h_team, up_to_season=info.season, up_to_round=info.round)
             m_b = self.get_team_average_matrix(a_team, up_to_season=info.season, up_to_round=info.round)
@@ -140,34 +141,34 @@ class DataIngestor:
             if m_a and m_b:
                 exp_delta = sum(MatchupEngine.calculate_delta(m_a, m_b).values())
                 self.match_performance[m_id] = {'expected': exp_delta, 'actual': 0.0}
-            
+
             h_player_scores = defaultdict(lambda: defaultdict(float))
             a_player_scores = defaultdict(lambda: defaultdict(float))
-            
+
             for chain in self.match_chains[m_id]:
                 has_score = (chain.get('outcome') == 'SCORE')
                 if not has_score: continue
-                
+
                 grids = chain['grids']; collapsed = []
                 players = chain.get('players', []); collapsed_players = []
                 for g, p in zip(grids, players):
-                    if not collapsed or collapsed[-1] != g: 
+                    if not collapsed or collapsed[-1] != g:
                         collapsed.append(g)
                         collapsed_players.append(set([p]))
                     else:
                         collapsed_players[-1].add(p)
-                        
+
                 if not collapsed: continue
                 edges = []
                 for i in range(len(collapsed) - 1): edges.append((collapsed[i], collapsed[i+1]))
                 edges.append((collapsed[-1], 'SCORE'))
                 n = len(edges)
-                
+
                 for i, (start, end) in enumerate(edges, 1):
                     decay = config.config.decay_factor ** (n - i)
                     h_graph.add_edge_score(start, end, decay, chain['team'])
                     a_graph.add_edge_score(start, end, decay, chain['team'])
-                    
+
                     if decay > 0:
                         inv_players = list(collapsed_players[i-1]) if i-1 < len(collapsed_players) else []
                         for p in inv_players:
@@ -175,7 +176,7 @@ class DataIngestor:
                                 h_player_scores[p][(start, end)] += decay
                             else:
                                 a_player_scores[p][(start, end)] += decay
-                                
+
             h_mat = h_graph.get_edge_matrix()
             a_mat = a_graph.get_edge_matrix()
 
@@ -223,11 +224,11 @@ class DataIngestor:
                 if info and (info.season > up_to_season or (info.season == up_to_season and info.round >= up_to_round)):
                     continue
             filtered_history.append((m_id, mat))
-        
+
         history = filtered_history[-window:]
-        if not history: 
+        if not history:
             return ({}, []) if return_history_info else {}
-            
+
         avg_matrix = defaultdict(float)
         used_matches = []
         for m_id, mat in history:
@@ -237,11 +238,11 @@ class DataIngestor:
             else:
                 used_matches.append(m_id)
             for edge, score in mat.items(): avg_matrix[edge] += score / len(history)
-            
+
         if return_history_info:
             return dict(avg_matrix), used_matches
         return dict(avg_matrix)
-        
+
     def get_team_player_matrix(self, team_id: str, window: int = None, up_to_match_id: str = None, up_to_season: int = None, up_to_round: int = None) -> Dict[str, Dict[TransitionEdge, float]]:
         if window is None:
             window = config.config.window_size
@@ -254,7 +255,7 @@ class DataIngestor:
                 if info and (info.season > up_to_season or (info.season == up_to_season and info.round >= up_to_round)):
                     continue
             filtered_history.append((m_id, mat))
-            
+
         history = filtered_history[-window:]
         if not history: return {}
         avg_player_matrix = defaultdict(lambda: defaultdict(float))

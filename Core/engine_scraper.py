@@ -1,12 +1,12 @@
-﻿import os
-import json
-import csv
+﻿import csv
 import logging
-import time
+import os
 import threading
-import requests
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
 import config
+import requests
 from geometry import xy_to_grid as get_grid_cell
 
 logger = logging.getLogger(__name__)
@@ -15,10 +15,10 @@ logger = logging.getLogger(__name__)
 DISPOSAL_DESC = {'Kick', 'Handball', 'Ground Kick'}
 
 POSSESSION_DESC = {
-    'Gather', 'Loose Ball Get', 'Hard Ball Get', 'Uncontested Mark', 'Contested Mark', 
-    'Mark On Lead', 'Handball Received', 'Gather From Hitout', 'Gather from Opposition', 
-    'Ruck Hard Ball Get', 'Loose Ball Get Crumb', 'Hard Ball Get Crumb', 
-    'Free For', 'Free For: In Possession', 'Free Advantage', 'Free For: Off The Ball', 
+    'Gather', 'Loose Ball Get', 'Hard Ball Get', 'Uncontested Mark', 'Contested Mark',
+    'Mark On Lead', 'Handball Received', 'Gather From Hitout', 'Gather from Opposition',
+    'Ruck Hard Ball Get', 'Loose Ball Get Crumb', 'Hard Ball Get Crumb',
+    'Free For', 'Free For: In Possession', 'Free Advantage', 'Free For: Off The Ball',
     'Kickin play on'
 }
 
@@ -51,7 +51,7 @@ class AFLSpatialScraper:
                     resp.raise_for_status()
                     self._token = resp.json().get('token')
                     return self._token is not None
-                except Exception as e:
+                except Exception:
                     time.sleep(1.5 ** attempt)
             return False
 
@@ -131,14 +131,14 @@ def update_all_data(output_dir, year=2026, force_rebuild=False, target_round=Non
     os.makedirs(output_dir, exist_ok=True); scraper = AFLSpatialScraper()
     hf = ['season','round','game','matchId','homeTeamId','awayTeamId','venueWidth','venueLength','homeTeamDirectionQtr1','chain_index','chain_teamId','chain_initialState','chain_finalState','chain_finalState_class','chain_turnoverTo_chainId','chain_period','chain_periodSeconds','stat_displayOrder','stat_description','stat_class','stat_periodSeconds','stat_playerId','stat_teamId','stat_disposal','stat_shotAtGoal','stat_behindInfo','x','y','grid']
     hs = ['matchId','chain_id','period','period_sec','player_id','team_id','description','stat_class','outcome','turnover_to_chain','grid']
-    
+
     logger.info(f'Updating Season {year}...')
     seg = scraper._discover_segment(year)
     if not seg: return
 
     csv_f = os.path.join(output_dir, f'flattened_stats_{year}.csv')
     csv_s = os.path.join(output_dir, f'flattened_stats_{year}_simple.csv')
-    
+
     existing_matches = set()
     if not force_rebuild and os.path.exists(csv_s):
         with open(csv_s, 'r', encoding='utf-8') as f:
@@ -146,14 +146,14 @@ def update_all_data(output_dir, year=2026, force_rebuild=False, target_round=Non
             next(reader, None) # skip header
             for row in reader:
                 if row: existing_matches.add(row[0])
-                
+
     mode = 'w' if force_rebuild or not os.path.exists(csv_f) else 'a'
-    
+
     # Target specific round if requested, otherwise check rounds 0 to 24
     r_range = [target_round] if target_round is not None else range(0, 25)
     cands = [(r, g, f'CD_M{year}{seg}{r:02d}{g:02d}') for r in r_range for g in range(1, 12)]
     cands = [c for c in cands if c[2] not in existing_matches]
-    
+
     if not cands:
         logger.info("All requested matches are already downloaded. Use --force to rebuild.")
         return
@@ -162,11 +162,11 @@ def update_all_data(output_dir, year=2026, force_rebuild=False, target_round=Non
         wf, ws = csv.writer(ff), csv.writer(fs)
         if mode == 'w':
             wf.writerow(hf); ws.writerow(hs)
-            
+
         with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
             futs = {pool.submit(scraper._fetch_match, mid): (r, g, mid) for r, g, mid in cands}
             for fut in as_completed(futs):
                 r, g, mid = futs[fut]; data = fut.result()
-                if scraper._has_chain_data(data): 
+                if scraper._has_chain_data(data):
                     process_single_match(data, year, r, g, wf, ws)
                     logger.info(f'  Added {mid} to dataset')

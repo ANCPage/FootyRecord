@@ -1,3 +1,4 @@
+import datetime
 import os
 
 # Project Root
@@ -91,5 +92,5 @@ AFL_HEADERS = {
 MAX_RETRIES = 3
 GAMES_PER_ROUND = 9
 MAX_ROUNDS = 24
-import datetime
+
 SEASONS = list(range(2021, datetime.datetime.now().year + 1))

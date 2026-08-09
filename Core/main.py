@@ -1,19 +1,22 @@
-﻿import argparse
-import sys
-import os
+﻿# ruff: noqa: E402  (imports follow the script-relative path bootstrap below)
+
+import argparse
 import logging
+import os
+import sys
 
 # Add current directory to path so we can import our modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 
-from engine_data import DataIngestor
+from config import config
 from engine_core import MatchupEngine
-from visualize_matchup import MatchupVisualizer
+from engine_data import DataIngestor
 from engine_scraper import update_all_data
 from mappings import TEAM_MAP
-from config import config
+from visualize_matchup import MatchupVisualizer
+
 
 def main():
     parser = argparse.ArgumentParser(description='AFL2 Strategic Prediction Engine')
@@ -22,12 +25,12 @@ def main():
     parser.add_argument('--window', type=int, default=config.config.window_size, help=f'Sliding window size (default {config.config.window_size})')
     parser.add_argument('--target_round', type=int, default=None, help='Specific round to update (for update command)')
     parser.add_argument('--force', action='store_true', help='Force rebuild of the dataset (for update command)')
-    
+
     args = parser.parse_args()
-    
+
     # Mutate global config object
     config.window_size = args.window
-    
+
     if args.command == 'update':
         update_all_data(config.config.data_dir, year=2026, force_rebuild=args.force, target_round=args.target_round)
         return
@@ -35,7 +38,7 @@ def main():
     ingestor = DataIngestor(config.config.data_dir)
     ingestor.load_all_data()
     ingestor.profile_all_teams()
-    
+
     if args.command == 'predict':
         if not args.teams:
             print('Error: --teams [TeamA] [TeamB] required for predict command.')

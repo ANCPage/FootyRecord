@@ -1,6 +1,7 @@
 import os
-from matplotlib.font_manager import FontProperties
+
 from config import FONTS_DIR
+from matplotlib.font_manager import FontProperties
 
 FASTER_ONE = os.path.join(FONTS_DIR, 'FasterOne.ttf')
 WALLPOET = os.path.join(FONTS_DIR, 'Wallpoet.ttf')
@@ -20,17 +21,17 @@ def mute_color(hex_color):
     """
     if not hex_color or not str(hex_color).startswith('#') or len(str(hex_color)) != 7:
         return hex_color
-    
+
     try:
         # Parse hex to RGB
         r1, g1, b1 = int(hex_color[1:3], 16), int(hex_color[3:5], 16), int(hex_color[5:7], 16)
         r2, g2, b2 = int(BG_COLOR[1:3], 16), int(BG_COLOR[3:5], 16), int(BG_COLOR[5:7], 16)
-        
+
         # Blend
         r = int(r1 * 0.7 + r2 * 0.3)
         g = int(g1 * 0.7 + g2 * 0.3)
         b = int(b1 * 0.7 + b2 * 0.3)
-        
+
         return f"#{r:02x}{g:02x}{b:02x}".upper()
     except ValueError:
         return hex_color
@@ -60,7 +61,7 @@ def get_fonts():
     prop_title = FontProperties(fname=FASTER_ONE)
     prop_sub = FontProperties(fname=WALLPOET)
     prop_body = FontProperties(fname=ROBOTO)
-    
+
     return prop_title, prop_sub, prop_body
 
 def get_ordinal(n):

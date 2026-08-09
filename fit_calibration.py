@@ -8,12 +8,13 @@
 
 Walk-forward over 2024-2025, same guards as the backtests.
 """
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Core'))
 import numpy as np
-from engine_data import DataIngestor
 from engine_core import MatchupEngine
+from engine_data import DataIngestor
 
 ing = DataIngestor('CSV_DATA')
 ing.load_all_data()
@@ -74,7 +75,7 @@ def server_prob(X):
     return 1.0 / (1.0 + 10.0 ** (-rating_diff / 400.0))
 
 sp = server_prob(Xp)
-print(f"\nCURRENT server probability model:")
+print("\nCURRENT server probability model:")
 print(f"  Brier = {np.mean((sp - Yp)**2):.4f}  (0=perfect, 0.25=coin flip)")
 
 # --- 2. fitted logistic on same features ---
@@ -93,7 +94,7 @@ def logit_fit(X, y, iters=50):
     return b
 
 bfit = logit_fit(Xp, Yp)
-print(f"\nFITTED logistic (P(home win) = sigmoid(b0 + b1*net_delta + b2*elo_raw)):")
+print("\nFITTED logistic (P(home win) = sigmoid(b0 + b1*net_delta + b2*elo_raw)):")
 print(f"  b0(intercept) = {bfit[0]:+.4f}   b1(net_delta) = {bfit[1]:+.4f}   b2(elo diff) = {bfit[2]:+.4f}")
 print(f"  Brier = {brier_of(Xp, Yp, bfit):.4f}")
 print(f"  implied elo scale: b1/b2 = {bfit[1]/max(bfit[2],1e-9):.2f} (old magic: 80)")

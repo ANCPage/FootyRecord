@@ -2,6 +2,7 @@ import matplotlib.patches as patches
 from base_visualizer import BaseVisualizer
 from engine_core import Graph
 
+
 class FieldVisualizer(BaseVisualizer):
     def __init__(self):
         super().__init__()
@@ -38,10 +39,10 @@ class FieldVisualizer(BaseVisualizer):
     def draw_zones(self, ax, active_only: bool = False, active_nodes: set = None, font_scale: float = 1.0):
         """Draws circular labels for each grid zone onto the field."""
         for name, (x, y) in self.node_positions.items():
-            if name in ['SCORE', 'AWAY_G']: 
+            if name in ['SCORE', 'AWAY_G']:
                 continue
-            if active_only and active_nodes and name not in active_nodes: 
+            if active_only and active_nodes and name not in active_nodes:
                 continue
             ax.add_patch(patches.Circle((x, y), radius=3.5, color=self.bg_color, ec=self.sub_text_color, lw=1.5, zorder=2))
-            ax.text(x, y, self.zone_labels.get(name, name), color=self.text_color, fontsize=8 * font_scale, 
+            ax.text(x, y, self.zone_labels.get(name, name), color=self.text_color, fontsize=8 * font_scale,
                     ha='center', va='center', zorder=3, fontproperties=self.prop_body, fontweight='bold')
