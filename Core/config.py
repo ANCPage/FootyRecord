@@ -19,6 +19,16 @@ ELO_K = 32
 # (412 matches, r=0.538). Re-fit whenever the engine/data changes.
 MARGIN_SLOPE = 144.1387
 MARGIN_INTERCEPT = 6.1856
+# Probability calibration: P(home win) = sigmoid(b0 + b1*net_delta + b2*(elo diff)).
+# Fitted 2026-08-09 via `python fit_calibration.py` (412 matches, Brier 0.2023
+# vs 0.2066 for the old net_delta*80 formula). b0 captures home-ground advantage.
+PROB_B0 = 0.3039
+PROB_B1 = 3.7866
+PROB_B2 = 0.0036
+# Total-score estimate: normalized matrices no longer carry scoring volume, so
+# the shots*4 heuristic is meaningless (clamped 100% of the time). Use the
+# fitted league-average match total (fit_calibration.py).
+TOTAL_SCORE_MEAN = 159.26
 
 class Settings:
     def __init__(self):
@@ -29,6 +39,10 @@ class Settings:
         self.elo_k = ELO_K
         self.margin_slope = MARGIN_SLOPE
         self.margin_intercept = MARGIN_INTERCEPT
+        self.prob_b0 = PROB_B0
+        self.prob_b1 = PROB_B1
+        self.prob_b2 = PROB_B2
+        self.total_score_mean = TOTAL_SCORE_MEAN
         self.data_dir = DATA_DIR
         self.output_dir = OUTPUT_DIR
         self.fonts_dir = FONTS_DIR

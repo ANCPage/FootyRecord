@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import base64
+import math
 import uuid
 from io import BytesIO
 from collections import defaultdict
@@ -484,10 +485,10 @@ class SimulationHandler(BaseHTTPRequestHandler):
                         + config.config.margin_intercept
                     )
                     
-                    # Estimate total score from average matrices
-                    shots_a = sum(score for edge, score in m_a.items() if edge.target == 'SCORE')
-                    shots_b = sum(score for edge, score in m_b.items() if edge.target == 'SCORE')
-                    total_score = (shots_a + shots_b) * 4.0
+                    # Estimate total score: normalized matrices no longer carry
+                    # scoring volume, so use the fitted league-average total
+                    # (audit E4 follow-on; see fit_calibration.py).
+                    total_score = config.config.total_score_mean
                     if total_score < 80.0 or total_score > 240.0:
                         total_score = 165.0
                         
@@ -496,9 +497,14 @@ class SimulationHandler(BaseHTTPRequestHandler):
                     # Recalculate margin from final rounded scores
                     predicted_margin = abs(predicted_home_score - predicted_away_score)
                     
-                    # Probability
-                    rating_diff = (h_elo - a_elo) + net_delta * 80.0
-                    prob_home = 1.0 / (1.0 + 10.0 ** (-rating_diff / 400.0))
+                    # Probability via fitted logistic (audit E4 follow-on):
+                    # logit = b0 + b1*net_delta + b2*(elo diff); b0 = home adv.
+                    logit = (
+                        config.config.prob_b0
+                        + config.config.prob_b1 * net_delta
+                        + config.config.prob_b2 * (h_elo - a_elo)
+                    )
+                    prob_home = 1.0 / (1.0 + math.exp(-logit))
                     prob_away = 1.0 - prob_home
                     
                     predictions[m_id] = {
