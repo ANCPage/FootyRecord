@@ -171,6 +171,18 @@ class DataIngestor:
                                 
             h_mat = h_graph.get_edge_matrix()
             a_mat = a_graph.get_edge_matrix()
+
+            # Normalize each match's matrix by total activity weight so deltas
+            # measure tactical PATTERN, not attack volume / chain length
+            # (audit item E2). sum(abs) preserves the net (own minus opponent)
+            # structure while removing the volume scaling.
+            h_abs = sum(abs(v) for v in h_mat.values())
+            a_abs = sum(abs(v) for v in a_mat.values())
+            if h_abs > 0:
+                h_mat = {e: v / h_abs for e, v in h_mat.items()}
+            if a_abs > 0:
+                a_mat = {e: v / a_abs for e, v in a_mat.items()}
+
             self.team_history[h_team].append((m_id, h_mat))
             self.team_history[a_team].append((m_id, a_mat))
             self.team_player_history[h_team].append((m_id, {k: {TransitionEdge(*edge): score for edge, score in v.items()} for k, v in h_player_scores.items()}))
