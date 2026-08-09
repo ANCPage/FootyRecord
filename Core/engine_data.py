@@ -1,6 +1,7 @@
 from models import TransitionEdge, MatchInfo
 import csv
 import glob
+import logging
 import os
 from collections import defaultdict
 from typing import List, Dict, Tuple, Any
@@ -8,6 +9,8 @@ from engine_core import Graph
 import config
 from elo_engine import EloEngine
 from geometry import xy_to_grid
+
+logger = logging.getLogger(__name__)
 
 # Bump when profiling semantics change (normalization, decay, grid logic, ...)
 # so stale profile caches are rejected (audit E5).
@@ -61,7 +64,7 @@ class DataIngestor:
             except Exception:
                 version_ok = False
             if cache_fresh and version_ok:
-                print('Loading data and profiled teams from cache...')
+                logger.info('Loading data and profiled teams from cache...')
                 self.__dict__.update(payload['state'])
                 if not hasattr(self, 'elo_engine') or self.elo_engine is None:
                     self.elo_engine = EloEngine()
@@ -71,7 +74,7 @@ class DataIngestor:
                 return
                 
         self._skip_profiling = False
-        print(f'Loading {len(files)} seasonal data files...')
+        logger.info(f'Loading {len(files)} seasonal data files...')
         chains_raw = defaultdict(lambda: {'team': '', 'outcome': '', 'grids': [], 'players': [], 'matchId': ''})
         match_scores = defaultdict(lambda: defaultdict(int))
         for f_path in files:
@@ -104,7 +107,7 @@ class DataIngestor:
                                 chains_raw[c_id]['grids'].append(grid_cell)
                                 chains_raw[c_id]['players'].append(row['stat_playerId'])
                     except Exception as e:
-                        print(f"Skipping malformed row {row_idx} in {f_path}: {e}")
+                        logger.warning(f"Skipping malformed row {row_idx} in {f_path}: {e}")
                         continue
         for c_id, chain in chains_raw.items():
             if chain['grids']: self.match_chains[chain['matchId']].append(chain)
@@ -123,7 +126,7 @@ class DataIngestor:
             return
             
         sorted_matches = sorted(self.match_info.keys(), key=lambda x: (self.match_info[x].season, self.match_info[x].round))
-        print('Profiling teams using integrated edge-based decay logic...')
+        logger.info('Profiling teams using integrated edge-based decay logic...')
         
         for m_id in sorted_matches:
             info = self.match_info[m_id]
@@ -203,7 +206,7 @@ class DataIngestor:
         cache_dir = os.path.join(self.csv_dir, '.cache')
         os.makedirs(cache_dir, exist_ok=True)
         cache_path = os.path.join(cache_dir, 'ingestor_state.pkl')
-        print("Saving state to cache...")
+        logger.info("Saving state to cache...")
         with open(cache_path, 'wb') as f:
             pickle.dump({'__cache_version__': self._cache_fingerprint(),
                          'state': self.__dict__}, f)

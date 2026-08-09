@@ -1,12 +1,15 @@
 ﻿import os
 import json
 import csv
+import logging
 import time
 import threading
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import config
 from geometry import xy_to_grid as get_grid_cell
+
+logger = logging.getLogger(__name__)
 
 # Defined classifications from user feedback and analysis
 DISPOSAL_DESC = {'Kick', 'Handball', 'Ground Kick'}
@@ -68,7 +71,7 @@ class AFLSpatialScraper:
                 return data[0] if isinstance(data, list) and data else data
             except Exception as e:
                 if attempt == config.MAX_RETRIES - 1:
-                    print(f"Failed to fetch {match_id}: {e}")
+                    logger.warning(f"Failed to fetch {match_id}: {e}")
                     return None
                 time.sleep(1.5 ** attempt)
         return None
@@ -129,7 +132,7 @@ def update_all_data(output_dir, year=2026, force_rebuild=False, target_round=Non
     hf = ['season','round','game','matchId','homeTeamId','awayTeamId','venueWidth','venueLength','homeTeamDirectionQtr1','chain_index','chain_teamId','chain_initialState','chain_finalState','chain_finalState_class','chain_turnoverTo_chainId','chain_period','chain_periodSeconds','stat_displayOrder','stat_description','stat_class','stat_periodSeconds','stat_playerId','stat_teamId','stat_disposal','stat_shotAtGoal','stat_behindInfo','x','y','grid']
     hs = ['matchId','chain_id','period','period_sec','player_id','team_id','description','stat_class','outcome','turnover_to_chain','grid']
     
-    print(f'Updating Season {year}...')
+    logger.info(f'Updating Season {year}...')
     seg = scraper._discover_segment(year)
     if not seg: return
 
@@ -152,7 +155,7 @@ def update_all_data(output_dir, year=2026, force_rebuild=False, target_round=Non
     cands = [c for c in cands if c[2] not in existing_matches]
     
     if not cands:
-        print("All requested matches are already downloaded. Use --force to rebuild.")
+        logger.info("All requested matches are already downloaded. Use --force to rebuild.")
         return
 
     with open(csv_f, mode, newline='', encoding='utf-8') as ff, open(csv_s, mode, newline='', encoding='utf-8') as fs:
@@ -166,4 +169,4 @@ def update_all_data(output_dir, year=2026, force_rebuild=False, target_round=Non
                 r, g, mid = futs[fut]; data = fut.result()
                 if scraper._has_chain_data(data): 
                     process_single_match(data, year, r, g, wf, ws)
-                    print(f'  Added {mid} to dataset')
+                    logger.info(f'  Added {mid} to dataset')

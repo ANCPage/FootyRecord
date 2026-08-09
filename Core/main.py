@@ -1,9 +1,12 @@
 ﻿import argparse
 import sys
 import os
+import logging
 
 # Add current directory to path so we can import our modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+logging.basicConfig(level=logging.INFO, format='%(message)s')
 
 from engine_data import DataIngestor
 from engine_core import MatchupEngine
