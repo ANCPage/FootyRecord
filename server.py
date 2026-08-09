@@ -16,7 +16,7 @@ sys.path.append(os.path.join(root_dir, "Core"))
 import config
 from engine_data import DataIngestor
 from elo_engine import EloEngine
-from engine_core import MatchupEngine
+from engine_core import MatchupEngine, home_favored
 from visualize_matchup import MatchupVisualizer
 from mappings import TEAM_DATA
 
@@ -419,8 +419,8 @@ class SimulationHandler(BaseHTTPRequestHandler):
                 'team_b': team_b,
                 'home_name': TEAM_DATA[team_a]['name'],
                 'away_name': TEAM_DATA[team_b]['name'],
-                'winner_name': TEAM_DATA[team_a]['name'] if combined_score > 0 else TEAM_DATA[team_b]['name'],
-                'winner_id': team_a if combined_score > 0 else team_b,
+                'winner_name': TEAM_DATA[team_a]['name'] if home_favored(net_delta, h_elo, a_elo) else TEAM_DATA[team_b]['name'],
+                'winner_id': team_a if home_favored(net_delta, h_elo, a_elo) else team_b,
                 'combined_score': combined_score,
                 'net_delta': net_delta,
                 'elo_diff': elo_diff,
@@ -516,7 +516,7 @@ class SimulationHandler(BaseHTTPRequestHandler):
                     prob_away = 1.0 - prob_home
                     
                     predictions[m_id] = {
-                        "predicted_winner_id": team_a if predicted_home_score >= predicted_away_score else team_b,
+                        "predicted_winner_id": team_a if home_favored(net_delta, h_elo, a_elo) else team_b,
                         "predicted_home_score": predicted_home_score,
                         "predicted_away_score": predicted_away_score,
                         "predicted_margin": predicted_margin,
@@ -625,7 +625,7 @@ class SimulationHandler(BaseHTTPRequestHandler):
                     elo_diff = (h_elo - a_elo) / 100.0
                     combined_score = net_delta + (config.config.elo_weight * elo_diff)
                     
-                    pred_winner = h_team if combined_score > 0 else a_team
+                    pred_winner = h_team if home_favored(net_delta, h_elo, a_elo) else a_team
                     act_winner = ingestor.actual_winners.get(m_id)
                     
                     if act_winner == 'DRAW' or not act_winner:

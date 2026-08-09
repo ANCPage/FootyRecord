@@ -12,7 +12,7 @@ sys.path.append(core_dir)
 import config
 from models import TransitionEdge
 from engine_data import DataIngestor
-from engine_core import MatchupEngine
+from engine_core import MatchupEngine, home_favored
 from visualize_matchup import MatchupVisualizer
 from visualize_story import StoryVisualizer
 from visualize_ladder import LadderVisualizer
@@ -133,7 +133,7 @@ class RoundProductionPipeline:
             round_tips.append({
                 'home_name': h_name_mapped,
                 'home_id': h_id, 'away_id': a_id, 'away_name': a_name_mapped,
-                'winner_id': h_id if combined_score > 0 else a_id,
+                'winner_id': h_id if home_favored(net_delta, h_elo, a_elo) else a_id,
                 'net_delta': combined_score,
                 'actual_winner': self.ingestor.actual_winners.get(mid),
                 'home_elo': h_elo,
