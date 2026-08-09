@@ -1,0 +1,37 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+
+# --- Engine cache (regenerable, see engine_data.py pickle cache) ---
+.cache/
+*.pkl
+
+# --- Raw match data (regenerable via: python Core/main.py update) ---
+# ~620 MB of CSVs; keep out of git to keep the repo fast.
+# If you want data tracked, delete these two lines and commit CSV_DATA/.
+CSV_DATA/
+CSV_DATA/**/*.csv
+
+# --- Generated output ---
+ROUND_IMAGES_UPDATE/
+*.png.tmp
+
+# --- Agent / scratch artifacts ---
+.agent-shell/
+
+# --- OS junk ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Editor ---
+.vscode/
+.idea/
+*.swp
