@@ -1,6 +1,6 @@
 import sys
 import os
-sys.path.append('Core')
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Core'))
 from engine_data import DataIngestor
 from engine_core import MatchupEngine
 from mappings import TEAM_DATA

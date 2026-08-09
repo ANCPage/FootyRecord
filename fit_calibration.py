@@ -9,7 +9,8 @@
 Walk-forward over 2024-2025, same guards as the backtests.
 """
 import sys
-sys.path.insert(0, 'Core')
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Core'))
 import numpy as np
 from engine_data import DataIngestor
 from engine_core import MatchupEngine

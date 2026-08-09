@@ -1,9 +1,10 @@
 import sys
+import os
 import argparse
 import requests
 from collections import defaultdict
 
-sys.path.append('Core')
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Core'))
 from models import TransitionEdge
 from geometry import rotate_node
 from engine_data import DataIngestor

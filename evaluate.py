@@ -7,9 +7,10 @@ Note: 2024-25 are in-sample for the calibration fits (config coefficients
 were fitted on them); 2021-23 are out-of-sample for those coefficients.
 """
 import sys
+import os
 import math
 
-sys.path.append('Core')
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Core'))
 import config
 from engine_data import DataIngestor
 from engine_core import MatchupEngine
