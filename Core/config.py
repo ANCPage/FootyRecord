@@ -21,8 +21,11 @@ MARGIN_SLOPE = 144.1387
 MARGIN_INTERCEPT = 6.1856
 # Probability calibration: P(home win) = sigmoid(b0 + b1*net_delta + b2*(elo diff)).
 # Fitted 2026-08-09 via `python fit_calibration.py` (412 matches, Brier 0.2023
-# vs 0.2066 for the old net_delta*80 formula). b0 captures home-ground advantage.
-PROB_B0 = 0.3039
+# vs 0.2066 for the old net_delta*80 formula).
+# NOTE: b0 (home-ground intercept) is deliberately 0 — the AFL "home" label is
+# unreliable (shared/neutral grounds, venue isn't always home team's), so no
+# venue advantage is applied. Fit suggested ~0.30; set back if you want it.
+PROB_B0 = 0.0
 PROB_B1 = 3.7866
 PROB_B2 = 0.0036
 # Total-score estimate: normalized matrices no longer carry scoring volume, so
