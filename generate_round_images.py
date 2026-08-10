@@ -110,27 +110,23 @@ class RoundProductionPipeline:
             print(f'Game {g_idx}: {h_n} ({h_id}) vs {a_n} ({a_id})')
             print(f'\nProcessing Game {g_idx}: {h_n} vs {a_n}')
 
-            m_a, _ = self.ingestor.get_team_average_matrix(h_id, up_to_season=self.target_season, up_to_round=self.round, return_history_info=True)
-            m_b, _ = self.ingestor.get_team_average_matrix(a_id, up_to_season=self.target_season, up_to_round=self.round, return_history_info=True)
-
-            if not m_a or not m_b:
+            # Shared matchup computation (reuse pass #7) — one implementation
+            # of matrices -> delta -> net -> Elo -> calibration outputs.
+            from prediction import compute_matchup
+            pred = compute_matchup(self.ingestor, h_id, a_id,
+                                   self.target_season, self.round)
+            if pred is None:
                 continue
-
-            delta = MatchupEngine.calculate_delta(m_a, m_b)
-            net_delta = sum(delta.values())
-
-            h_elo = self.ingestor.get_team_elo(h_id, self.target_season, self.round)
-            a_elo = self.ingestor.get_team_elo(a_id, self.target_season, self.round)
-            # The decision edge is the ACTIVE fitted logit (audit #1 + dynamic
-            # calibration 2026-08-10): the exact value home_favored() thresholds
-            # at 0. Displayed value == decision value.
-            from calibration import current as cal
-            edge = cal.logit(net_delta, h_elo - a_elo)
-
-            h_rank = rankings.get(h_id)
-            a_rank = rankings.get(a_id)
-            h_tier = self.ingestor.get_team_tier(h_elo)
-            a_tier = self.ingestor.get_team_tier(a_elo)
+            delta = pred.delta
+            net_delta = pred.net_delta
+            m_a, m_b = pred.m_home, pred.m_away
+            h_elo = pred.h_elo
+            a_elo = pred.a_elo
+            edge = pred.edge
+            h_rank = pred.h_rank
+            a_rank = pred.a_rank
+            h_tier = pred.h_tier
+            a_tier = pred.a_tier
 
             h_name_mapped = TEAM_DATA.get(h_id, {'name': h_n})['name']
             a_name_mapped = TEAM_DATA.get(a_id, {'name': a_n})['name']
@@ -138,7 +134,7 @@ class RoundProductionPipeline:
             round_tips.append({
                 'home_name': h_name_mapped,
                 'home_id': h_id, 'away_id': a_id, 'away_name': a_name_mapped,
-                'winner_id': h_id if home_favored(net_delta, h_elo, a_elo) else a_id,
+                'winner_id': pred.winner_id,
                 'net_delta': net_delta,
                 'edge': edge,
                 'actual_winner': self.ingestor.actual_winners.get(mid),

@@ -1,7 +1,6 @@
 # ruff: noqa: E402  (imports follow the path bootstrap below)
 import base64
 import json
-import math
 import os
 import sys
 import urllib.parse
@@ -14,7 +13,7 @@ sys.path.append(os.path.join(root_dir, "Core"))
 
 import config
 from elo_engine import EloEngine
-from engine_core import MatchupEngine, home_favored
+from engine_core import MatchupEngine
 from engine_data import DataIngestor
 from mappings import TEAM_DATA
 from visualize_matchup import MatchupVisualizer
@@ -353,32 +352,30 @@ class SimulationHandler(BaseHTTPRequestHandler):
 
             config.config.window_size = window_size
 
-            # Fetch matchup delta matrices
-            m_a, _ = ingestor.get_team_average_matrix(team_a, window=window_size, up_to_season=2026, up_to_round=3, return_history_info=True)
-            m_b, _ = ingestor.get_team_average_matrix(team_b, window=window_size, up_to_season=2026, up_to_round=3, return_history_info=True)
-
-            if not m_a or not m_b:
+            # Shared matchup computation (reuse pass #7)
+            from prediction import compute_matchup
+            overrides = {}
+            if custom_elo_a is not None:
+                overrides[team_a] = float(custom_elo_a)
+            if custom_elo_b is not None:
+                overrides[team_b] = float(custom_elo_b)
+            pred = compute_matchup(ingestor, team_a, team_b, 2026, 3,
+                                   window=window_size,
+                                   elo_overrides=overrides or None)
+            if pred is None:
                 self.send_response(400)
                 self.send_header('Content-Type', 'application/json')
                 self.end_headers()
                 self.wfile.write(json.dumps({'error': 'Insufficient profile data for selected teams'}).encode('utf-8'))
                 return
 
-            delta = MatchupEngine.calculate_delta(m_a, m_b)
-            net_delta = sum(delta.values())
-
-            # ELO inputs (with Custom overrides)
-            h_elo = float(custom_elo_a) if custom_elo_a is not None else ingestor.get_team_elo(team_a, 2026, 3)
-            a_elo = float(custom_elo_b) if custom_elo_b is not None else ingestor.get_team_elo(team_b, 2026, 3)
-
-            elo_diff = (h_elo - a_elo) / 100.0
-
-            h_tier = ingestor.get_team_tier(h_elo)
-            a_tier = ingestor.get_team_tier(a_elo)
-
-            rankings = ingestor.get_league_rankings(2026, 3)
-            h_rank = rankings.get(team_a, 99)
-            a_rank = rankings.get(team_b, 99)
+            m_a, m_b = pred.m_home, pred.m_away
+            delta = pred.delta
+            net_delta = pred.net_delta
+            elo_diff = pred.elo_diff
+            h_elo, a_elo = pred.h_elo, pred.a_elo
+            h_tier, a_tier = pred.h_tier, pred.a_tier
+            h_rank, a_rank = pred.h_rank, pred.a_rank
 
             # Make sure .cache exists for temp files
             cache_dir = os.path.join(root_dir, 'Core', '.cache')
@@ -412,8 +409,8 @@ class SimulationHandler(BaseHTTPRequestHandler):
                 'team_b': team_b,
                 'home_name': TEAM_DATA[team_a]['name'],
                 'away_name': TEAM_DATA[team_b]['name'],
-                'winner_name': TEAM_DATA[team_a]['name'] if home_favored(net_delta, h_elo, a_elo) else TEAM_DATA[team_b]['name'],
-                'winner_id': team_a if home_favored(net_delta, h_elo, a_elo) else team_b,
+                'winner_name': TEAM_DATA[pred.winner_id]['name'],
+                'winner_id': pred.winner_id,
                 'net_delta': net_delta,
                 'elo_diff': elo_diff,
                 'home_elo': h_elo,
@@ -454,55 +451,24 @@ class SimulationHandler(BaseHTTPRequestHandler):
                     team_a = info.home
                     team_b = info.away
 
-                    m_a = ingestor.get_team_average_matrix(team_a, window=window_size, up_to_season=season, up_to_round=round_num)
-                    m_b = ingestor.get_team_average_matrix(team_b, window=window_size, up_to_season=season, up_to_round=round_num)
-
-                    if not m_a or not m_b:
-                        # Fallback to general average if window is too small
-                        m_a = ingestor.get_team_average_matrix(team_a, window=50, up_to_season=season, up_to_round=round_num)
-                        m_b = ingestor.get_team_average_matrix(team_b, window=50, up_to_season=season, up_to_round=round_num)
-
-                    if not m_a or not m_b:
+                    # Shared matchup computation (reuse pass #7)
+                    from prediction import compute_matchup
+                    pred = compute_matchup(ingestor, team_a, team_b,
+                                           season, round_num,
+                                           window=window_size)
+                    if pred is None:
                         continue
 
-                    delta = MatchupEngine.calculate_delta(m_a, m_b)
-                    net_delta = sum(delta.values())
-
-                    h_elo = ingestor.get_team_elo(team_a, season, round_num)
-                    a_elo = ingestor.get_team_elo(team_b, season, round_num)
-
-                    elo_diff = (h_elo - a_elo) / 100.0
-
-                    # Calculate predicted margin via the ACTIVE calibration
-                    # (dynamic, audit 2026-08-10): no intercept — consistent
-                    # with no-venue-advantage probability model.
-                    from calibration import current as cal
-                    predicted_margin = round(cal.margin(net_delta, elo_diff))
-
-                    # Estimate total score: active calibration (dynamic).
-                    total_score = cal.total_mean
-
-                    predicted_home_score = max(10, round((total_score + predicted_margin) / 2.0))
-                    predicted_away_score = max(10, round((total_score - predicted_margin) / 2.0))
-                    # Recalculate margin from final rounded scores
-                    predicted_margin = abs(predicted_home_score - predicted_away_score)
-
-                    # Probability via ACTIVE calibration (dynamic, audit
-                    # 2026-08-10): logit = b0 + b1*net_delta + b2*elo_diff;
-                    # b0 = 0 by design (no venue advantage).
-                    logit = cal.logit(net_delta, h_elo - a_elo)
-                    prob_home = 1.0 / (1.0 + math.exp(-logit))
-                    prob_away = 1.0 - prob_home
-
+                    predicted_margin = abs(pred.home_score - pred.away_score)
                     predictions[m_id] = {
-                        "predicted_winner_id": team_a if home_favored(net_delta, h_elo, a_elo) else team_b,
-                        "predicted_home_score": predicted_home_score,
-                        "predicted_away_score": predicted_away_score,
+                        "predicted_winner_id": pred.winner_id,
+                        "predicted_home_score": pred.home_score,
+                        "predicted_away_score": pred.away_score,
                         "predicted_margin": predicted_margin,
-                        "probability_home": prob_home,
-                        "probability_away": prob_away,
-                        "home_elo": h_elo,
-                        "away_elo": a_elo
+                        "probability_home": pred.prob_home,
+                        "probability_away": 1.0 - pred.prob_home,
+                        "home_elo": pred.h_elo,
+                        "away_elo": pred.a_elo
                     }
 
             self.send_response(200)
@@ -582,20 +548,14 @@ class SimulationHandler(BaseHTTPRequestHandler):
                     info = ingestor.match_info[m_id]
                     h_team, a_team = info.home, info.away
 
-                    m_a = ingestor.get_team_average_matrix(h_team, window=config.config.window_size, up_to_season=season, up_to_round=info.round)
-                    m_b = ingestor.get_team_average_matrix(a_team, window=config.config.window_size, up_to_season=season, up_to_round=info.round)
-
-                    if not m_a or not m_b:
+                    # Shared matchup computation (reuse pass #7)
+                    from prediction import compute_matchup
+                    pred = compute_matchup(ingestor, h_team, a_team,
+                                           season, info.round)
+                    if pred is None:
                         continue
 
-                    delta = MatchupEngine.calculate_delta(m_a, m_b)
-                    net_delta = sum(delta.values())
-
-                    h_elo = ingestor.get_team_elo(h_team, season, info.round)
-                    a_elo = ingestor.get_team_elo(a_team, season, info.round)
-                    elo_diff = (h_elo - a_elo) / 100.0
-
-                    pred_winner = h_team if home_favored(net_delta, h_elo, a_elo) else a_team
+                    pred_winner = pred.winner_id
                     act_winner = ingestor.actual_winners.get(m_id)
 
                     if act_winner == 'DRAW' or not act_winner:

@@ -14,38 +14,20 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Core'))
 from calibration import fit_or_fallback, select_window
-from engine_core import MatchupEngine
 from engine_data import DataIngestor
 
 
 def collect_rows(ing, seasons):
     """(season, round, net_delta, elo_diff_raw, home_won, actual_margin,
-    actual_delta) — actual_delta from match_performance (Elo-update scale)."""
+    actual_delta) — REUSES ingestor._build_fit_rows() (reuse pass #6): the
+    expected net deltas, Elo diffs and actuals are already stored in
+    match_performance + Elo history, computed once at profile time. No
+    per-match re-computation (was the slow ~4-min part of every eval)."""
     rows = []
-    for year in seasons:
-        matches = [m for m, i in ing.match_info.items() if i.season == year]
-        matches.sort(key=lambda m: (ing.match_info[m].round, m))
-        for m_id in matches:
-            info = ing.match_info[m_id]
-            if info.home_score == 0 and info.away_score == 0:
-                continue
-            if info.home_score == info.away_score:
-                continue  # draws excluded (consistent with backtests)
-            ma = ing.get_team_average_matrix(info.home, up_to_season=year,
-                                             up_to_round=info.round)
-            mb = ing.get_team_average_matrix(info.away, up_to_season=year,
-                                             up_to_round=info.round)
-            if not ma or not mb:
-                continue
-            net = sum(MatchupEngine.calculate_delta(ma, mb).values())
-            eh = ing.get_team_elo(info.home, year, info.round)
-            ea = ing.get_team_elo(info.away, year, info.round)
-            actual = ing.match_performance.get(m_id, {}).get('actual', net)
-            rows.append((info.season, info.round, net, eh - ea,
-                         info.home_score > info.away_score,
-                         info.home_score - info.away_score,
-                         info.home_score + info.away_score,
-                         actual))
+    for (s, r, net, elo, marg, tot, act) in ing._build_fit_rows():
+        if s not in seasons:
+            continue
+        rows.append((s, r, net, elo, marg > 0.0, marg, tot, act))
     return rows
 
 
@@ -87,7 +69,10 @@ def aggregate(rows):
 def evaluate(seasons=None):
     ing = DataIngestor('CSV_DATA')
     ing.load_all_data()
-    ing.profile_all_teams()
+    # Cache load already carries profiles/elo/calibration for the current
+    # config (fingerprint-gated) — skip the ~4-min rebuild (reuse pass #6).
+    if not ing.team_history:
+        ing.profile_all_teams()
 
     if seasons is None:
         seasons = sorted({i.season for i in ing.match_info.values()})
