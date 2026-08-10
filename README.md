@@ -56,15 +56,11 @@ evaluate.py         walk-forward evaluation (accuracy, Brier, margin MAE/RMSE)
   correctly included in history.
 - **Normalized matrices.** Each match's matrix is divided by its total weight,
   so deltas measure pattern, not attack volume.
-- **All calibrations are fitted from data** (`config.py`): margin regression,
-  win-probability logistic, total score, Elo margin scaling. Re-fit after any
-  engine/data change:
-
-```bash
-python analyze_margins.py    # margin = b0 + b1*net_delta + b2*elo_diff
-python fit_calibration.py    # probability logistic + total score
-# then copy the printed coefficients into Core/config.py
-```
+- **All calibrations are fitted from data — automatically.** Probability,
+  margin, total and the Elo margin divisor are re-fitted on ingestion
+  (`Core/calibration.py`, rolling 2-season window, stored in the profile
+  cache). No manual refit, no numbers to copy; the historical fit tools
+  (`analyze_margins.py`, `fit_calibration.py`) are archived in git history.
 
 ## Fresh start (data)
 
@@ -87,10 +83,9 @@ skips already-downloaded matches, so it can be resumed safely.
 ```
 Core/          engine, Elo, geometry, visualizers, config
 CSV_DATA/      raw match CSVs (gitignored, regenerable) + profile cache
-tests/         37 pytest tests (unit + integration, no real data needed)
+tests/         47 pytest tests (unit + integration, no real data needed)
 docs/          architecture/design assessments
-*.py           tools: predict_game, backtest_*, analyze_*, evaluate,
-               fit_calibration, generate_round_images, server
+*.py           tools: predict_game, evaluate, generate_round_images, server
 ```
 
 See `code_audit_2026-08.md` for the full audit trail (issues found, fixed,

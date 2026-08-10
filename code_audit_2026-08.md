@@ -117,9 +117,9 @@ GitHub Actions workflow: `ruff check`, `black --check`, `pytest -x -q`, optional
 | `docs/`, `architecture.md`, `assessment.md`, `modular_oop_assessment.md`, `production_scripts_flaws.md` | Valuable institutional memory — update flaws doc status table. |
 | `downloaded_fonts/` | Required by the design system. |
 | `index.html` + `server.py` | The web dashboard — reuses the engine correctly. Fix the ×12 margin magic (E4). |
-| `Experiments/` | Active research (Elo variants, time-decay) — keep, ideally behind a `tests/`-adjacent harness eventually. |
+| `Experiments/` | Active research (Elo variants) — keep, ideally behind a `tests/`-adjacent harness eventually. |
 | `PLANNING/` | Reference material. |
-| `predict_game.py`, `backtest_2025.py`, `backtest_2026.py`, `analyze_margins.py`, `generate_round_images.py` | Production scripts — move to `scripts/` when packaging lands. |
+| `predict_game.py`, `generate_round_images.py` | Production scripts. (Superseded by `evaluate.py`/dynamic calibration and archived 2026-08-10: `backtest_2025.py`, `backtest_2026.py`, `analyze_margins.py`, `fit_calibration.py`.) |
 
 ### Remove / archive
 
