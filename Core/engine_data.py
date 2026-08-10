@@ -40,7 +40,7 @@ class DataIngestor:
 
         import calibration as cal
         c = config.config
-        raw = (f"{CACHE_VERSION}|{c.decay_factor}|{c.time_decay_factor}|{c.window_size}"
+        raw = (f"{CACHE_VERSION}|{c.decay_factor}|{c.window_size}"
                f"|{c.elo_k}|{c.elo_margin_divisor}|{cal.WINDOW_SEASONS}")
         return hashlib.sha1(raw.encode()).hexdigest()[:12]
 

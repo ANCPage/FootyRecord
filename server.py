@@ -339,11 +339,10 @@ class SimulationHandler(BaseHTTPRequestHandler):
             team_b = req['team_b']
             window_size = int(req.get('window_size', 25))
             decay_factor = float(req.get('decay_factor', 0.9))
-            elo_weight = float(req.get('elo_weight', 1.0))
             custom_elo_a = req.get('custom_elo_a')
             custom_elo_b = req.get('custom_elo_b')
 
-            print(f"Simulating Match: {team_a} vs {team_b} (Window={window_size}, Decay={decay_factor}, ELO Weight={elo_weight})")
+            print(f"Simulating Match: {team_a} vs {team_b} (Window={window_size}, Decay={decay_factor})")
 
             # Re-profile teams if decay factor changed
             if abs(config.config.decay_factor - decay_factor) > 1e-4:
@@ -353,7 +352,6 @@ class SimulationHandler(BaseHTTPRequestHandler):
                 ingestor.profile_all_teams()
 
             config.config.window_size = window_size
-            config.config.elo_weight = elo_weight
 
             # Fetch matchup delta matrices
             m_a, _ = ingestor.get_team_average_matrix(team_a, window=window_size, up_to_season=2026, up_to_round=3, return_history_info=True)
@@ -374,7 +372,6 @@ class SimulationHandler(BaseHTTPRequestHandler):
             a_elo = float(custom_elo_b) if custom_elo_b is not None else ingestor.get_team_elo(team_b, 2026, 3)
 
             elo_diff = (h_elo - a_elo) / 100.0
-            combined_score = net_delta + (elo_weight * elo_diff)
 
             h_tier = ingestor.get_team_tier(h_elo)
             a_tier = ingestor.get_team_tier(a_elo)
@@ -417,7 +414,6 @@ class SimulationHandler(BaseHTTPRequestHandler):
                 'away_name': TEAM_DATA[team_b]['name'],
                 'winner_name': TEAM_DATA[team_a]['name'] if home_favored(net_delta, h_elo, a_elo) else TEAM_DATA[team_b]['name'],
                 'winner_id': team_a if home_favored(net_delta, h_elo, a_elo) else team_b,
-                'combined_score': combined_score,
                 'net_delta': net_delta,
                 'elo_diff': elo_diff,
                 'home_elo': h_elo,
@@ -442,7 +438,6 @@ class SimulationHandler(BaseHTTPRequestHandler):
             round_num = int(req.get('round', 3))
             window_size = int(req.get('window_size', 25))
             decay_factor = float(req.get('decay_factor', 0.9))
-            elo_weight = float(req.get('elo_weight', 1.0))
 
             # Re-profile teams if decay factor changed
             if abs(config.config.decay_factor - decay_factor) > 1e-4:
@@ -452,7 +447,6 @@ class SimulationHandler(BaseHTTPRequestHandler):
                 ingestor.profile_all_teams()
 
             config.config.window_size = window_size
-            config.config.elo_weight = elo_weight
 
             predictions = {}
             for m_id, info in ingestor.match_info.items():
@@ -478,7 +472,6 @@ class SimulationHandler(BaseHTTPRequestHandler):
                     a_elo = ingestor.get_team_elo(team_b, season, round_num)
 
                     elo_diff = (h_elo - a_elo) / 100.0
-                    combined_score = net_delta + (elo_weight * elo_diff)
 
                     # Calculate predicted margin via the ACTIVE calibration
                     # (dynamic, audit 2026-08-10): no intercept — consistent
@@ -547,12 +540,10 @@ class SimulationHandler(BaseHTTPRequestHandler):
 
             fixed_window = int(req.get('fixed_window', 25))
             fixed_decay = float(req.get('fixed_decay', 0.9))
-            fixed_elo_weight = float(req.get('fixed_elo_weight', 1.0))
 
             # Save original config
             orig_window = config.config.window_size
             orig_decay = config.config.decay_factor
-            orig_elo_weight = config.config.elo_weight
 
             results = []
 
@@ -573,18 +564,12 @@ class SimulationHandler(BaseHTTPRequestHandler):
                 if param_to_sweep == 'window_size':
                     config.config.window_size = val
                     config.config.decay_factor = fixed_decay
-                    config.config.elo_weight = fixed_elo_weight
                 elif param_to_sweep == 'decay_factor':
                     config.config.window_size = fixed_window
                     config.config.decay_factor = val
-                    config.config.elo_weight = fixed_elo_weight
                     # Re-profile since decay changed
                     ingestor._skip_profiling = False
                     ingestor.profile_all_teams()
-                elif param_to_sweep == 'elo_weight':
-                    config.config.window_size = fixed_window
-                    config.config.decay_factor = fixed_decay
-                    config.config.elo_weight = val
 
                 # Run backtest
                 correct = 0
@@ -609,7 +594,6 @@ class SimulationHandler(BaseHTTPRequestHandler):
                     h_elo = ingestor.get_team_elo(h_team, season, info.round)
                     a_elo = ingestor.get_team_elo(a_team, season, info.round)
                     elo_diff = (h_elo - a_elo) / 100.0
-                    combined_score = net_delta + (config.config.elo_weight * elo_diff)
 
                     pred_winner = h_team if home_favored(net_delta, h_elo, a_elo) else a_team
                     act_winner = ingestor.actual_winners.get(m_id)
@@ -630,7 +614,6 @@ class SimulationHandler(BaseHTTPRequestHandler):
                 config.config.decay_factor = orig_decay
                 ingestor._skip_profiling = False
                 ingestor.profile_all_teams()
-            config.config.elo_weight = orig_elo_weight
 
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')

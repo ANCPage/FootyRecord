@@ -62,7 +62,7 @@ def run_spatial_elo_experiment():
                     delta = MatchupEngine.calculate_delta(m_a, m_b)
                     net_delta = sum(delta.values())
                     
-                    combined_score = net_delta + (config.config.elo_weight * diff_feature)
+                    combined_score = net_delta + (1.0 * diff_feature)
                     predicted_winner = h_team if combined_score > 0 else a_team
                     
                     actual_scoreboard_winner = ingestor.actual_winners.get(m_id)
