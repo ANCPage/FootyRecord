@@ -15,27 +15,12 @@ TIME_DECAY_FACTOR = 0.8
 WINDOW_SIZE = 25
 ELO_WEIGHT = 1.0
 ELO_K = 32
-# Margin calibration: margin = b0 + b1*net_delta + b2*elo_diff, fitted via
-# `python analyze_margins.py` (413 matches 2024-25). NO-INTERCEPT fit since
-# 2026-08-10 (audit #1): b0=0 to match PROB_B0=0 — no venue advantage in any
-# calibrated model. Cost vs free intercept: MAE 26.42 vs 25.90 pts.
-# Re-fit whenever the engine/data changes.
-MARGIN_INTERCEPT = 0.0
-MARGIN_DELTA_COEF = 70.9755
-MARGIN_ELO_COEF = 4.8817
-# Probability calibration: P(home win) = sigmoid(b0 + b1*net_delta + b2*(elo diff)).
-# Fitted 2026-08-09 via `python fit_calibration.py` (412 matches, Brier 0.2023
-# vs 0.2066 for the old net_delta*80 formula).
-# NOTE: b0 (home-ground intercept) is deliberately 0 — the AFL "home" label is
-# unreliable (shared/neutral grounds, venue isn't always home team's), so no
-# venue advantage is applied. Fit suggested ~0.30; set back if you want it.
-PROB_B0 = 0.0
-PROB_B1 = 3.7866
-PROB_B2 = 0.0036
-# Total-score estimate: normalized matrices no longer carry scoring volume, so
-# the shots*4 heuristic is meaningless (clamped 100% of the time). Use the
-# fitted league-average match total (fit_calibration.py).
-TOTAL_SCORE_MEAN = 159.26
+# Margin calibration is DYNAMIC (Core/calibration.py, fitted on ingestion —
+# audit follow-up 2026-08-10). Fallback constants live in calibration.py.
+# Probability calibration: P(home win) = sigmoid(b0 + b1*net_delta + b2*elo_diff).
+# Dynamic too — see calibration.py. b0 = 0 by design (no venue advantage; the
+# AFL "home" label is unreliable — shared/neutral grounds).
+# Total-score estimate: dynamic mean of actual match totals (calibration.py).
 # Elo margin scaling: margin_mult = clamp(0.5, 3.0, |delta|/D + 1). D recalibrated
 # 2026-08-09 from actual-match deltas (median |delta| = 0.32 -> typical mult ~2.1;
 # D=0.1 overshot and clamped most matches at 3.0, hurting the baseline).
@@ -67,13 +52,6 @@ class Settings:
         self.window_size = WINDOW_SIZE
         self.elo_weight = ELO_WEIGHT
         self.elo_k = ELO_K
-        self.margin_intercept = MARGIN_INTERCEPT
-        self.margin_delta_coef = MARGIN_DELTA_COEF
-        self.margin_elo_coef = MARGIN_ELO_COEF
-        self.prob_b0 = PROB_B0
-        self.prob_b1 = PROB_B1
-        self.prob_b2 = PROB_B2
-        self.total_score_mean = TOTAL_SCORE_MEAN
         self.elo_margin_divisor = ELO_MARGIN_DIVISOR
         self.data_dir = DATA_DIR
         self.output_dir = OUTPUT_DIR

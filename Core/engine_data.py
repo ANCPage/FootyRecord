@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 # Bump when profiling semantics change (normalization, decay, grid logic, ...)
 # so stale profile caches are rejected (audit E5).
-CACHE_VERSION = 2  # v2: Elo margin scaling recalibrated (elo_margin_divisor)
+CACHE_VERSION = 4  # v4: dynamic calibration fitted on cache build (audit follow-up)
 
 
 class DataIngestor:
@@ -37,9 +37,10 @@ class DataIngestor:
         by older code OR with different engine settings, even when CSVs haven't
         changed (the stale-cache footgun that bit the E2 normalization change)."""
         import hashlib
+        import calibration as cal
         c = config.config
         raw = (f"{CACHE_VERSION}|{c.decay_factor}|{c.time_decay_factor}|{c.window_size}"
-               f"|{c.elo_k}|{c.elo_margin_divisor}")
+               f"|{c.elo_k}|{c.elo_margin_divisor}|{cal.WINDOW_SEASONS}")
         return hashlib.sha1(raw.encode()).hexdigest()[:12]
 
     def load_all_data(self):
@@ -72,6 +73,10 @@ class DataIngestor:
                     sorted_matches = sorted(self.match_info.keys(), key=lambda x: (self.match_info[x].season, self.match_info[x].round))
                     self.team_elo_history = self.elo_engine.compute_elo_history(sorted_matches, self.match_info, self.actual_match_matrices)
                 self._skip_profiling = True
+                # Restore the active calibration fitted at cache-build time
+                # (dynamic calibration, audit follow-up 2026-08-10).
+                import calibration as cal
+                cal.current = getattr(self, 'calibration', cal.Calibration.fallback())
                 return
 
         self._skip_profiling = False
@@ -203,6 +208,13 @@ class DataIngestor:
         # Delegate ELO calculation entirely to EloEngine after profiling matrices
         self.team_elo_history = self.elo_engine.compute_elo_history(sorted_matches, self.match_info, self.actual_match_matrices)
 
+        # Dynamic calibration (audit follow-up 2026-08-10): fit the decision
+        # coefficients on matches strictly before the latest round, rolling
+        # window. Becomes the active calibration for all decision paths.
+        import calibration as cal
+        self.calibration = self._fit_calibration(cal.WINDOW_SEASONS)
+        cal.current = self.calibration
+
         import pickle
         cache_dir = os.path.join(self.csv_dir, '.cache')
         os.makedirs(cache_dir, exist_ok=True)
@@ -211,6 +223,48 @@ class DataIngestor:
         with open(cache_path, 'wb') as f:
             pickle.dump({'__cache_version__': self._cache_fingerprint(),
                          'state': self.__dict__}, f)
+
+    def _build_fit_rows(self):
+        """Rows for calibration fitting: (season, round, expected net_delta,
+        elo diff, actual margin, actual total) — all pre-match expectations
+        and post-match outcomes, no-lookahead by construction (expected deltas
+        were computed before the match was appended to history)."""
+        elo_at = defaultdict(dict)
+        for team, hist in self.team_elo_history.items():
+            for m_id, elo in hist:
+                if m_id.startswith('POST_'):
+                    continue
+                elo_at[m_id][team] = elo
+        rows = []
+        for m_id, info in self.match_info.items():
+            if m_id.startswith('POST_'):
+                continue
+            if info.home_score == 0 and info.away_score == 0:
+                continue
+            if info.home_score == info.away_score:
+                continue  # draws excluded, consistent with evaluation
+            exp = self.match_performance.get(m_id, {}).get('expected')
+            if exp is None:
+                continue
+            eh = elo_at.get(m_id, {}).get(info.home)
+            ea = elo_at.get(m_id, {}).get(info.away)
+            if eh is None or ea is None:
+                continue
+            rows.append((info.season, info.round, exp, eh - ea,
+                         info.home_score - info.away_score,
+                         info.home_score + info.away_score))
+        return rows
+
+    def _fit_calibration(self, window_seasons=None):
+        """Fit dynamic calibration on matches before the latest round."""
+        import calibration as cal
+        rows = self._build_fit_rows()
+        if not rows:
+            return cal.Calibration.fallback()
+        cur_season = max(r[0] for r in rows)
+        sel = cal.select_window(rows, cur_season, window_seasons)
+        label = f'roll{window_seasons}' if window_seasons else 'expanding'
+        return cal.fit_or_fallback(sel, label)
 
     def get_team_average_matrix(self, team_id: str, window: int = None, up_to_match_id: str = None, up_to_season: int = None, up_to_round: int = None, return_history_info: bool = False) -> Any:
         if window is None:

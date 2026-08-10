@@ -4,13 +4,13 @@ No real data required — the fixture is two teams, two matches, scoring
 chains only, in the same team-relative frame the engine expects.
 """
 import csv
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'Core'))
 
-from engine_data import DataIngestor
 from engine_core import MatchupEngine
+from engine_data import DataIngestor
 
 COLUMNS = ['matchId', 'round', 'season', 'homeTeamId', 'awayTeamId',
            'venueLength', 'venueWidth', 'chain_period', 'stat_periodSeconds',

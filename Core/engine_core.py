@@ -82,15 +82,15 @@ def physical_placement(start: str, end: str, is_away_edge: bool = False,
     return phys_start, phys_end
 
 def home_favored(net_delta: float, h_elo: float, a_elo: float) -> bool:
-    """Winner decision from the FITTED probability model (audit: winner blend).
+    """Winner decision from the ACTIVE fitted probability model (audit: winner
+    blend; dynamic calibration 2026-08-10).
 
     Replaces the uncalibrated combined_score = net_delta + elo_weight*(elo/100)
     guess. Home wins iff the fitted logit is positive, i.e. P(home) > 0.5
     (prob_b0 currently 0 by design — no venue advantage).
     """
-    import config
-    c = config.config
-    logit = c.prob_b0 + c.prob_b1 * net_delta + c.prob_b2 * (h_elo - a_elo)
+    from calibration import current as cal
+    logit = cal.logit(net_delta, h_elo - a_elo)
     return logit > 0.0
 
 class MatchupEngine:

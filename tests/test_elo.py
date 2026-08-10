@@ -1,6 +1,5 @@
 """Unit tests for EloEngine: update math and season handling (audit #20)."""
 from elo_engine import EloEngine
-from engine_core import MatchupEngine
 from models import MatchInfo, TransitionEdge
 
 

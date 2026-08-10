@@ -1,37 +1,29 @@
-"""Walk-forward evaluation harness (audit E6 / menu #10).
+"""Walk-forward evaluation harness (audit E6; dynamic calibration 2026-08-10).
 
-Measures the SHIPPED model (config.py coefficients) against real results:
-per-season and overall winner accuracy, Brier score, margin MAE/RMSE,
-plus a calibration table. Run:  python evaluate.py [season ...]
-Note: 2024-25 are in-sample for the calibration fits (config coefficients
-were fitted on them); 2021-23 are out-of-sample for those coefficients.
+Measures the model with DYNAMIC calibration: at every round, the decision
+coefficients are re-fitted on matches strictly before that round (no leakage),
+so every match is out-of-sample by construction. Two fit windows are A/B'd:
+rolling last 2 seasons vs expanding (all history). Reports per-season and
+overall winner accuracy, Brier, margin MAE/RMSE, and a calibration table.
+
+Run:  python evaluate.py [season ...]
 """
 import math
 import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Core'))
-import config
+from calibration import fit_or_fallback, select_window
 from engine_core import MatchupEngine
 from engine_data import DataIngestor
 
 
-def evaluate(seasons=None):
-    ing = DataIngestor('CSV_DATA')
-    ing.load_all_data()
-    ing.profile_all_teams()
-    s = config.config
-
-    if seasons is None:
-        seasons = sorted({i.season for i in ing.match_info.values()})
-    seasons = [int(x) for x in seasons]
-
-    rows_all = []
-    per_season = {}
+def collect_rows(ing, seasons):
+    """(season, round, net_delta, elo_diff_raw, home_won, actual_margin, total)."""
+    rows = []
     for year in seasons:
         matches = [m for m, i in ing.match_info.items() if i.season == year]
         matches.sort(key=lambda m: (ing.match_info[m].round, m))
-        rows = []
         for m_id in matches:
             info = ing.match_info[m_id]
             if info.home_score == 0 and info.away_score == 0:
@@ -47,50 +39,96 @@ def evaluate(seasons=None):
             net = sum(MatchupEngine.calculate_delta(ma, mb).values())
             eh = ing.get_team_elo(info.home, year, info.round)
             ea = ing.get_team_elo(info.away, year, info.round)
-            # shipped probability model (config, no venue advantage)
-            logit = s.prob_b0 + s.prob_b1 * net + s.prob_b2 * (eh - ea)
-            p_home = 1.0 / (1.0 + math.exp(-logit))
-            # shipped margin model
-            margin_pred = (s.margin_intercept
-                           + s.margin_delta_coef * net
-                           + s.margin_elo_coef * ((eh - ea) / 100.0))
-            home_won = info.home_score > info.away_score
-            actual_margin = info.home_score - info.away_score
-            rows.append((p_home, home_won, margin_pred, actual_margin))
-        n = len(rows)
-        if n == 0:
-            continue
-        acc = sum(1 for p, w, _, _ in rows if w == (p >= 0.5)) / n
-        brier = sum((p - w) ** 2 for p, w, _, _ in rows) / n
-        mae = sum(abs(mp - am) for _, _, mp, am in rows) / n
-        rmse = math.sqrt(sum((mp - am) ** 2 for _, _, mp, am in rows) / n)
-        per_season[year] = (n, acc, brier, mae, rmse)
-        rows_all.extend(rows)
+            rows.append((info.season, info.round, net, eh - ea,
+                         info.home_score > info.away_score,
+                         info.home_score - info.away_score,
+                         info.home_score + info.away_score))
+    return rows
 
-    print("=" * 64)
-    print(" WALK-FORWARD EVALUATION (shipped model, config coefficients)")
-    print("=" * 64)
-    print(f"{'Season':<8}{'n':>6}{'Acc%':>8}{'Brier':>8}{'MAE':>7}{'RMSE':>7}")
-    print("-" * 64)
-    for year in sorted(per_season):
-        n, acc, brier, mae, rmse = per_season[year]
-        tag = "  <- in-sample (calibration fit)" if year in (2024, 2025) else ""
-        print(f"{year:<8}{n:>6}{100*acc:>7.1f}{brier:>8.4f}{mae:>7.1f}{rmse:>7.1f}{tag}")
-    n = len(rows_all)
-    if n:
-        acc = sum(1 for p, w, _, _ in rows_all if w == (p >= 0.5)) / n
-        brier = sum((p - w) ** 2 for p, w, _, _ in rows_all) / n
-        mae = sum(abs(mp - am) for _, _, mp, am in rows_all) / n
-        rmse = math.sqrt(sum((mp - am) ** 2 for _, _, mp, am in rows_all) / n)
-        print("-" * 64)
-        print(f"{'ALL':<8}{n:>6}{100*acc:>7.1f}{brier:>8.4f}{mae:>7.1f}{rmse:>7.1f}")
-        print()
-        print(" Calibration (pooled, by predicted home probability):")
-        print(f"{'bin':<14}{'n':>6}{'actual win rate':>16}")
-        for lo, hi in [(0.0, 0.35), (0.35, 0.5), (0.5, 0.65), (0.65, 1.0)]:
-            m = [r for r in rows_all if lo <= r[0] < hi]
-            if m:
-                print(f"  {lo:.2f}-{hi:.2f}      {len(m):>5}{sum(1 for p, w, _, _ in m if w)/len(m):>16.3f}")
+
+def run_mode(rows, window_seasons, label):
+    """Walk forward: fit calibration on prior rows at each round boundary."""
+    from collections import defaultdict
+    groups = defaultdict(list)
+    for r in rows:
+        groups[(r[0], r[1])].append(r)
+    ordered = sorted(groups.items())
+
+    prior = []
+    out = []
+    fallback_hits = 0
+    for (season, rnd), group in ordered:
+        sel = select_window(prior, season, window_seasons)
+        cal = fit_or_fallback(sel, label)
+        if cal.window == 'fallback':
+            fallback_hits += 1
+        for (s, r, net, elo, won, marg, tot) in group:
+            p = cal.prob_home(net, elo)
+            m = cal.margin(net, elo / 100.0)
+            out.append((s, p, won, m, marg))
+            # FitRow format for the calibration fit: (season, round, net,
+            # elo_diff, margin, total) — NOT the collect_rows layout.
+            prior.append((s, r, net, elo, marg, tot))
+    return out, fallback_hits
+
+
+def aggregate(rows):
+    n = len(rows)
+    acc = sum(1 for _, p, w, _, _ in rows if w == (p >= 0.5)) / n
+    brier = sum((p - w) ** 2 for _, p, w, _, _ in rows) / n
+    mae = sum(abs(mp - am) for _, _, _, mp, am in rows) / n
+    rmse = math.sqrt(sum((mp - am) ** 2 for _, _, _, mp, am in rows) / n)
+    return n, acc, brier, mae, rmse
+
+
+def evaluate(seasons=None):
+    ing = DataIngestor('CSV_DATA')
+    ing.load_all_data()
+    ing.profile_all_teams()
+
+    if seasons is None:
+        seasons = sorted({i.season for i in ing.match_info.values()})
+    seasons = [int(x) for x in seasons]
+
+    rows = collect_rows(ing, seasons)
+    print(f"matches evaluated: {len(rows)}")
+    roll2, fb2 = run_mode(rows, 2, 'roll2')
+    expand, fbe = run_mode(rows, None, 'expanding')
+    print(f"rounds predicted on fallback (too little history): roll2={fb2}, expanding={fbe}")
+
+    print("=" * 78)
+    print(" WALK-FORWARD EVALUATION (dynamic calibration — refit before every round)")
+    print("=" * 78)
+    print(f"{'Season':<8}{'n':>5}{'roll2%':>8}{'exp%':>7}{'r2Brier':>9}{'eBrier':>8}{'r2MAE':>7}{'eMAE':>7}")
+    print("-" * 78)
+    for year in sorted({r[0] for r in rows}):
+        a = [r for r in roll2 if r[0] == year]
+        b = [r for r in expand if r[0] == year]
+        na, acca, bria, maea, _ = aggregate(a)
+        nb, accb, brieb, maeb, _ = aggregate(b)
+        print(f"{year:<8}{na:>5}{100*acca:>7.1f}{100*accb:>7.1f}{bria:>9.4f}{brieb:>8.4f}{maea:>7.1f}{maeb:>7.1f}")
+
+    n, acc, brier, mae, rmse = aggregate(roll2)
+    n2, acc2, brier2, mae2, rmse2 = aggregate(expand)
+    print("-" * 78)
+    print(f"{'ALL':<8}{n:>5}{100*acc:>7.1f}{100*acc2:>7.1f}{brier:>9.4f}{brier2:>8.4f}{mae:>7.1f}{mae2:>7.1f}")
+    print(f"\n  rolling-2 : acc {100*acc:.1f}%  Brier {brier:.4f}  MAE {mae:.1f}  RMSE {rmse:.1f}")
+    print(f"  expanding: acc {100*acc2:.1f}%  Brier {brier2:.4f}  MAE {mae2:.1f}  RMSE {rmse2:.1f}")
+
+    print()
+    print(" Calibration (pooled, by predicted home probability) — rolling-2:")
+    print(f"{'bin':<14}{'n':>6}{'actual win rate':>16}")
+    for lo, hi in [(0.0, 0.35), (0.35, 0.5), (0.5, 0.65), (0.65, 1.0)]:
+        m = [r for r in roll2 if lo <= r[1] < hi]
+        if m:
+            print(f"  {lo:.2f}-{hi:.2f}      {len(m):>5}{sum(1 for _, p, w, _, _ in m if w)/len(m):>16.3f}")
+
+    # Transparency: the fit at the final round (what production would ship)
+    from calibration import current
+    c = current
+    print(f"\n active calibration (cache, latest fit): prob b1={c.prob_b1:.4f} b2={c.prob_b2:.4f} | "
+          f"margin b1={c.margin_b1:.2f} b2={c.margin_b2:.2f} | total {c.total_mean:.1f} | n={c.n_matches} [{c.window}]")
+
 
 if __name__ == '__main__':
     evaluate(sys.argv[1:] or None)

@@ -480,19 +480,14 @@ class SimulationHandler(BaseHTTPRequestHandler):
                     elo_diff = (h_elo - a_elo) / 100.0
                     combined_score = net_delta + (elo_weight * elo_diff)
 
-                    # Calculate predicted margin via calibrated regression
-                    # (audit E4): margin = b0 + b1*net_delta + b2*elo_diff,
-                    # fitted by analyze_margins.py on these exact features.
-                    predicted_margin = round(
-                        config.config.margin_intercept
-                        + config.config.margin_delta_coef * net_delta
-                        + config.config.margin_elo_coef * elo_diff
-                    )
+                    # Calculate predicted margin via the ACTIVE calibration
+                    # (dynamic, audit 2026-08-10): no intercept — consistent
+                    # with no-venue-advantage probability model.
+                    from calibration import current as cal
+                    predicted_margin = round(cal.margin(net_delta, elo_diff))
 
-                    # Estimate total score: normalized matrices no longer carry
-                    # scoring volume, so use the fitted league-average total
-                    # (audit E4 follow-on; see fit_calibration.py).
-                    total_score = config.config.total_score_mean
+                    # Estimate total score: active calibration (dynamic).
+                    total_score = cal.total_mean
                     if total_score < 80.0 or total_score > 240.0:
                         total_score = 165.0
 
@@ -501,13 +496,10 @@ class SimulationHandler(BaseHTTPRequestHandler):
                     # Recalculate margin from final rounded scores
                     predicted_margin = abs(predicted_home_score - predicted_away_score)
 
-                    # Probability via fitted logistic (audit E4 follow-on):
-                    # logit = b0 + b1*net_delta + b2*(elo diff); b0 = home adv.
-                    logit = (
-                        config.config.prob_b0
-                        + config.config.prob_b1 * net_delta
-                        + config.config.prob_b2 * (h_elo - a_elo)
-                    )
+                    # Probability via ACTIVE calibration (dynamic, audit
+                    # 2026-08-10): logit = b0 + b1*net_delta + b2*elo_diff;
+                    # b0 = 0 by design (no venue advantage).
+                    logit = cal.logit(net_delta, h_elo - a_elo)
                     prob_home = 1.0 / (1.0 + math.exp(-logit))
                     prob_away = 1.0 - prob_home
 

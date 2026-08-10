@@ -121,10 +121,11 @@ class RoundProductionPipeline:
 
             h_elo = self.ingestor.get_team_elo(h_id, self.target_season, self.round)
             a_elo = self.ingestor.get_team_elo(a_id, self.target_season, self.round)
-            # The decision edge is the FITTED logit (audit #1): the exact value
-            # home_favored() thresholds at 0. Displayed value == decision value.
-            edge = (config.config.prob_b1 * net_delta
-                    + config.config.prob_b2 * (h_elo - a_elo))
+            # The decision edge is the ACTIVE fitted logit (audit #1 + dynamic
+            # calibration 2026-08-10): the exact value home_favored() thresholds
+            # at 0. Displayed value == decision value.
+            from calibration import current as cal
+            edge = cal.logit(net_delta, h_elo - a_elo)
 
             h_rank = rankings.get(h_id)
             a_rank = rankings.get(a_id)
