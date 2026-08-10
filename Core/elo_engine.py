@@ -33,8 +33,12 @@ class EloEngine:
         S_a = 1.0 - S_h
         E_h = 1 / (1 + 10 ** ((a_elo - h_elo) / 400.0))
         E_a = 1 - E_h
+        # Margin scaling divisor is DYNAMIC (calibration.py: median|delta|/1.1,
+        # fitted on ingestion); config value is the bootstrap fallback.
+        from calibration import current as cal
+        divisor = getattr(cal, 'margin_divisor', None) or config.config.elo_margin_divisor
         margin_mult = min(3.0, max(0.5,
-                                   abs(actual_delta) / config.config.elo_margin_divisor + 1.0))
+                                   abs(actual_delta) / divisor + 1.0))
         return (elo_k * margin_mult * (S_h - E_h),
                 elo_k * margin_mult * (S_a - E_a),
                 margin_mult)
@@ -127,10 +131,11 @@ class EloEngine:
         return self.get_team_elo(team_id, season, round_num - 1)
 
     def get_team_tier(self, elo: float) -> str:
-        if elo >= 1600: return "ELITE"
-        if elo >= 1550: return "CONTENDER"
-        if elo >= 1450: return "MID-TABLE"
-        return "REBUILDING"
+        """Distribution-relative tier via the ACTIVE calibration (top-4 ELITE /
+        next-4 CONTENDER / next-5 MID-TABLE, dynamic cutoffs from the live Elo
+        field); absolute thresholds only as the no-fit fallback."""
+        from calibration import current as cal
+        return cal.tier(elo)
 
     def get_league_rankings(self, season: int, round_num: int) -> Dict[str, int]:
         from mappings import TEAM_DATA

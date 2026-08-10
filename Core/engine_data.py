@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 # Bump when profiling semantics change (normalization, decay, grid logic, ...)
 # so stale profile caches are rejected (audit E5).
-CACHE_VERSION = 4  # v4: dynamic calibration fitted on cache build (audit follow-up)
+CACHE_VERSION = 5  # v5: dynamic margin_divisor + tier cutoffs (audit follow-up)
 
 
 class DataIngestor:
@@ -227,9 +227,9 @@ class DataIngestor:
 
     def _build_fit_rows(self):
         """Rows for calibration fitting: (season, round, expected net_delta,
-        elo diff, actual margin, actual total) — all pre-match expectations
-        and post-match outcomes, no-lookahead by construction (expected deltas
-        were computed before the match was appended to history)."""
+        elo diff, actual margin, actual total, actual delta) — all pre-match
+        expectations and post-match outcomes, no-lookahead by construction
+        (expected deltas were computed before the match was appended)."""
         elo_at = defaultdict(dict)
         for team, hist in self.team_elo_history.items():
             for m_id, elo in hist:
@@ -244,7 +244,8 @@ class DataIngestor:
                 continue
             if info.home_score == info.away_score:
                 continue  # draws excluded, consistent with evaluation
-            exp = self.match_performance.get(m_id, {}).get('expected')
+            perf = self.match_performance.get(m_id, {})
+            exp = perf.get('expected')
             if exp is None:
                 continue
             eh = elo_at.get(m_id, {}).get(info.home)
@@ -253,11 +254,13 @@ class DataIngestor:
                 continue
             rows.append((info.season, info.round, exp, eh - ea,
                          info.home_score - info.away_score,
-                         info.home_score + info.away_score))
+                         info.home_score + info.away_score,
+                         perf.get('actual', exp)))
         return rows
 
     def _fit_calibration(self, window_seasons=None):
-        """Fit dynamic calibration on matches before the latest round."""
+        """Fit dynamic calibration on matches before the latest round, plus
+        distribution-relative tier cutoffs from the live Elo field."""
         import calibration as cal
         rows = self._build_fit_rows()
         if not rows:
@@ -265,7 +268,15 @@ class DataIngestor:
         cur_season = max(r[0] for r in rows)
         sel = cal.select_window(rows, cur_season, window_seasons)
         label = f'roll{window_seasons}' if window_seasons else 'expanding'
-        return cal.fit_or_fallback(sel, label)
+        c = cal.fit_or_fallback(sel, label)
+        # Tier cutoffs: top-4/next-4/next-5 from the CURRENT Elo distribution
+        # (fixes the E1 watch item — tiers now read as relative strength).
+        latest = {}
+        for team, hist in self.team_elo_history.items():
+            if hist:
+                latest[team] = hist[-1][1]
+        c.tier_cutoffs = cal.compute_tier_cutoffs(list(latest.values()))
+        return c
 
     def get_team_average_matrix(self, team_id: str, window: int = None, up_to_match_id: str = None, up_to_season: int = None, up_to_round: int = None, return_history_info: bool = False) -> Any:
         if window is None:

@@ -19,7 +19,8 @@ from engine_data import DataIngestor
 
 
 def collect_rows(ing, seasons):
-    """(season, round, net_delta, elo_diff_raw, home_won, actual_margin, total)."""
+    """(season, round, net_delta, elo_diff_raw, home_won, actual_margin,
+    actual_delta) — actual_delta from match_performance (Elo-update scale)."""
     rows = []
     for year in seasons:
         matches = [m for m, i in ing.match_info.items() if i.season == year]
@@ -39,10 +40,12 @@ def collect_rows(ing, seasons):
             net = sum(MatchupEngine.calculate_delta(ma, mb).values())
             eh = ing.get_team_elo(info.home, year, info.round)
             ea = ing.get_team_elo(info.away, year, info.round)
+            actual = ing.match_performance.get(m_id, {}).get('actual', net)
             rows.append((info.season, info.round, net, eh - ea,
                          info.home_score > info.away_score,
                          info.home_score - info.away_score,
-                         info.home_score + info.away_score))
+                         info.home_score + info.away_score,
+                         actual))
     return rows
 
 
@@ -62,13 +65,13 @@ def run_mode(rows, window_seasons, label):
         cal = fit_or_fallback(sel, label)
         if cal.window == 'fallback':
             fallback_hits += 1
-        for (s, r, net, elo, won, marg, tot) in group:
+        for (s, r, net, elo, won, marg, tot, act) in group:
             p = cal.prob_home(net, elo)
             m = cal.margin(net, elo / 100.0)
             out.append((s, p, won, m, marg))
             # FitRow format for the calibration fit: (season, round, net,
-            # elo_diff, margin, total) — NOT the collect_rows layout.
-            prior.append((s, r, net, elo, marg, tot))
+            # elo_diff, margin, total, actual_delta) — NOT the collect_rows layout.
+            prior.append((s, r, net, elo, marg, tot, act))
     return out, fallback_hits
 
 

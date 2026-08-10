@@ -488,8 +488,6 @@ class SimulationHandler(BaseHTTPRequestHandler):
 
                     # Estimate total score: active calibration (dynamic).
                     total_score = cal.total_mean
-                    if total_score < 80.0 or total_score > 240.0:
-                        total_score = 165.0
 
                     predicted_home_score = max(10, round((total_score + predicted_margin) / 2.0))
                     predicted_away_score = max(10, round((total_score - predicted_margin) / 2.0))

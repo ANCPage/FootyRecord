@@ -30,7 +30,7 @@ FALLBACK_PROB = (0.0, 3.7866, 0.0036)     # b0, b1(net), b2(elo raw)
 FALLBACK_MARGIN = (70.9755, 4.8817)       # b1(net), b2(elo/100)
 FALLBACK_TOTAL = 159.26
 
-FitRow = Tuple[int, int, float, float, float, float]  # season, round, net, elo_diff, margin, total
+FitRow = Tuple[int, int, float, float, float, float, float]  # season, round, net, elo_diff, margin, total, actual_delta
 
 
 @dataclass
@@ -41,6 +41,8 @@ class Calibration:
     margin_b1: float = FALLBACK_MARGIN[0]
     margin_b2: float = FALLBACK_MARGIN[1]
     total_mean: float = FALLBACK_TOTAL
+    margin_divisor: float = 0.3       # dynamic: median|actual_delta| / 1.1
+    tier_cutoffs: tuple = ()          # (elite_min, contender_min, mid_min) — dynamic percentiles
     n_matches: int = 0
     window: str = 'fallback'
 
@@ -57,13 +59,31 @@ class Calibration:
     def margin(self, net_delta: float, elo_diff_hundreds: float) -> float:
         return self.margin_b1 * net_delta + self.margin_b2 * elo_diff_hundreds
 
+    def tier(self, elo: float) -> str:
+        """Distribution-relative tier (top-4 ELITE, next-4 CONTENDER, next-5
+        MID-TABLE, rest REBUILDING); absolute-threshold fallback when no
+        cutoffs fitted yet (e.g. tests, early data)."""
+        if self.tier_cutoffs:
+            elite_min, contender_min, mid_min = self.tier_cutoffs
+            if elo >= elite_min: return "ELITE"
+            if elo >= contender_min: return "CONTENDER"
+            if elo >= mid_min: return "MID-TABLE"
+            return "REBUILDING"
+        if elo >= 1600: return "ELITE"
+        if elo >= 1550: return "CONTENDER"
+        if elo >= 1450: return "MID-TABLE"
+        return "REBUILDING"
+
     @staticmethod
-    def fit(net_deltas, elo_diffs, margins, totals, window='fit') -> "Calibration":
+    def fit(net_deltas, elo_diffs, margins, totals, actual_deltas=None,
+            window='fit') -> "Calibration":
         """Fit all decision coefficients with NO intercept (b0=0 semantics).
 
         - probability: IRLS logistic on [net_delta, elo_diff_raw]
         - margin:      least squares on [net_delta, elo_diff/100]
         - total:       mean actual match total
+        - margin_divisor: median|actual_delta|/1.1 (Elo update scale; median
+          gives margin_mult ~2.1, matching the original 2026-08-09 hand-fit)
         """
         Xp = np.column_stack([np.asarray(net_deltas, float),
                               np.asarray(elo_diffs, float)])
@@ -81,9 +101,15 @@ class Calibration:
         Xm = np.column_stack([np.asarray(net_deltas, float),
                               np.asarray(elo_diffs, float) / 100.0])
         mb, *_ = np.linalg.lstsq(Xm, np.asarray(margins, float), rcond=None)
+        if actual_deltas is not None and len(actual_deltas):
+            med = float(np.median(np.abs(np.asarray(actual_deltas, float))))
+            divisor = med / 1.1 if med > 0 else 0.3
+        else:
+            divisor = 0.3
         return Calibration(prob_b0=0.0, prob_b1=float(b[0]), prob_b2=float(b[1]),
                            margin_b1=float(mb[0]), margin_b2=float(mb[1]),
                            total_mean=float(np.mean(totals)),
+                           margin_divisor=divisor,
                            n_matches=len(net_deltas), window=window)
 
 
@@ -95,7 +121,18 @@ def fit_or_fallback(rows: List[FitRow], window_label: str) -> Calibration:
     elos = [r[3] for r in rows]
     marg = [r[4] for r in rows]
     tots = [r[5] for r in rows]
-    return Calibration.fit(nets, elos, marg, tots, window=window_label)
+    acts = [r[6] for r in rows]
+    return Calibration.fit(nets, elos, marg, tots, acts, window=window_label)
+
+
+def compute_tier_cutoffs(team_elos: List[float]) -> Tuple:
+    """Top-4 ELITE / next-4 CONTENDER / next-5 MID-TABLE cutoffs from the live
+    Elo distribution (18 AFL teams). Empty tuple (absolute-threshold fallback)
+    when the field is too small to split meaningfully."""
+    if len(team_elos) < 8:
+        return ()
+    s = sorted(team_elos, reverse=True)
+    return (s[3], s[7], s[12])
 
 
 def select_window(rows: List[FitRow], cur_season: int,

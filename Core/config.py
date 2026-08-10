@@ -21,9 +21,9 @@ ELO_K = 32
 # Dynamic too — see calibration.py. b0 = 0 by design (no venue advantage; the
 # AFL "home" label is unreliable — shared/neutral grounds).
 # Total-score estimate: dynamic mean of actual match totals (calibration.py).
-# Elo margin scaling: margin_mult = clamp(0.5, 3.0, |delta|/D + 1). D recalibrated
-# 2026-08-09 from actual-match deltas (median |delta| = 0.32 -> typical mult ~2.1;
-# D=0.1 overshot and clamped most matches at 3.0, hurting the baseline).
+# Elo margin scaling: margin_mult = clamp(0.5, 3.0, |delta|/D + 1). D is now
+# DYNAMIC (calibration.py: median|actual_delta|/1.1 fitted on ingestion);
+# this value is only the bootstrap fallback before a fit exists.
 ELO_MARGIN_DIVISOR = 0.3
 
 class Settings:

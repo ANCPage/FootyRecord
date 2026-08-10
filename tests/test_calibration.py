@@ -15,17 +15,19 @@ from calibration import MIN_FIT_MATCHES, Calibration, fit_or_fallback, select_wi
 def _synthetic_rows(n=400, true_b1=1.5, true_b2=0.002, true_m1=1.5,
                     true_m2=0.2, true_total=160.0, seasons=None):
     """Consistent synthetic data: margin determines the win (margin > 0),
-    so the probability fit and margin fit recover the same truth."""
+    so the probability fit and margin fit recover the same truth.
+    FitRow format: (season, round, net, elo, margin, total, actual_delta)."""
     rng = np.random.default_rng(42)
     nets = rng.normal(0, 0.3, n)
     elos = rng.normal(0, 100, n)
     margins = true_m1 * nets + true_m2 * (elos / 100.0) + rng.normal(0, 1.2, n)
     totals = np.full(n, true_total) + rng.normal(0, 25, n)
+    actuals = nets + rng.normal(0, 0.1, n)
     if seasons is None:
         seasons = [2024] * n
     rounds = [(i % 23) + 1 for i in range(n)]
-    return [(seasons[i], rounds[i], nets[i], elos[i], margins[i], totals[i])
-            for i in range(n)]
+    return [(seasons[i], rounds[i], nets[i], elos[i], margins[i], totals[i],
+             actuals[i]) for i in range(n)]
 
 
 def test_fit_recovers_probability_coefficients():
@@ -48,12 +50,41 @@ def test_fit_recovers_probability_coefficients():
 def test_fit_recovers_margin_and_total():
     rows = _synthetic_rows(n=5000)
     cal = Calibration.fit([r[2] for r in rows], [r[3] for r in rows],
-                          [r[4] for r in rows], [r[5] for r in rows])
+                          [r[4] for r in rows], [r[5] for r in rows],
+                          [r[6] for r in rows])
     # margin coefficients recover in ratio (both features scale together)
     true_ratio = 0.2 / 1.5
     fit_ratio = cal.margin_b2 / cal.margin_b1
     assert abs(fit_ratio - true_ratio) / true_ratio < 0.2
     assert abs(cal.total_mean - 160.0) < 3.0
+
+
+def test_fit_computes_dynamic_margin_divisor():
+    rows = _synthetic_rows(n=200)
+    acts = [r[6] for r in rows]
+    expected = float(np.median(np.abs(acts))) / 1.1
+    cal = Calibration.fit([r[2] for r in rows], [r[3] for r in rows],
+                          [r[4] for r in rows], [r[5] for r in rows], acts)
+    assert abs(cal.margin_divisor - expected) < 1e-9
+    assert cal.margin_divisor > 0
+
+
+def test_tier_cutoffs_and_tier():
+    from calibration import compute_tier_cutoffs
+    elos = [1400 + i * 12 for i in range(18)]  # 1400..1604
+    cutoffs = compute_tier_cutoffs(elos)
+    assert len(cutoffs) == 3
+    elite_min, contender_min, mid_min = cutoffs
+    s = sorted(elos, reverse=True)
+    assert elite_min == s[3] and contender_min == s[7] and mid_min == s[12]
+    cal = Calibration(tier_cutoffs=cutoffs)
+    assert cal.tier(s[0]) == 'ELITE'
+    assert cal.tier(s[4]) == 'CONTENDER'
+    assert cal.tier(s[8]) == 'MID-TABLE'
+    assert cal.tier(s[17]) == 'REBUILDING'
+    # small field -> absolute fallback
+    assert compute_tier_cutoffs([1500.0, 1501.0]) == ()
+    assert Calibration().tier(1650.0) == 'ELITE'
 
 
 def test_fit_or_fallback_below_min_matches():
@@ -98,8 +129,9 @@ def test_evaluate_aggregate_tuple_layout():
     collect_rows layout (7-tuple) that run_mode expects."""
     from evaluate import aggregate, run_mode
     rows = _synthetic_rows(n=120)
-    # convert FitRow -> collect_rows layout: (season, round, net, elo, won, margin, total)
-    rows = [(r[0], r[1], r[2], r[3], r[4] > 0.0, r[4], r[5]) for r in rows]
+    # convert FitRow -> collect_rows layout:
+    # (season, round, net, elo, won, margin, total, actual_delta)
+    rows = [(r[0], r[1], r[2], r[3], r[4] > 0.0, r[4], r[5], r[6]) for r in rows]
     out, _ = run_mode(rows, 2, 'roll2')
     n, acc, brier, mae, rmse = aggregate(out)
     assert n == len(out)
