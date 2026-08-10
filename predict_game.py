@@ -6,6 +6,7 @@ from collections import defaultdict
 import requests
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Core'))
+import config
 from engine_core import MatchupEngine
 from engine_data import DataIngestor
 from geometry import rotate_node
@@ -117,7 +118,8 @@ def predict_game(round_num, game_num):
                 has_score = (chain['outcome'] == 'SCORE')
 
                 for i, edge in enumerate(edges):
-                    decay = (0.9 ** (n - (i+1))) if has_score else 0.0
+                    # Decay from config (single source of truth — was hardcoded 0.9)
+                    decay = (config.config.decay_factor ** (n - (i+1))) if has_score else 0.0
                     if decay > 0:
                         # Which players were involved in the start node of this edge?
                         if i < len(collapsed_players):

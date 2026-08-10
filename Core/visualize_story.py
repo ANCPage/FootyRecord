@@ -73,7 +73,9 @@ class StoryVisualizer(FieldVisualizer):
                 base_score = expected_delta.get(edge, actual_delta.get(edge, 0))
                 is_away_edge = base_score < 0
 
-                lw = min(15, max(5, abs(score) * 0.9))
+                # Arrow thickness: same |score| scaling as vector_renderer
+                # (was ×0.9 vs ×2.0 — inconsistent multipliers, audit cleanup).
+                lw = min(15, max(5, abs(score) * 2.0))
                 edge_owner = n_b if is_away_edge else n_a
                 arrow_color = mute_color(c_b if is_away_edge else c_a)
                 is_defense = (score > 0 and is_away_edge) or (score < 0 and not is_away_edge)
