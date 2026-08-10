@@ -37,6 +37,7 @@ class DataIngestor:
         by older code OR with different engine settings, even when CSVs haven't
         changed (the stale-cache footgun that bit the E2 normalization change)."""
         import hashlib
+
         import calibration as cal
         c = config.config
         raw = (f"{CACHE_VERSION}|{c.decay_factor}|{c.time_decay_factor}|{c.window_size}"
