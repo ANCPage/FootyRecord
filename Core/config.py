@@ -16,11 +16,13 @@ WINDOW_SIZE = 25
 ELO_WEIGHT = 1.0
 ELO_K = 32
 # Margin calibration: margin = b0 + b1*net_delta + b2*elo_diff, fitted via
-# `python analyze_margins.py` (412 matches 2024-25, r=0.540; elo_diff = (h-a)/100).
+# `python analyze_margins.py` (413 matches 2024-25). NO-INTERCEPT fit since
+# 2026-08-10 (audit #1): b0=0 to match PROB_B0=0 — no venue advantage in any
+# calibrated model. Cost vs free intercept: MAE 26.42 vs 25.90 pts.
 # Re-fit whenever the engine/data changes.
-MARGIN_INTERCEPT = 6.2299
-MARGIN_DELTA_COEF = 107.4945
-MARGIN_ELO_COEF = 3.6828
+MARGIN_INTERCEPT = 0.0
+MARGIN_DELTA_COEF = 70.9755
+MARGIN_ELO_COEF = 4.8817
 # Probability calibration: P(home win) = sigmoid(b0 + b1*net_delta + b2*(elo diff)).
 # Fitted 2026-08-09 via `python fit_calibration.py` (412 matches, Brier 0.2023
 # vs 0.2066 for the old net_delta*80 formula).

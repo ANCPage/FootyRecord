@@ -1,6 +1,7 @@
 import matplotlib
 
 matplotlib.use('Agg')
+import math
 from typing import Any, Dict, List
 
 import matplotlib.patches as patches
@@ -17,23 +18,30 @@ class TipsVisualizer(BaseVisualizer):
         self.header_bg = '#3E3A35'
         self.header_text = '#F4F1EA'
 
-    def _get_confidence_grade(self, score: float) -> str:
-        score = abs(score)
-        if score < 3: return 'F'
-        if score < 5: return 'E-'
-        if score < 7: return 'E'
-        if score < 9: return 'E+'
-        if score < 12: return 'D-'
-        if score < 15: return 'D'
-        if score < 18: return 'D+'
-        if score < 22: return 'C-'
-        if score < 26: return 'C'
-        if score < 30: return 'C+'
-        if score < 35: return 'B-'
-        if score < 40: return 'B'
-        if score < 45: return 'B+'
-        if score < 55: return 'A-'
-        if score < 70: return 'A'
+    def _get_confidence_grade(self, edge: float) -> str:
+        """Grade the tip's confidence from the FITTED decision edge (audit #1).
+
+        edge is the model logit (home_favored threshold = 0); convert to the
+        implied home win probability and grade on probability bands. Replaces
+        the old abs(score) ladder, which was tuned to the pre-normalization
+        delta scale and graded every tip 'F'.
+        """
+        p = 1.0 / (1.0 + math.exp(-edge))
+        if p < 0.55: return 'F'
+        if p < 0.60: return 'E-'
+        if p < 0.65: return 'E'
+        if p < 0.70: return 'E+'
+        if p < 0.725: return 'D-'
+        if p < 0.75: return 'D'
+        if p < 0.775: return 'D+'
+        if p < 0.80: return 'C-'
+        if p < 0.825: return 'C'
+        if p < 0.85: return 'C+'
+        if p < 0.875: return 'B-'
+        if p < 0.90: return 'B'
+        if p < 0.925: return 'B+'
+        if p < 0.95: return 'A-'
+        if p < 0.975: return 'A'
         return 'A+'
 
     def _get_confidence_color(self, grade: str) -> str:
@@ -120,7 +128,7 @@ class TipsVisualizer(BaseVisualizer):
                 plt.text(col_x[2], curr_y, winner_label, ha='center', va='center', color=self.header_text, fontsize=row_fs, fontweight='bold', zorder=2, fontproperties=row_sub_font)
 
                 if not show_results:
-                    grade = self._get_confidence_grade(tip['net_delta'])
+                    grade = self._get_confidence_grade(tip['edge'])
                     c_color = self._get_confidence_color(grade)
 
                     circle = patches.Circle((col_x[3], curr_y), radius=0.016, facecolor=c_color, edgecolor=self.text_color, lw=1.2, zorder=1)

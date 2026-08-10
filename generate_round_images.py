@@ -121,8 +121,10 @@ class RoundProductionPipeline:
 
             h_elo = self.ingestor.get_team_elo(h_id, self.target_season, self.round)
             a_elo = self.ingestor.get_team_elo(a_id, self.target_season, self.round)
-            elo_diff = (h_elo - a_elo) / 100.0
-            combined_score = net_delta + (config.config.elo_weight * elo_diff)
+            # The decision edge is the FITTED logit (audit #1): the exact value
+            # home_favored() thresholds at 0. Displayed value == decision value.
+            edge = (config.config.prob_b1 * net_delta
+                    + config.config.prob_b2 * (h_elo - a_elo))
 
             h_rank = rankings.get(h_id)
             a_rank = rankings.get(a_id)
@@ -136,7 +138,8 @@ class RoundProductionPipeline:
                 'home_name': h_name_mapped,
                 'home_id': h_id, 'away_id': a_id, 'away_name': a_name_mapped,
                 'winner_id': h_id if home_favored(net_delta, h_elo, a_elo) else a_id,
-                'net_delta': combined_score,
+                'net_delta': net_delta,
+                'edge': edge,
                 'actual_winner': self.ingestor.actual_winners.get(mid),
                 'home_elo': h_elo,
                 'away_elo': a_elo,
@@ -278,9 +281,9 @@ class RoundProductionPipeline:
                 n_d = sum(d.values())
                 h_elo_eval = self.ingestor.get_team_elo(m_info.home, self.target_season, m_info.round)
                 a_elo_eval = self.ingestor.get_team_elo(m_info.away, self.target_season, m_info.round)
-                e_d = (h_elo_eval - a_elo_eval) / 100.0
-                c_s = n_d + (config.config.elo_weight * e_d)
-                pred_w = m_info.home if c_s > 0 else m_info.away
+                # Same decision rule as the displayed picks (audit #1): the
+                # season summary must count what the model actually picked.
+                pred_w = m_info.home if home_favored(n_d, h_elo_eval, a_elo_eval) else m_info.away
                 if pred_w == actual_w:
                     season_correct += 1
                 season_total += 1

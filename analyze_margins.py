@@ -84,6 +84,13 @@ def main():
         coef, res, rank, _ = np.linalg.lstsq(X, np.array(y_vals), rcond=None)
         pred = X @ coef
         r = np.corrcoef(pred, y_vals)[0, 1]
+        # No-intercept fit (consistency with probability model b0=0 — no venue
+        # advantage, audit #1 fix 2026-08-10): margin = b1*net_delta + b2*elo_diff.
+        X0 = np.array(x_vals)
+        coef0, _, _, _ = np.linalg.lstsq(X0, np.array(y_vals), rcond=None)
+        pred0 = X0 @ coef0
+        mae = np.mean(np.abs(pred - y_vals))
+        mae0 = np.mean(np.abs(pred0 - y_vals))
         print('\n==================================================')
         print(' BACKTEST & MARGIN ANALYSIS: 2024-2025 SEASONS')
         print('==================================================')
@@ -95,9 +102,17 @@ def main():
         print(f'  b0 (intercept)  = {coef[0]:+.4f}')
         print(f'  b1 (net_delta)  = {coef[1]:+.4f}')
         print(f'  b2 (elo_diff)   = {coef[2]:+.4f}')
+        print(f'  MAE             = {mae:.2f} pts')
+        print('--------------------------------------------------')
+        print('NO-INTERCEPT FIT (margin = b1*net_delta + b2*elo_diff) —')
+        print('consistent with PROB_B0=0 (no venue advantage, audit #1):')
+        print(f'  b1 (net_delta)  = {coef0[0]:+.4f}')
+        print(f'  b2 (elo_diff)   = {coef0[1]:+.4f}')
+        print(f'  MAE             = {mae0:.2f} pts')
         print('--------------------------------------------------')
         print('Copy b0/b1/b2 into Core/config.py (margin_intercept /')
-        print('margin_delta_coef / margin_elo_coef).')
+        print('margin_delta_coef / margin_elo_coef). Use the no-intercept')
+        print('fit with MARGIN_INTERCEPT = 0.0 for consistency.')
     else:
         print('No matches analyzed. Check data availability.')
 
