@@ -10,8 +10,12 @@ OUTPUT_DIR = os.path.join(PROJECT_ROOT, 'ROUND_IMAGES_UPDATE')
 FONTS_DIR = os.path.join(PROJECT_ROOT, 'downloaded_fonts')
 
 # Engine Settings
-DECAY_FACTOR = 0.9
-WINDOW_SIZE = 25
+# decay_factor + window_size are SCAN-FITTED (2026-08-10): walk-forward grid
+# over 1,189 matches found the optimum at decay 0.3 / window 30 (65.0% -> 66.4%
+# acc, Brier 0.2125 -> 0.2107; Elo K and regression were flat). Re-run with
+# `python refit_hyperparams.py` when the game or data changes materially.
+DECAY_FACTOR = 0.3
+WINDOW_SIZE = 30
 ELO_K = 32
 # Margin calibration is DYNAMIC (Core/calibration.py, fitted on ingestion —
 # audit follow-up 2026-08-10). Fallback constants live in calibration.py.

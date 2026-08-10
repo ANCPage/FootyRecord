@@ -61,6 +61,11 @@ evaluate.py         walk-forward evaluation (accuracy, Brier, margin MAE/RMSE)
   (`Core/calibration.py`, rolling 2-season window, stored in the profile
   cache). No manual refit, no numbers to copy; the historical fit tools
   (`analyze_margins.py`, `fit_calibration.py`) are archived in git history.
+- **Hyperparameters are scan-fitted.** `decay_factor` (0.3) and `window_size`
+  (30) were chosen by a walk-forward grid over 1,189 matches (2026-08-10:
+  65.0% → 66.4% acc, Brier 0.2125 → 0.2107; Elo K and off-season regression
+  were flat and left alone). Re-run with `python refit_hyperparams.py` when
+  the game or data changes materially.
 
 ## Fresh start (data)
 
