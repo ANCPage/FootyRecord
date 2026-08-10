@@ -1,8 +1,5 @@
 # ruff: noqa: E402  (imports follow the path bootstrap below)
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Core'))
 from engine_core import MatchupEngine
 from engine_data import DataIngestor
 from mappings import TEAM_DATA

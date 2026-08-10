@@ -2,14 +2,13 @@
 import base64
 import json
 import os
-import sys
 import urllib.parse
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-# Add Core to system path
-root_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(os.path.join(root_dir, "Core"))
+import bootstrap  # shared sys.path bootstrap (recycle #9)
+
+root_dir = bootstrap.ROOT
 
 import config
 from elo_engine import EloEngine

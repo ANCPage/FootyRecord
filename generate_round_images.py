@@ -1,14 +1,13 @@
 # ruff: noqa: E402  (imports follow the path bootstrap below)
 import argparse
 import os
-import sys
 
 import matplotlib.pyplot as plt
 import requests
 
-root_dir = os.path.dirname(os.path.abspath(__file__))
-core_dir = os.path.join(root_dir, "Core")
-sys.path.append(core_dir)
+import bootstrap  # shared sys.path bootstrap (recycle #9)
+
+root_dir = bootstrap.ROOT
 
 import config
 from engine_core import MatchupEngine, home_favored

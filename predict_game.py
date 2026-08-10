@@ -1,12 +1,8 @@
 import argparse
-import os
-import sys
 from collections import defaultdict
 
-import requests
-
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Core'))
 import config
+import requests
 from engine_core import MatchupEngine
 from engine_data import DataIngestor
 from geometry import rotate_node
@@ -95,24 +91,10 @@ def predict_game(round_num, game_num):
                 players = chain['players']
                 if not grids or not players: continue
 
-                collapsed_grids = []
-                collapsed_players = []
-
-                # We need to map players to the collapsed edges.
-                # Simplest way: if a player was involved anywhere in the raw sequence that formed the collapsed node, they get credit for the outgoing edge.
-
-                for g, p in zip(grids, players):
-                    if not collapsed_grids or collapsed_grids[-1] != g:
-                        collapsed_grids.append(g)
-                        collapsed_players.append(set([p]))
-                    else:
-                        collapsed_players[-1].add(p)
-
-                if len(collapsed_grids) < 2: continue
-
-                edges = []
-                for i in range(len(collapsed_grids) - 1): edges.append((collapsed_grids[i], collapsed_grids[i+1]))
-                if chain['outcome'] == 'SCORE': edges.append((collapsed_grids[-1], 'SCORE'))
+                # Shared chain -> edges collapse (recycle #8)
+                from engine_core import collapse_chain
+                edges, collapsed_players = collapse_chain(chain)
+                if edges is None or len(edges) < 2: continue
 
                 n = len(edges)
                 has_score = (chain['outcome'] == 'SCORE')

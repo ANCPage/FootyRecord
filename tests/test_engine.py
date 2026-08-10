@@ -1,5 +1,5 @@
 """Unit tests for the graph engine: edge scoring and delta math (audit #20)."""
-from engine_core import Graph, MatchupEngine
+from engine_core import Graph, MatchupEngine, collapse_chain
 from models import TransitionEdge
 
 
@@ -53,3 +53,29 @@ def test_delta_value_math():
     assert abs(d[e] - 0.8) < 1e-9
     # and the rotated key: delta[A2->SCORE] = val_a(A2->SCORE=0) - val_b(E2->SCORE)
     assert abs(d[TransitionEdge('A2', 'SCORE')] + 0.3) < 1e-9
+
+
+def test_collapse_chain_basic():
+    chain = {'grids': ['B2', 'C2', 'C2', 'D2'], 'players': [1, 2, 3, 4],
+             'outcome': 'SCORE'}
+    edges, players = collapse_chain(chain)
+    assert edges == [('B2', 'C2'), ('C2', 'D2'), ('D2', 'SCORE')]
+    # consecutive C2s collapse; both players credited to the node
+    assert players == [{1}, {2, 3}, {4}]
+
+
+def test_collapse_chain_single_node_direct_shot():
+    chain = {'grids': ['E2', 'E2'], 'players': [7, 7], 'outcome': 'SCORE'}
+    edges, players = collapse_chain(chain)
+    assert edges == [('E2', 'SCORE')]
+    assert players == [{7}]
+
+
+def test_collapse_chain_non_scoring_no_tail():
+    chain = {'grids': ['B2', 'C2'], 'players': [1, 2], 'outcome': 'TURNOVER'}
+    edges, _ = collapse_chain(chain)
+    assert edges == [('B2', 'C2')]
+
+
+def test_collapse_chain_empty():
+    assert collapse_chain({'grids': [], 'players': []}) == (None, None)

@@ -143,7 +143,7 @@ class DataIngestor:
             # Calculate expectations based on previous state
             m_a = self.get_team_average_matrix(h_team, up_to_season=info.season, up_to_round=info.round)
             m_b = self.get_team_average_matrix(a_team, up_to_season=info.season, up_to_round=info.round)
-            from engine_core import MatchupEngine
+            from engine_core import MatchupEngine, collapse_chain
             if m_a and m_b:
                 exp_delta = sum(MatchupEngine.calculate_delta(m_a, m_b).values())
                 self.match_performance[m_id] = {'expected': exp_delta, 'actual': 0.0}
@@ -155,19 +155,9 @@ class DataIngestor:
                 has_score = (chain.get('outcome') == 'SCORE')
                 if not has_score: continue
 
-                grids = chain['grids']; collapsed = []
-                players = chain.get('players', []); collapsed_players = []
-                for g, p in zip(grids, players):
-                    if not collapsed or collapsed[-1] != g:
-                        collapsed.append(g)
-                        collapsed_players.append(set([p]))
-                    else:
-                        collapsed_players[-1].add(p)
-
-                if not collapsed: continue
-                edges = []
-                for i in range(len(collapsed) - 1): edges.append((collapsed[i], collapsed[i+1]))
-                edges.append((collapsed[-1], 'SCORE'))
+                # Shared chain -> edges collapse (recycle #8)
+                edges, collapsed_players = collapse_chain(chain)
+                if edges is None: continue
                 n = len(edges)
 
                 for i, (start, end) in enumerate(edges, 1):

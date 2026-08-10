@@ -127,3 +127,31 @@ class MatchupEngine:
             delta_matrix[edge_a] = val_a - val_b
 
         return delta_matrix
+
+
+def collapse_chain(chain):
+    """Collapse a chain's (grids, players) into consecutive nodes + edges
+    (recycle #8: single implementation shared by the profile accumulator and
+    predict_game's player analysis).
+
+    Returns (edges, collapsed_players) or (None, None) when the chain has no
+    nodes. `edges` are (start, end) grid keys; scoring chains end with
+    ('SCORE',). A single-node chain yields one edge to SCORE (a direct shot).
+    """
+    grids = chain.get('grids') or []
+    players = chain.get('players') or []
+    collapsed = []
+    collapsed_players = []
+    for g, p in zip(grids, players):
+        if not collapsed or collapsed[-1] != g:
+            collapsed.append(g)
+            collapsed_players.append({p} if p is not None else set())
+        else:
+            if p is not None:
+                collapsed_players[-1].add(p)
+    if not collapsed:
+        return None, None
+    edges = [(collapsed[i], collapsed[i + 1]) for i in range(len(collapsed) - 1)]
+    if chain.get('outcome') == 'SCORE':
+        edges.append((collapsed[-1], 'SCORE'))
+    return edges, collapsed_players

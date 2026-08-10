@@ -9,10 +9,8 @@ overall winner accuracy, Brier, margin MAE/RMSE, and a calibration table.
 Run:  python evaluate.py [season ...]
 """
 import math
-import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Core'))
 from calibration import fit_or_fallback, select_window
 from engine_data import DataIngestor
 
