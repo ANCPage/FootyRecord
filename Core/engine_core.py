@@ -122,7 +122,11 @@ class MatchupEngine:
             rotate_edge(edge_b, g) for edge_b in team_b_matrix.keys()
         )
 
-        for edge_a in all_possible_edges:
+        # Determinism (2026-08-11): set iteration order is hash-random, so the
+        # delta dict's insertion order varied per process -> net_delta float
+        # sums differed ~1e-16 -> borderline picks flipped run to run. Sorted
+        # keys make the computation order-independent.
+        for edge_a in sorted(all_possible_edges, key=lambda e: (e.source, e.target)):
             val_a = team_a_matrix.get(edge_a, 0.0)
             edge_b_rotated = rotate_edge(edge_a, g)
             val_b = team_b_matrix.get(edge_b_rotated, 0.0)
