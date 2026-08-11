@@ -76,10 +76,10 @@ def compute_matchup(ingestor, home_id: str, away_id: str, season: int,
         a_elo = ingestor.get_team_elo(away_id, season, round_num)
 
     elo_diff = (h_elo - a_elo) / 100.0
-    edge = cal.logit(net_delta, h_elo - a_elo)
+    edge = cal.margin(net_delta, elo_diff)  # the decision value (cleanest-model)
     winner_id = home_id if home_favored(net_delta, h_elo, a_elo) else away_id
-    prob_home = cal.prob_home(net_delta, h_elo - a_elo)
-    margin_pred = round(cal.margin(net_delta, elo_diff))
+    prob_home = cal.prob_from_margin(edge)  # display-only transform
+    margin_pred = round(edge)
     total = cal.total_mean
     home_score = max(10, round((total + margin_pred) / 2.0))
     away_score = max(10, round((total - margin_pred) / 2.0))

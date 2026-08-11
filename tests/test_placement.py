@@ -16,8 +16,11 @@ def test_home_favored_elo_breaks_tie():
 
 
 def test_home_favored_no_venue_bias():
-    # Exactly even on both signals -> not home (prob_b0 = 0 by design).
-    assert home_favored(0.0, 1500.0, 1500.0) is False
+    # Exactly even on both signals -> margin = 0 -> dead-even rule: home
+    # (h_elo >= a_elo is True when equal). No venue advantage is encoded in
+    # the margin coefficients (no intercept), not in the tie rule.
+    assert home_favored(0.0, 1500.0, 1500.0) is True
+    assert home_favored(0.0, 1500.0, 1501.0) is False
 
 
 def test_home_favored_delta_dominates():

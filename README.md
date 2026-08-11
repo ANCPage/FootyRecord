@@ -60,12 +60,17 @@ evaluate.py         walk-forward evaluation (accuracy, Brier, margin MAE/RMSE)
   correctly included in history.
 - **Normalized matrices.** Each match's matrix is divided by its total weight,
   so deltas measure pattern, not attack volume.
-- **All calibrations are fitted from data — automatically.** Probability,
-  margin, total and the Elo margin divisor are re-fitted on ingestion
-  (`Core/calibration.py`, rolling 2-season window, stored in the profile
-  cache). No manual refit, no numbers to copy; the historical fit tools
-  (`analyze_margins.py`, `fit_calibration.py`) are archived in git history.
-- **Hyperparameters are scan-fitted.** `decay_factor` (0.3) and `window_size`
+- **All calibrations are fitted from data — automatically.** The margin
+  model, total, Elo margin divisor and decay are re-fitted on ingestion
+  (`Core/calibration.py`): margin is the ONE calibrated output — winner =
+  margin sign, confidence = margin size. The probability layer was removed
+  2026-08-10 (a monotone transform that added zero pick accuracy; any
+  percentage shown is a display transform of the margin). Rolling 2-season
+  fit window, stored in the profile cache. No manual refit, no numbers to
+  copy; the historical fit tools (`analyze_margins.py`, `fit_calibration.py`)
+  are archived in git history.
+- **Hyperparameters are scan-fitted.** `decay_factor` (fitted on ingestion,
+  Option B per-position storage) and `window_size`
   (30) were chosen by a walk-forward grid over 1,189 matches (2026-08-10:
   65.0% → 66.4% acc, Brier 0.2125 → 0.2107; Elo K and off-season regression
   were flat and left alone). Re-run with `python refit_hyperparams.py` when

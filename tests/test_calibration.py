@@ -3,7 +3,6 @@
 Covers: coefficient recovery on synthetic data, no-intercept semantics,
 rolling vs expanding window selection, and the too-little-data fallback.
 """
-import math
 import os
 import sys
 
@@ -30,21 +29,17 @@ def _synthetic_rows(n=400, true_b1=1.5, true_b2=0.002, true_m1=1.5,
              actuals[i]) for i in range(n)]
 
 
-def test_fit_recovers_probability_coefficients():
+def test_fit_recovers_margin_signal():
+    """The margin regression (the single calibrated output) recovers the
+    generating signal; sign and ratio both correct (cleanest-model: no
+    probability layer anymore)."""
     rows = _synthetic_rows(n=5000)
     cal = Calibration.fit([r[2] for r in rows], [r[3] for r in rows],
                           [r[4] for r in rows], [r[5] for r in rows])
-    # Logistic fit on probit-generated wins recovers the SIGNAL, not the exact
-    # scale (logit-vs-probit approximation is not exactly proportional at heavy
-    # tails) — assert sign, no-intercept, and high correlation with the truth.
-    nets = np.array([r[2] for r in rows])
-    elos = np.array([r[3] for r in rows])
-    true_logit = 1.5 * nets + 0.002 * elos
-    fit_logit = cal.logit(nets, elos)
-    assert np.corrcoef(true_logit, fit_logit)[0, 1] > 0.99
-    assert cal.prob_b1 > 0 and cal.prob_b2 > 0
-    assert cal.prob_b0 == 0.0  # no venue advantage, by design
+    assert cal.margin_b1 > 0 and cal.margin_b2 > 0
     assert cal.n_matches == len(rows)
+    # margin_b2 is on elo/100: true_m2 = 0.002 * 100 = 0.2
+    assert abs(cal.margin_b2 - 0.2) < 0.1
 
 
 def test_fit_recovers_margin_and_total():
@@ -91,7 +86,7 @@ def test_fit_or_fallback_below_min_matches():
     rows = _synthetic_rows(n=MIN_FIT_MATCHES - 10)
     cal = fit_or_fallback(rows, 'roll2')
     assert cal.window == 'fallback'
-    assert cal.prob_b1 == Calibration.fallback().prob_b1
+    assert cal.margin_b1 == Calibration.fallback().margin_b1
 
 
 def test_fit_or_fallback_above_min_matches():
@@ -116,11 +111,13 @@ def test_select_window_expanding():
     assert len(sel) == 5
 
 
-def test_prob_home_and_margin_helpers():
-    cal = Calibration(prob_b1=1.0, prob_b2=0.0, margin_b1=50.0, margin_b2=0.0)
-    assert abs(cal.prob_home(1.0, 0.0) - 1.0 / (1.0 + math.exp(-1.0))) < 1e-9
-    assert cal.margin(0.1, 1.0) == 5.0 + 0.0
-    assert cal.logit(0.0, 0.0) == 0.0
+def test_margin_and_display_prob_helpers():
+    cal = Calibration(margin_b1=50.0, margin_b2=0.0)
+    assert cal.margin(0.1, 1.0) == 5.0
+    # display-only transform: margin 0 -> 50/50; positive margin -> > 0.5
+    assert abs(cal.prob_from_margin(0.0) - 0.5) < 1e-9
+    assert cal.prob_from_margin(20.0) > 0.5
+    assert cal.prob_from_margin(-20.0) < 0.5
 
 
 def test_evaluate_aggregate_tuple_layout():
@@ -133,13 +130,12 @@ def test_evaluate_aggregate_tuple_layout():
     # (season, round, net, elo, won, margin, total, actual_delta)
     rows = [(r[0], r[1], r[2], r[3], r[4] > 0.0, r[4], r[5], r[6]) for r in rows]
     out, _ = run_mode(rows, 2, 'roll2')
-    n, acc, brier, mae, rmse = aggregate(out)
+    n, acc, mae, rmse = aggregate(out)
     assert n == len(out)
     assert 0.0 <= acc <= 1.0
-    assert 0.0 <= brier <= 1.0
     assert mae >= 0.0
-    # every row layout: (season, p, won, margin_pred, actual_margin)
+    assert rmse >= 0.0
+    # every row layout: (season, margin_pred, won, margin_pred, actual_margin)
     for r in out:
         assert isinstance(r[0], int)
-        assert 0.0 <= r[1] <= 1.0
         assert isinstance(r[2], (bool, np.bool_))

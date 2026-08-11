@@ -91,9 +91,8 @@ def run_mode(rows, window_seasons, label):
         if cal.window == 'fallback':
             fallback_hits += 1
         for (s, r, net, elo, won, marg, tot, act) in group:
-            p = cal.prob_home(net, elo)
-            m = cal.margin(net, elo / 100.0)
-            out.append((s, p, won, m, marg))
+            m = cal.margin(net, elo / 100.0)  # the one calibrated output
+            out.append((s, m, won, m, marg))
             # FitRow format for the calibration fit: (season, round, net,
             # elo_diff, margin, total, actual_delta) — NOT the collect_rows layout.
             prior.append((s, r, net, elo, marg, tot, act))
@@ -101,12 +100,13 @@ def run_mode(rows, window_seasons, label):
 
 
 def aggregate(rows):
+    """Accuracy + margin error only (Brier removed 2026-08-10 — the margin is
+    the single calibrated output; winner = margin sign)."""
     n = len(rows)
-    acc = sum(1 for _, p, w, _, _ in rows if w == (p >= 0.5)) / n
-    brier = sum((p - w) ** 2 for _, p, w, _, _ in rows) / n
+    acc = sum(1 for _, m, w, _, _ in rows if w == (m > 0)) / n
     mae = sum(abs(mp - am) for _, _, _, mp, am in rows) / n
     rmse = math.sqrt(sum((mp - am) ** 2 for _, _, _, mp, am in rows) / n)
-    return n, acc, brier, mae, rmse
+    return n, acc, mae, rmse
 
 
 def evaluate(seasons=None):
@@ -130,35 +130,35 @@ def evaluate(seasons=None):
     print("=" * 78)
     print(" WALK-FORWARD EVALUATION (dynamic calibration — refit before every round)")
     print("=" * 78)
-    print(f"{'Season':<8}{'n':>5}{'roll2%':>8}{'exp%':>7}{'r2Brier':>9}{'eBrier':>8}{'r2MAE':>7}{'eMAE':>7}")
+    print(f"{'Season':<8}{'n':>5}{'roll2%':>8}{'exp%':>7}{'r2MAE':>8}{'eMAE':>8}{'r2RMSE':>8}{'eRMSE':>8}")
     print("-" * 78)
     for year in sorted({r[0] for r in rows}):
         a = [r for r in roll2 if r[0] == year]
         b = [r for r in expand if r[0] == year]
-        na, acca, bria, maea, _ = aggregate(a)
-        nb, accb, brieb, maeb, _ = aggregate(b)
-        print(f"{year:<8}{na:>5}{100*acca:>7.1f}{100*accb:>7.1f}{bria:>9.4f}{brieb:>8.4f}{maea:>7.1f}{maeb:>7.1f}")
+        na, acca, maea, rmsa = aggregate(a)
+        nb, accb, maeb, rmsb = aggregate(b)
+        print(f"{year:<8}{na:>5}{100*acca:>7.1f}{100*accb:>7.1f}{maea:>8.1f}{maeb:>8.1f}{rmsa:>8.1f}{rmsb:>8.1f}")
 
-    n, acc, brier, mae, rmse = aggregate(roll2)
-    n2, acc2, brier2, mae2, rmse2 = aggregate(expand)
+    n, acc, mae, rmse = aggregate(roll2)
+    n2, acc2, mae2, rmse2 = aggregate(expand)
     print("-" * 78)
-    print(f"{'ALL':<8}{n:>5}{100*acc:>7.1f}{100*acc2:>7.1f}{brier:>9.4f}{brier2:>8.4f}{mae:>7.1f}{mae2:>7.1f}")
-    print(f"\n  rolling-2 : acc {100*acc:.1f}%  Brier {brier:.4f}  MAE {mae:.1f}  RMSE {rmse:.1f}")
-    print(f"  expanding: acc {100*acc2:.1f}%  Brier {brier2:.4f}  MAE {mae2:.1f}  RMSE {rmse2:.1f}")
+    print(f"{'ALL':<8}{n:>5}{100*acc:>7.1f}{100*acc2:>7.1f}{mae:>8.1f}{mae2:>8.1f}{rmse:>8.1f}{rmse2:>8.1f}")
+    print(f"\n  rolling-2 : acc {100*acc:.1f}%  MAE {mae:.1f}  RMSE {rmse:.1f}")
+    print(f"  expanding: acc {100*acc2:.1f}%  MAE {mae2:.1f}  RMSE {rmse2:.1f}")
 
     print()
-    print(" Calibration (pooled, by predicted home probability) — rolling-2:")
-    print(f"{'bin':<14}{'n':>6}{'actual win rate':>16}")
-    for lo, hi in [(0.0, 0.35), (0.35, 0.5), (0.5, 0.65), (0.65, 1.0)]:
+    print(" Margin accuracy (pooled, by predicted-margin bands) — rolling-2:")
+    print(f"{'band (pts)':<14}{'n':>6}{'actual win rate':>16}")
+    for lo, hi in [(-100, -12), (-12, -4), (-4, 4), (4, 12), (12, 100)]:
         m = [r for r in roll2 if lo <= r[1] < hi]
         if m:
-            print(f"  {lo:.2f}-{hi:.2f}      {len(m):>5}{sum(1 for _, p, w, _, _ in m if w)/len(m):>16.3f}")
+            print(f"  {lo:>4}-{hi:>4}      {len(m):>5}{sum(1 for _, _, w, _, _ in m if w)/len(m):>16.3f}")
 
     # Transparency: the fit at the final round (what production would ship)
     from calibration import current
     c = current
-    print(f"\n active calibration (cache, latest fit): prob b1={c.prob_b1:.4f} b2={c.prob_b2:.4f} | "
-          f"margin b1={c.margin_b1:.2f} b2={c.margin_b2:.2f} | total {c.total_mean:.1f} | n={c.n_matches} [{c.window}]")
+    print(f"\n active calibration (cache, latest fit): margin b1={c.margin_b1:.2f} b2={c.margin_b2:.2f} | "
+          f"total {c.total_mean:.1f} | decay {c.decay_factor} | n={c.n_matches} [{c.window}]")
 
 
 if __name__ == '__main__':

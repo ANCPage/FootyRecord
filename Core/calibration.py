@@ -9,8 +9,12 @@ coefficients for decision paths (home_favored, margin, totals).
 Fit window: rolling last N seasons (default 2, tracking the current meta) or
 expanding (all history). evaluate.py A/Bs both and reports which wins.
 
-The probability intercept stays 0 by design (no venue advantage, audit #1).
-The margin model has no intercept either (audit #1 consistency).
+The margin model has no intercept by design (no venue advantage, audit #1).
+
+The probability layer was REMOVED 2026-08-10 (cleanest-model decision): the
+margin is the single calibrated output; winner = margin sign; any percentage
+shown is a display transform of the margin (MARGIN_TO_PROB_SCALE), not a
+separately fitted model. Brier is gone — margin MAE is the honest error.
 
 Shipped constants are the FALLBACK until enough history exists
 (MIN_FIT_MATCHES), e.g. the first rounds of 2021.
@@ -18,16 +22,16 @@ Shipped constants are the FALLBACK until enough history exists
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 import config as _config
 import numpy as np
 
 MIN_FIT_MATCHES = 60
 WINDOW_SEASONS = 2  # production default: rolling last N seasons
+MARGIN_TO_PROB_SCALE = 20.0  # display-only: sigmoid(margin/20) ~ probit fit of |margin| vs RMSE (~34)
 
 # Shipped constants (fit on 2024-25, 2026-08-09/10) — bootstrap fallback only.
-FALLBACK_PROB = (0.0, 3.7866, 0.0036)     # b0, b1(net), b2(elo raw)
 FALLBACK_MARGIN = (70.9755, 4.8817)       # b1(net), b2(elo/100)
 FALLBACK_TOTAL = 159.26
 
@@ -36,9 +40,6 @@ FitRow = Tuple[int, int, float, float, float, float, float]  # season, round, ne
 
 @dataclass
 class Calibration:
-    prob_b0: float = 0.0
-    prob_b1: float = FALLBACK_PROB[1]
-    prob_b2: float = FALLBACK_PROB[2]
     margin_b1: float = FALLBACK_MARGIN[0]
     margin_b2: float = FALLBACK_MARGIN[1]
     total_mean: float = FALLBACK_TOTAL
@@ -52,14 +53,13 @@ class Calibration:
     def fallback(cls) -> "Calibration":
         return cls()
 
-    def logit(self, net_delta: float, elo_diff_raw: float) -> float:
-        return self.prob_b0 + self.prob_b1 * net_delta + self.prob_b2 * elo_diff_raw
+    def margin(self, net_delta: float, elo_diff100: float) -> float:
+        return self.margin_b1 * net_delta + self.margin_b2 * elo_diff100
 
-    def prob_home(self, net_delta: float, elo_diff_raw: float) -> float:
-        return 1.0 / (1.0 + np.exp(-self.logit(net_delta, elo_diff_raw)))
-
-    def margin(self, net_delta: float, elo_diff_hundreds: float) -> float:
-        return self.margin_b1 * net_delta + self.margin_b2 * elo_diff_hundreds
+    def prob_from_margin(self, margin: float) -> float:
+        """DISPLAY-ONLY probability transform (not a fitted model): P(home win)
+        ~ sigmoid(margin / MARGIN_TO_PROB_SCALE)."""
+        return 1.0 / (1.0 + np.exp(-margin / MARGIN_TO_PROB_SCALE))
 
     def tier(self, elo: float) -> str:
         """Distribution-relative tier (top-4 ELITE, next-4 CONTENDER, next-5
@@ -81,25 +81,11 @@ class Calibration:
             window='fit') -> "Calibration":
         """Fit all decision coefficients with NO intercept (b0=0 semantics).
 
-        - probability: IRLS logistic on [net_delta, elo_diff_raw]
-        - margin:      least squares on [net_delta, elo_diff/100]
-        - total:       mean actual match total
+        - margin: least squares on [net_delta, elo_diff/100]
+        - total:  mean actual match total
         - margin_divisor: median|actual_delta|/1.1 (Elo update scale; median
           gives margin_mult ~2.1, matching the original 2026-08-09 hand-fit)
         """
-        Xp = np.column_stack([np.asarray(net_deltas, float),
-                              np.asarray(elo_diffs, float)])
-        y = (np.asarray(margins, float) > 0).astype(float)
-        b = np.zeros(2)
-        for _ in range(60):
-            p = 1.0 / (1.0 + np.exp(-(Xp @ b)))
-            W = p * (1 - p)
-            H = Xp.T @ (Xp * W[:, None])
-            g = Xp.T @ (y - p)
-            try:
-                b += np.linalg.solve(H + 1e-9 * np.eye(2), g)
-            except np.linalg.LinAlgError:
-                break
         Xm = np.column_stack([np.asarray(net_deltas, float),
                               np.asarray(elo_diffs, float) / 100.0])
         mb, *_ = np.linalg.lstsq(Xm, np.asarray(margins, float), rcond=None)
@@ -108,8 +94,7 @@ class Calibration:
             divisor = med / 1.1 if med > 0 else 0.3
         else:
             divisor = 0.3
-        return Calibration(prob_b0=0.0, prob_b1=float(b[0]), prob_b2=float(b[1]),
-                           margin_b1=float(mb[0]), margin_b2=float(mb[1]),
+        return Calibration(margin_b1=float(mb[0]), margin_b2=float(mb[1]),
                            total_mean=float(np.mean(totals)),
                            margin_divisor=divisor,
                            n_matches=len(net_deltas), window=window)
@@ -138,7 +123,7 @@ def compute_tier_cutoffs(team_elos: List[float]) -> Tuple:
 
 
 def select_window(rows: List[FitRow], cur_season: int,
-                  window_seasons: Optional[int]) -> List[FitRow]:
+                  window_seasons: int = None) -> List[FitRow]:
     """Rolling last N seasons (window_seasons=N) or expanding (None)."""
     if window_seasons is None:
         return rows
