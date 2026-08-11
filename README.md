@@ -30,6 +30,10 @@ pytest
 ruff check Core/ *.py --exclude LegacyScripts
 ```
 
+> Note: the repo root and `Core/` must be on `sys.path` (flat imports).
+> The venv handles this via a `footyrecord_paths.pth` in site-packages —
+> if you recreate the venv, recreate that two-line file.
+
 ## Architecture
 
 ```
