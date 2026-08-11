@@ -6,6 +6,7 @@ Analysis reads the same file: `SELECT ... WHERE correct = 0 AND margin > 30`.
 
 One DB, all seasons. Stdlib sqlite3 only.
 """
+import json
 import os
 import sqlite3
 
@@ -17,7 +18,7 @@ CREATE TABLE IF NOT EXISTS predictions (
     home_elo REAL, away_elo REAL,
     home_tier TEXT, away_tier TEXT, home_rank INTEGER, away_rank INTEGER,
     total REAL, home_score INTEGER, away_score INTEGER, grade TEXT,
-    actual_margin REAL, correct INTEGER,
+    actual_margin REAL, correct INTEGER, delta TEXT,
     PRIMARY KEY (season, round, match_id)
 );
 CREATE TABLE IF NOT EXISTS calibration_log (
@@ -72,11 +73,25 @@ def load_round(conn, season: int, round_num: int) -> list:
     cur = conn.execute(
         "SELECT season, round, match_id, home, away, net_delta, elo_diff, margin, winner,"
         " home_elo, away_elo, home_tier, away_tier, home_rank, away_rank, total,"
-        " home_score, away_score, grade, actual_margin, correct"
+        " home_score, away_score, grade, actual_margin, correct, delta"
         " FROM predictions WHERE season = ? AND round = ? ORDER BY match_id",
         (season, round_num))
     cols = [d[0] for d in cur.description]
     return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+
+def serialize_delta(delta: dict) -> str:
+    """Delta matrix -> JSON string ("A2->SCORE": weight)."""
+    if not delta:
+        return None
+    return json.dumps({f"{k.source}->{k.target}": float(v) for k, v in delta.items()})
+
+def deserialize_delta(s: str) -> dict:
+    """JSON string -> {TransitionEdge: weight}."""
+    if not s:
+        return {}
+    from engine_core import TransitionEdge
+    return {TransitionEdge(*k.split('->')): v for k, v in json.loads(s).items()}
 
 
 def upsert_prediction(conn, g: dict):
@@ -84,14 +99,16 @@ def upsert_prediction(conn, g: dict):
     conn.execute(
         "INSERT OR REPLACE INTO predictions (season, round, match_id, home, away,"
         " net_delta, elo_diff, margin, winner, home_elo, away_elo, home_tier, away_tier,"
-        " home_rank, away_rank, total, home_score, away_score, grade, actual_margin, correct)"
-        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        " home_rank, away_rank, total, home_score, away_score, grade, actual_margin,"
+        " correct, delta)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (g['season'], g['round'], g['match_id'], g['home'], g['away'],
          g.get('net_delta'), g.get('elo_diff'), g.get('margin'), g['winner'],
          g.get('home_elo'), g.get('away_elo'), g.get('home_tier'),
          g.get('away_tier'), g.get('home_rank'), g.get('away_rank'),
          g.get('total'), g.get('home_score'), g.get('away_score'),
-         g.get('grade'), g.get('actual_margin'), g.get('correct')))
+         g.get('grade'), g.get('actual_margin'), g.get('correct'),
+         g.get('delta')))
 
 
 def upsert_calibration(conn, season: int, round_num: int, snap: dict):

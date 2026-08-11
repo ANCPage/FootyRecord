@@ -10,11 +10,12 @@ import results_db
 def _game(mid='CD_M20260140101', home='H', away='A', margin=12.0, correct=1,
           actual_margin=8, winner='H', round_num=1):
     return {'season': 2026, 'round': round_num, 'match_id': mid, 'home': home, 'away': away,
-            'net_delta': 0.4, 'elo_diff': 12.0, 'margin': margin, 'winner': winner,
-            'home_elo': 1500.0, 'away_elo': 1480.0, 'home_tier': 'CONTENDER',
-            'away_tier': 'MID-TABLE', 'home_rank': 3, 'away_rank': 9,
-            'total': 164.0, 'home_score': 95, 'away_score': 87, 'grade': 'C+',
-            'actual_margin': actual_margin, 'correct': correct}
+            'net_delta': 0.1, 'elo_diff': 0.0, 'margin': margin, 'winner': winner,
+            'home_elo': 1500.0, 'away_elo': 1490.0, 'home_tier': 'MID-TABLE',
+            'away_tier': 'MID-TABLE', 'home_rank': 5, 'away_rank': 6,
+            'total': 160.0, 'home_score': 86, 'away_score': 78,
+            'grade': 'C', 'actual_margin': actual_margin, 'correct': correct,
+            'delta': None}
 
 
 def test_schema_and_upsert_round(tmp_path):

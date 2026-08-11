@@ -61,6 +61,7 @@ def compute_round(ing, conn, season: int, round_num: int) -> int:
             'home_score': info.home_score,
             'away_score': info.away_score,
             'grade': cal.confidence_grade(pred.margin_pred),
+            'delta': results_db.serialize_delta(pred.delta),
             'actual_margin': actual_margin, 'correct': correct,
         })
     snapshot = {

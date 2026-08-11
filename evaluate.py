@@ -49,8 +49,7 @@ def collect_rows(ing, seasons, decay=None, window=None):
                 continue
             if info.home_score == 0 and info.away_score == 0:
                 continue
-            if info.home_score == info.away_score:
-                continue
+            # draws included (policy B): margin-0 outcome, miss for the pick
             ma = ing.get_team_average_matrix(info.home, window=window,
                                              up_to_season=info.season,
                                              up_to_round=info.round)
@@ -139,6 +138,9 @@ def save_rows_to_db(out_rows, cals, ing, db_path=None):
             winner = home if (m > 0 or (m == 0 and elo >= 0)) else away
             correct = 1 if won == (winner == home) else 0
             total = cal.total_mean
+            # The pre-match delta matrix that produced this pick (walk-forward
+            # consistent by construction — stored at profile time).
+            delta = ing.match_performance.get(m_id, {}).get('expected_delta')
             games.append({
                 'season': s, 'round': rnd, 'match_id': m_id, 'home': home,
                 'away': away, 'net_delta': (m - cal.margin_b2 * (elo / 100.0)) / cal.margin_b1
@@ -150,6 +152,7 @@ def save_rows_to_db(out_rows, cals, ing, db_path=None):
                 'away_score': round((total - m) / 2),
                 'grade': confidence_grade(m),
                 'actual_margin': marg, 'correct': correct,
+                'delta': results_db.serialize_delta(delta),
             })
         snaps.append({'season': s, 'round': rnd, 'decay': cal.decay_factor,
                       'margin_b1': cal.margin_b1, 'margin_b2': cal.margin_b2,

@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 # Bump when profiling semantics change (normalization, decay, grid logic, ...)
 # so stale profile caches are rejected (audit E5).
-CACHE_VERSION = 6  # v6: per-position matrices (Option B — decay recombines at read time)
+CACHE_VERSION = 7  # v7: match_performance carries expected_delta dict (walk-forward visuals)
 
 # Distance buckets for per-position storage (Option B): chain edges are
 # bucketed by distance-from-end 0..POSITIONS-1; longer chains lump the tail
@@ -40,7 +40,7 @@ class DataIngestor:
         self.team_player_history = defaultdict(list)
         self.actual_winners = {}
         self.actual_match_matrices = {}
-        self.match_performance = {} # (match_id) -> {expected_delta: float, actual_delta: float}
+        self.match_performance = {} # (match_id) -> {expected, expected_delta, actual}
         self.team_elo_history = defaultdict(list) # team_id -> [(match_id, elo_before_match)]
         self.elo_engine = EloEngine()
 
@@ -176,8 +176,14 @@ class DataIngestor:
             m_a = self.get_team_average_matrix(h_team, up_to_season=info.season, up_to_round=info.round)
             m_b = self.get_team_average_matrix(a_team, up_to_season=info.season, up_to_round=info.round)
             if m_a and m_b:
-                exp_delta = sum(MatchupEngine.calculate_delta(m_a, m_b).values())
-                self.match_performance[m_id] = {'expected': exp_delta, 'actual': 0.0}
+                delta_dict = MatchupEngine.calculate_delta(m_a, m_b)
+                exp_delta = sum(delta_dict.values())
+                # expected_delta: the FULL pre-match delta matrix (walk-forward
+                # consistent by construction — computed before this match was
+                # appended). Rendered arrows read this from the results DB.
+                self.match_performance[m_id] = {'expected': exp_delta,
+                                                'expected_delta': delta_dict,
+                                                'actual': 0.0}
 
             # Actuals at the fitted decay
             h_pos, a_pos = self.match_positions[m_id]
@@ -337,8 +343,9 @@ class DataIngestor:
                 continue
             if info.home_score == 0 and info.away_score == 0:
                 continue
-            if info.home_score == info.away_score:
-                continue  # draws excluded, consistent with evaluation
+            # draws INCLUDED (policy B, 2026-08-11): a draw is a margin-0
+            # outcome — valid training point, and a guaranteed miss for the
+            # winner-only model (a draw can't be tipped)
             perf = self.match_performance.get(m_id, {})
             exp = perf.get('expected')
             if exp is None:

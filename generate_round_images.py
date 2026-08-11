@@ -131,6 +131,10 @@ class RoundProductionPipeline:
                 h_tier, a_tier = row['home_tier'], row['away_tier']
                 edge = row['margin']
                 winner_id = row['winner']
+                # Visuals are walk-forward too: the stored pre-match delta
+                # matrix (concern #2 — arrows match the DB decisions).
+                if row.get('delta'):
+                    delta = results_db.deserialize_delta(row['delta'])
             else:
                 net_delta = pred.net_delta
                 h_elo, a_elo = pred.h_elo, pred.a_elo
