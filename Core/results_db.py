@@ -58,7 +58,7 @@ def upsert_round(conn, season: int, round_num: int, games: list, calibration: di
     )
     conn.execute(
         "INSERT OR REPLACE INTO calibration_log (season, round, decay, margin_b1, margin_b2,"
-        " total_mean, divisor, window_seasons, fitted_at)"
+        " total_mean, divisor, window, fitted_at)"
         " VALUES (?,?,?,?,?,?,?,?,?)",
         (season, round_num, calibration['decay'], calibration['margin_b1'],
          calibration['margin_b2'], calibration['total_mean'], calibration['divisor'],
