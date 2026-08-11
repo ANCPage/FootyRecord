@@ -29,8 +29,9 @@ def _player_factory():
 
 
 class DataIngestor:
-    def __init__(self, csv_dir: str):
+    def __init__(self, csv_dir: str, db_path: str = None):
         self.csv_dir = csv_dir
+        self.db_path = db_path  # one-store DB (None -> default; tests pass a temp path)
         self.match_chains = defaultdict(list)
         self.match_info = {}
         self.team_history = defaultdict(list)
@@ -57,42 +58,41 @@ class DataIngestor:
                f"|{c.elo_k}|{c.elo_margin_divisor}|{cal.WINDOW_SEASONS}")
         return hashlib.sha1(raw.encode()).hexdigest()[:12]
 
-    def load_all_data(self):
-        import pickle
-        cache_dir = os.path.join(self.csv_dir, '.cache')
-        os.makedirs(cache_dir, exist_ok=True)
-        cache_path = os.path.join(cache_dir, 'ingestor_state.pkl')
+    @staticmethod
+    def _csv_fingerprint(files) -> str:
+        """Identity of the source data (names + sizes + mtimes) — the pickle
+        era's max-mtime check was beatable (any newer file passed); exact
+        identity is the robust guard (one-store, 2026-08-11)."""
+        import hashlib
+        raw = '\n'.join(sorted(f"{os.path.basename(f)}|{os.path.getsize(f)}|{os.path.getmtime(f)}"
+                               for f in files))
+        return hashlib.sha1(raw.encode()).hexdigest()[:12]
 
+    def load_all_data(self):
+        """Load state from the one-store SQLite DB (fingerprint-gated), or
+        ingest the CSVs + profile + save (one-store overhaul, 2026-08-11:
+        the pickle cache is gone)."""
+        import state_store
         files = glob.glob(os.path.join(self.csv_dir, 'flattened_stats_202*.csv'))
         files = [f for f in files if 'simple' not in f]
 
-        if os.path.exists(cache_path):
-            cache_mtime = os.path.getmtime(cache_path)
-            cache_fresh = all(os.path.getmtime(f) <= cache_mtime for f in files)
-            version_ok = False
-            payload = None
-            try:
-                with open(cache_path, 'rb') as f:
-                    payload = pickle.load(f)
-                version_ok = (isinstance(payload, dict)
-                              and payload.get('__cache_version__')
-                              == self._cache_fingerprint())
-            except Exception:
-                version_ok = False
-            if cache_fresh and version_ok:
-                logger.info('Loading data and profiled teams from cache...')
-                self.__dict__.update(payload['state'])
-                if not hasattr(self, 'elo_engine') or self.elo_engine is None:
-                    self.elo_engine = EloEngine()
-                    sorted_matches = sorted(self.match_info.keys(), key=lambda x: (self.match_info[x].season, self.match_info[x].round))
-                    self.team_elo_history = self.elo_engine.compute_elo_history(sorted_matches, self.match_info, self.actual_match_matrices)
-                self._skip_profiling = True
-                # Restore the active calibration fitted at cache-build time
-                # (dynamic calibration, audit follow-up 2026-08-10).
-                import calibration as cal
-                cal.current = getattr(self, 'calibration', cal.Calibration.fallback())
-                return
+        conn = state_store.connect(self.db_path)
+        fp = self._cache_fingerprint()
+        saved_fp = state_store.meta_get(conn, 'fingerprint')
+        csv_fp = self._csv_fingerprint(files) if files else ''
+        saved_csv_fp = state_store.meta_get(conn, 'csv_fingerprint') or ''
+        if saved_fp == fp and saved_csv_fp == csv_fp:
+            logger.info('Loading state from one-store DB (fingerprint match)...')
+            state = state_store.load_state(conn)
+            conn.close()
+            self.__dict__.update(state)
+            self.elo_engine = EloEngine()
+            self._skip_profiling = True
+            import calibration as cal
+            cal.current = getattr(self, 'calibration', cal.Calibration.fallback())
+            return
 
+        conn.close()
         self._skip_profiling = False
         logger.info(f'Loading {len(files)} seasonal data files...')
         chains_raw = defaultdict(lambda: {'team': '', 'outcome': '', 'grids': [], 'players': [], 'matchId': ''})
@@ -208,14 +208,15 @@ class DataIngestor:
         self.calibration.decay_factor = fitted_decay
         cal.current = self.calibration
 
-        import pickle
-        cache_dir = os.path.join(self.csv_dir, '.cache')
-        os.makedirs(cache_dir, exist_ok=True)
-        cache_path = os.path.join(cache_dir, 'ingestor_state.pkl')
-        logger.info("Saving state to cache...")
-        with open(cache_path, 'wb') as f:
-            pickle.dump({'__cache_version__': self._cache_fingerprint(),
-                         'state': self.__dict__}, f)
+        import state_store
+        conn = state_store.connect(self.db_path)
+        state_store.save_state(conn, self)
+        state_store.meta_set(conn, 'fingerprint', self._cache_fingerprint())
+        files = glob.glob(os.path.join(self.csv_dir, 'flattened_stats_202*.csv'))
+        files = [f for f in files if 'simple' not in f]
+        state_store.meta_set(conn, 'csv_fingerprint', self._csv_fingerprint(files))
+        conn.close()
+        logger.info("Saving state to one-store DB...")
 
     def _accumulate_positions(self, m_id):
         """Per-match, per-distance raw edge weights (decay-independent).

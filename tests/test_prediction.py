@@ -32,7 +32,7 @@ def _make_ingestor(tmp_path):
         w = csv.writer(f)
         w.writerow(COLUMNS)
         w.writerows(rows)
-    ing = DataIngestor(csv_dir)
+    ing = DataIngestor(csv_dir, db_path=str(tmp_path / 'test.db'))
     ing.load_all_data()
     ing.profile_all_teams()
     return ing
@@ -63,7 +63,7 @@ def test_compute_matchup_elo_overrides(tmp_path):
 
 def test_compute_matchup_missing_profiles_returns_none(tmp_path):
     csv_dir = str(tmp_path)
-    ing = DataIngestor(csv_dir)  # no data at all
+    ing = DataIngestor(csv_dir, db_path=str(tmp_path / 'test.db'))  # no data at all
     ing.load_all_data()
     ing.profile_all_teams()
     assert compute_matchup(ing, 'X', 'Y', 2026, 1) is None

@@ -39,7 +39,7 @@ def write_fixture(csv_dir):
 
 def test_ingestor_end_to_end(tmp_path):
     write_fixture(str(tmp_path))
-    ing = DataIngestor(str(tmp_path))
+    ing = DataIngestor(str(tmp_path), db_path=str(tmp_path / 'test.db'))
     ing.load_all_data()
     ing.profile_all_teams()
 
@@ -71,12 +71,12 @@ def test_ingestor_end_to_end(tmp_path):
 
 def test_cache_round_trip(tmp_path):
     write_fixture(str(tmp_path))
-    ing = DataIngestor(str(tmp_path))
+    ing = DataIngestor(str(tmp_path), db_path=str(tmp_path / 'test.db'))
     ing.load_all_data()
     ing.profile_all_teams()
     m_before = ing.get_team_average_matrix('H')
 
-    ing2 = DataIngestor(str(tmp_path))
+    ing2 = DataIngestor(str(tmp_path), db_path=str(tmp_path / 'test.db'))
     ing2.load_all_data()  # should hit the versioned cache
     assert getattr(ing2, '_skip_profiling', False), 'cache was not used'
     assert ing2.get_team_average_matrix('H') == m_before
@@ -84,16 +84,16 @@ def test_cache_round_trip(tmp_path):
 
 def test_cache_invalidated_on_version_change(tmp_path, monkeypatch):
     write_fixture(str(tmp_path))
-    ing = DataIngestor(str(tmp_path))
+    ing = DataIngestor(str(tmp_path), db_path=str(tmp_path / 'test.db'))
     ing.load_all_data()
     ing.profile_all_teams()
     # sanity: a second ingestor DOES hit the cache before the bump
-    ing_warm = DataIngestor(str(tmp_path))
+    ing_warm = DataIngestor(str(tmp_path), db_path=str(tmp_path / 'test.db'))
     ing_warm.load_all_data()
     assert getattr(ing_warm, '_skip_profiling', False), 'cache was not used'
 
     # bump CACHE_VERSION -> the old pickle must be rejected
     monkeypatch.setattr('engine_data.CACHE_VERSION', 999)
-    ing2 = DataIngestor(str(tmp_path))
+    ing2 = DataIngestor(str(tmp_path), db_path=str(tmp_path / 'test.db'))
     ing2.load_all_data()
     assert not getattr(ing2, '_skip_profiling', False), 'stale cache accepted!'

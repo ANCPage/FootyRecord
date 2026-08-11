@@ -93,9 +93,13 @@ table). Hyperparameter optimism measured: ~0.2 pts (lookahead check
   or `--compute-only` / `--render-only` for the separate paths.
 
 The results DB is **local** (`~/footyrecord-results/footyrecord.db`) —
-SQLite needs byte-range locks that the SMB mount can't provide. Tables:
-`predictions` (one row per game) and `calibration_log` (which fitted numbers
-made the picks). Analysis = SQL, e.g. residual analysis:
+SQLite needs byte-range locks that the SMB mount can't provide. It's the
+**one store**: engine state tables (matches, chains, positions, performance,
+matrices, elo, players, calibration — see `Core/state_store.py`) live in the
+same file as `predictions` + `calibration_log` (the results). The pickle cache
+is gone (2026-08-11); state loads from SQLite (fingerprint-gated, ~30s) and
+rebuilds from the CSVs only when the config or data identity changes. Analysis
+= SQL, e.g. residual analysis:
 
 ```sql
 SELECT * FROM predictions WHERE correct = 0 AND margin > 30;

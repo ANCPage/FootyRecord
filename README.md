@@ -96,7 +96,8 @@ skips already-downloaded matches, so it can be resumed safely.
 
 ```
 Core/          engine, Elo, geometry, visualizers, config, results_db
-CSV_DATA/      raw match CSVs (gitignored, regenerable) + profile cache
+CSV_DATA/      raw match CSVs (source format; regenerable)
+               + engine-state tables in the one-store SQLite DB (local)
 tests/         58 pytest tests (unit + integration, no real data needed)
 docs/          architecture, layperson guide
 *.py           tools: compute_round, render_round, generate_round_images,
