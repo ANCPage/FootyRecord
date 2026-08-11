@@ -209,7 +209,7 @@ class RoundProductionPipeline:
                 os.chdir(game_desktop_dir)
                 viz.draw_full_matchup(h_id, a_id, m_a, m_b, delta, save_prefix=prefix, is_mobile=False, elo_a=h_elo, elo_b=a_elo, rank_a=h_rank, rank_b=a_rank, tier_a=h_tier, tier_b=a_tier)
                 if has_actual:
-                    viz.draw_expectation_vs_actual(h_id, a_id, delta, actual_delta, save_prefix=prefix, is_mobile=False, elo_a=h_elo, elo_b=a_elo, rank_a=h_rank, rank_b=a_rank, tier_a=h_tier, tier_b=a_tier)
+                    viz.draw_expectation_vs_actual(h_id, a_id, delta, actual_delta, save_prefix=prefix, is_mobile=False, elo_a=h_elo, elo_b=a_elo, rank_a=h_rank, rank_b=a_rank, tier_a=h_tier, tier_b=a_tier, actual_margin=info.home_score - info.away_score)
                     story_viz.draw_variance_map(h_id, a_id, variance_matrix, delta, actual_delta, driver_annotations, net_delta, sum(actual_delta.values()), f"STORY_{prefix}.png", is_mobile=False, elo_a=h_elo, elo_b=a_elo, rank_a=h_rank, rank_b=a_rank, tier_a=h_tier, tier_b=a_tier)
 
                     player_actuals = {}
@@ -229,7 +229,7 @@ class RoundProductionPipeline:
                     os.chdir(game_mobile_dir)
                     viz.draw_full_matchup(h_id, a_id, m_a, m_b, delta, save_prefix=prefix, is_mobile=True, mobile_format=m_format, elo_a=h_elo, elo_b=a_elo, rank_a=h_rank, rank_b=a_rank, tier_a=h_tier, tier_b=a_tier)
                     if has_actual:
-                        viz.draw_expectation_vs_actual(h_id, a_id, delta, actual_delta, save_prefix=prefix, is_mobile=True, mobile_format=m_format, elo_a=h_elo, elo_b=a_elo, rank_a=h_rank, rank_b=a_rank, tier_a=h_tier, tier_b=a_tier)
+                        viz.draw_expectation_vs_actual(h_id, a_id, delta, actual_delta, save_prefix=prefix, is_mobile=True, mobile_format=m_format, elo_a=h_elo, elo_b=a_elo, rank_a=h_rank, rank_b=a_rank, tier_a=h_tier, tier_b=a_tier, actual_margin=info.home_score - info.away_score)
                         story_viz.draw_variance_map(h_id, a_id, variance_matrix, delta, actual_delta, driver_annotations, net_delta, sum(actual_delta.values()), f"STORY_{prefix}.png", is_mobile=True, mobile_format=m_format, elo_a=h_elo, elo_b=a_elo, rank_a=h_rank, rank_b=a_rank, tier_a=h_tier, tier_b=a_tier)
                         story_viz.draw_player_performance(h_id, a_id, player_actuals, player_expecteds, player_names, f"PLAYERS_{prefix}.png", is_mobile=True, mobile_format=m_format)
             except Exception as e:

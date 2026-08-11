@@ -51,6 +51,7 @@ class MatchupVisualizer(FieldVisualizer):
         ax.set_title(title, color=self.text_color, fontsize=12, fontproperties=self.prop_sub)
         ax.set_xlim(-95, 95)
         ax.set_ylim(-75, 75)
+        ax.set_aspect('equal')  # keep the 170x130 oval round at any figure size
         ax.axis('off')
 
     def _draw_table(self, ax, delta_matrix: Dict, team_a: str, team_b: str):
@@ -104,6 +105,8 @@ class MatchupVisualizer(FieldVisualizer):
         n_b = TEAM_DATA.get(team_b, {'name': team_b})['name']
         c_a, c_b = self.get_team_colors(team_a, team_b)
         net_delta = sum(delta_matrix.values())
+        from calibration import current as cal
+        margin = cal.margin(net_delta, (elo_a - elo_b) / 100.0)  # the one calibrated output
         winner_name = n_a if home_favored(net_delta, elo_a, elo_b) else n_b
         target_edges = [e for e, s in sorted(delta_matrix.items(), key=lambda x: abs(x[1]), reverse=True)[:20]]
 
@@ -124,7 +127,7 @@ class MatchupVisualizer(FieldVisualizer):
 
                     fig.suptitle(f'STRATEGIC MATCHUP: {n_a.upper()} VS {n_b.upper()}', color=self.text_color, fontsize=18, y=0.97, fontproperties=self.prop_title)
                     self._add_color_key(fig, n_a, c_a, n_b, c_b, elo_a, elo_b, rank_a, rank_b, tier_a, tier_b, y_pos=0.06)
-                    plt.figtext(0.5, 0.02, f'MATCHUP SCORE: {net_delta:+.2f}  |  PREDICTED WINNER: {winner_name.upper()}', ha='center', fontsize=18, color=self.bg_color, bbox={'facecolor':self.text_color, 'alpha':1.0, 'pad':12}, fontproperties=self.prop_sub)
+                    plt.figtext(0.5, 0.02, f'PREDICTED MARGIN: {margin:+.0f} PTS  |  PREDICTED WINNER: {winner_name.upper()}', ha='center', fontsize=18, color=self.bg_color, bbox={'facecolor':self.text_color, 'alpha':1.0, 'pad':12}, fontproperties=self.prop_sub)
 
                     self.save_and_close(fig, f'{save_prefix}{suffix}.png', dpi=100)
                 except:
@@ -147,7 +150,7 @@ class MatchupVisualizer(FieldVisualizer):
 
                     fig_m.suptitle(f'MATCHUP: {n_a.upper()} VS {n_b.upper()}', color=self.text_color, fontsize=16, y=0.985, fontproperties=self.prop_title)
                     self._add_color_key(fig_m, n_a, c_a, n_b, c_b, elo_a, elo_b, rank_a, rank_b, tier_a, tier_b, y_pos=0.06)
-                    plt.figtext(0.5, 0.02, f'WINNER: {winner_name.upper()} ({net_delta:+.2f})', ha='center', fontsize=16, color=self.bg_color, bbox={'facecolor':self.text_color, 'alpha':1.0, 'pad':8}, fontproperties=self.prop_sub)
+                    plt.figtext(0.5, 0.02, f'WINNER: {winner_name.upper()} (MARGIN {margin:+.0f})', ha='center', fontsize=16, color=self.bg_color, bbox={'facecolor':self.text_color, 'alpha':1.0, 'pad':8}, fontproperties=self.prop_sub)
                     plt.tight_layout(rect=[0.05, 0.12, 0.95, 0.95])
 
                     self.save_and_close(fig_m, f'{save_prefix}{suffix}.png', dpi=100)
@@ -155,13 +158,17 @@ class MatchupVisualizer(FieldVisualizer):
                     plt.close(fig_m)
                     raise
 
-    def draw_expectation_vs_actual(self, team_a: str, team_b: str, expected_delta: Dict, actual_delta: Dict, save_prefix: str = 'matchup_analysis', is_mobile: bool = False, mobile_format: str = 'reel', elo_a: float = 1500.0, elo_b: float = 1500.0, rank_a=None, rank_b=None, tier_a=None, tier_b=None):
+    def draw_expectation_vs_actual(self, team_a: str, team_b: str, expected_delta: Dict, actual_delta: Dict, save_prefix: str = 'matchup_analysis', is_mobile: bool = False, mobile_format: str = 'reel', elo_a: float = 1500.0, elo_b: float = 1500.0, rank_a=None, rank_b=None, tier_a=None, tier_b=None, actual_margin: float = None):
         n_a = TEAM_DATA.get(team_a, {'name': team_a})['name']
         n_b = TEAM_DATA.get(team_b, {'name': team_b})['name']
         c_a, c_b = self.get_team_colors(team_a, team_b)
 
         net_expected = sum(expected_delta.values())
         net_actual = sum(actual_delta.values())
+        from calibration import current as cal
+        expected_margin = cal.margin(net_expected, (elo_a - elo_b) / 100.0)
+        if actual_margin is None:
+            actual_margin = net_actual
 
         target_edges_exp = [e for e, s in sorted(expected_delta.items(), key=lambda x: abs(x[1]), reverse=True)[:20]]
         target_edges_act = [e for e, s in sorted(actual_delta.items(), key=lambda x: abs(x[1]), reverse=True)[:20]]
@@ -180,8 +187,8 @@ class MatchupVisualizer(FieldVisualizer):
                     fig.suptitle(f'EXPECTATION VS ACTUAL: {n_a.upper()} VS {n_b.upper()}', color=self.text_color, fontsize=18, y=0.95, fontproperties=self.prop_title)
                     self._add_color_key(fig, n_a, c_a, n_b, c_b, elo_a, elo_b, rank_a, rank_b, tier_a, tier_b, y_pos=0.08)
 
-                    plt.figtext(0.3, 0.02, f'PREDICTED SCORE: {net_expected:+.2f}', ha='center', fontsize=18, color=self.bg_color, bbox={'facecolor':self.text_color, 'alpha':1.0, 'pad':12}, fontproperties=self.prop_sub)
-                    plt.figtext(0.7, 0.02, f'ACTUAL SCORE: {net_actual:+.2f}', ha='center', fontsize=18, color=self.bg_color, bbox={'facecolor':self.text_color, 'alpha':1.0, 'pad':12}, fontproperties=self.prop_sub)
+                    plt.figtext(0.3, 0.02, f'PREDICTED MARGIN: {expected_margin:+.0f}', ha='center', fontsize=18, color=self.bg_color, bbox={'facecolor':self.text_color, 'alpha':1.0, 'pad':12}, fontproperties=self.prop_sub)
+                    plt.figtext(0.7, 0.02, f'ACTUAL MARGIN: {actual_margin:+.0f}', ha='center', fontsize=18, color=self.bg_color, bbox={'facecolor':self.text_color, 'alpha':1.0, 'pad':12}, fontproperties=self.prop_sub)
 
                     self.save_and_close(fig, f'{save_prefix}_expectation_vs_actual{suffix}.png', dpi=100)
                 except:
@@ -201,7 +208,7 @@ class MatchupVisualizer(FieldVisualizer):
                     fig_m.suptitle(f'EXPECTATION VS ACTUAL:\n{n_a.upper()} VS {n_b.upper()}', color=self.text_color, fontsize=16, y=0.98, fontproperties=self.prop_title)
                     self._add_color_key(fig_m, n_a, c_a, n_b, c_b, elo_a, elo_b, rank_a, rank_b, tier_a, tier_b, y_pos=0.06)
 
-                    plt.figtext(0.5, 0.01, f'ACTUAL SCORE: {net_actual:+.2f}', ha='center', fontsize=16, color=self.bg_color, bbox={'facecolor':self.text_color, 'alpha':1.0, 'pad':8}, fontproperties=self.prop_sub)
+                    plt.figtext(0.5, 0.01, f'ACTUAL MARGIN: {actual_margin:+.0f}', ha='center', fontsize=16, color=self.bg_color, bbox={'facecolor':self.text_color, 'alpha':1.0, 'pad':8}, fontproperties=self.prop_sub)
                     plt.tight_layout(rect=[0.02, 0.10, 0.98, 0.94])
 
                     self.save_and_close(fig_m, f'{save_prefix}_expectation_vs_actual{suffix}.png', dpi=100)

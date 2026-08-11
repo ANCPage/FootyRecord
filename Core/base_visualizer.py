@@ -1,7 +1,7 @@
 import matplotlib
 
 matplotlib.use('Agg')
-from typing import Tuple
+from typing import Optional, Tuple
 
 import matplotlib.pyplot as plt
 from mappings import TEAM_DATA
@@ -51,8 +51,12 @@ class BaseVisualizer:
         ax.set_facecolor(self.bg_color)
         return fig, ax
 
-    def save_and_close(self, fig: plt.Figure, path: str, dpi: int = 120, bbox_inches='tight') -> None:
-        """Safely saves the figure and cleans up Matplotlib resources."""
+    def save_and_close(self, fig: plt.Figure, path: str, dpi: int = 120, bbox_inches: Optional[str] = None) -> None:
+        """Safely saves the figure and cleans up Matplotlib resources.
+
+        bbox_inches=None (default): the figure renders at its declared figsize —
+        fixed aspect. 'tight' crops to content (was collapsing chart heights
+        inconsistently across teams, fixed 2026-08-10)."""
         try:
             fig.savefig(path, facecolor=self.bg_color, dpi=dpi, bbox_inches=bbox_inches)
         finally:
