@@ -1,6 +1,8 @@
 # Plan: one store — SQLite replaces the pickle cache
 
-**Status: draft for review (2026-08-11)**
+**Status: IMPLEMENTED (2026-08-11)** — see `Core/state_store.py`,
+`migrate_one_store.py`, and the architecture doc. The plan below is the
+historical record.
 **Goal:** one database for the engine's working state AND its results. The
 pickle cache (`CSV_DATA/.cache/ingestor_state.pkl`), the CACHE_VERSION dance,
 and the dual-store split all die.
