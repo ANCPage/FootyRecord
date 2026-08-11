@@ -8,7 +8,7 @@
 
 ## 0. Executive Summary
 
-The architecture is genuinely good — a clean 4-layer pipeline (scraper → ingestion → graph engine → visualizers) with pure, unit-testable math at the core (`Graph`, `MatchupEngine`, `EloEngine`). The data frame model (team-relative 5×3 grid) is **empirically sound**: all scoring events in sampled matches land at the forward end for both teams in all quarters, so the 180° rotation scheme is legitimate.
+The architecture is genuinely good — a clean 4-layer pipeline (scraper → ingestion → graph engine → visualizers) with pure, unit-testable math at the core (`Graph`, `MatchupEngine`, `EloEngine`). The data frame model (team-relative 5×3 grid) is **empirically sound**: all scoring events in sampled matches land at the forward end for both teams in all quarters, so the 180° rotation scheme is legitimate. The vendor's y-axis (left/right) was never verified against ground truth, but it is prediction-neutral (a global mirror cancels in every delta) and no feature makes a directional claim — **closed as accepted risk (2026-08-11);** any future left/right feature verifies it with one known play.
 
 The main findings, in order of importance:
 
