@@ -10,6 +10,7 @@ import bootstrap  # shared sys.path bootstrap (recycle #9)
 root_dir = bootstrap.ROOT
 
 import config
+import results_db
 from engine_core import MatchupEngine, home_favored
 from engine_data import DataIngestor
 from mappings import TEAM_DATA
@@ -21,11 +22,14 @@ from visualize_tips import TipsVisualizer
 
 
 class RoundProductionPipeline:
-    def __init__(self, comp_id: str, round_num: int, csv_dir: str = config.DATA_DIR):
+    def __init__(self, comp_id: str, round_num: int, csv_dir: str = config.DATA_DIR,
+                 db_rows: dict = None, season_summary: str = None):
         self.comp_id = comp_id
         self.round = round_num
         self.target_season = int(comp_id[:4])
         self.csv_dir = csv_dir
+        self.db_rows = db_rows or {}       # match_id -> decision row (compute/render separation)
+        self.season_summary = season_summary  # pre-computed from the results DB
         self.ingestor = None
         self.token = None
 
@@ -109,23 +113,31 @@ class RoundProductionPipeline:
             print(f'Game {g_idx}: {h_n} ({h_id}) vs {a_n} ({a_id})')
             print(f'\nProcessing Game {g_idx}: {h_n} vs {a_n}')
 
-            # Shared matchup computation (reuse pass #7) — one implementation
-            # of matrices -> delta -> net -> Elo -> calibration outputs.
+            # Shared matchup computation (reuse pass #7) — matrices/delta are
+            # render material; DECISIONS come from the results DB when present
+            # (compute/render separation, 2026-08-11).
             from prediction import compute_matchup
             pred = compute_matchup(self.ingestor, h_id, a_id,
                                    self.target_season, self.round)
             if pred is None:
                 continue
             delta = pred.delta
-            net_delta = pred.net_delta
             m_a, m_b = pred.m_home, pred.m_away
-            h_elo = pred.h_elo
-            a_elo = pred.a_elo
-            edge = pred.edge
-            h_rank = pred.h_rank
-            a_rank = pred.a_rank
-            h_tier = pred.h_tier
-            a_tier = pred.a_tier
+            row = self.db_rows.get(mid)
+            if row is not None:
+                net_delta = row['net_delta']
+                h_elo, a_elo = row['home_elo'], row['away_elo']
+                h_rank, a_rank = row['home_rank'], row['away_rank']
+                h_tier, a_tier = row['home_tier'], row['away_tier']
+                edge = row['margin']
+                winner_id = row['winner']
+            else:
+                net_delta = pred.net_delta
+                h_elo, a_elo = pred.h_elo, pred.a_elo
+                h_rank, a_rank = pred.h_rank, pred.a_rank
+                h_tier, a_tier = pred.h_tier, pred.a_tier
+                edge = pred.edge
+                winner_id = pred.winner_id
 
             h_name_mapped = TEAM_DATA.get(h_id, {'name': h_n})['name']
             a_name_mapped = TEAM_DATA.get(a_id, {'name': a_n})['name']
@@ -133,7 +145,7 @@ class RoundProductionPipeline:
             round_tips.append({
                 'home_name': h_name_mapped,
                 'home_id': h_id, 'away_id': a_id, 'away_name': a_name_mapped,
-                'winner_id': pred.winner_id,
+                'winner_id': winner_id,
                 'net_delta': net_delta,
                 'edge': edge,
                 'actual_winner': self.ingestor.actual_winners.get(mid),
@@ -261,30 +273,34 @@ class RoundProductionPipeline:
             correct = sum(1 for t in evaluated_tips if t['actual_winner'] == t['winner_id'])
             total = len(evaluated_tips)
 
-            season_correct = correct
-            season_total = total
-            for mid, actual_w in self.ingestor.actual_winners.items():
-                if not mid.startswith(f'CD_M{self.target_season}'):
-                    continue
-                m_info = self.ingestor.match_info[mid]
-                if m_info.round >= self.round:
-                    continue
-                m_a, _ = self.ingestor.get_team_average_matrix(m_info.home, up_to_season=self.target_season, up_to_round=m_info.round, return_history_info=True)
-                m_b, _ = self.ingestor.get_team_average_matrix(m_info.away, up_to_season=self.target_season, up_to_round=m_info.round, return_history_info=True)
-                if not m_a or not m_b:
-                    continue
-                d = MatchupEngine.calculate_delta(m_a, m_b)
-                n_d = sum(d.values())
-                h_elo_eval = self.ingestor.get_team_elo(m_info.home, self.target_season, m_info.round)
-                a_elo_eval = self.ingestor.get_team_elo(m_info.away, self.target_season, m_info.round)
-                # Same decision rule as the displayed picks (audit #1): the
-                # season summary must count what the model actually picked.
-                pred_w = m_info.home if home_favored(n_d, h_elo_eval, a_elo_eval) else m_info.away
-                if pred_w == actual_w:
-                    season_correct += 1
-                season_total += 1
+            if self.season_summary is not None:
+                # Summary comes from the results DB (compute/render separation)
+                summary = self.season_summary
+            else:
+                season_correct = correct
+                season_total = total
+                for mid, actual_w in self.ingestor.actual_winners.items():
+                    if not mid.startswith(f'CD_M{self.target_season}'):
+                        continue
+                    m_info = self.ingestor.match_info[mid]
+                    if m_info.round >= self.round:
+                        continue
+                    m_a, _ = self.ingestor.get_team_average_matrix(m_info.home, up_to_season=self.target_season, up_to_round=m_info.round, return_history_info=True)
+                    m_b, _ = self.ingestor.get_team_average_matrix(m_info.away, up_to_season=self.target_season, up_to_round=m_info.round, return_history_info=True)
+                    if not m_a or not m_b:
+                        continue
+                    d = MatchupEngine.calculate_delta(m_a, m_b)
+                    n_d = sum(d.values())
+                    h_elo_eval = self.ingestor.get_team_elo(m_info.home, self.target_season, m_info.round)
+                    a_elo_eval = self.ingestor.get_team_elo(m_info.away, self.target_season, m_info.round)
+                    # Same decision rule as the displayed picks (audit #1): the
+                    # season summary must count what the model actually picked.
+                    pred_w = m_info.home if home_favored(n_d, h_elo_eval, a_elo_eval) else m_info.away
+                    if pred_w == actual_w:
+                        season_correct += 1
+                    season_total += 1
+                summary = f"ROUND {self.round} TIPS: {correct}/{total} | SEASON: {season_correct}/{season_total} ({(season_correct/season_total)*100:.1f}%)"
 
-            summary = f"ROUND {self.round} TIPS: {correct}/{total} | SEASON: {season_correct}/{season_total} ({(season_correct/season_total)*100:.1f}%)"
             print(f"  {summary}")
             tips_viz.draw_round_tips(self.round, self.target_season, evaluated_tips, os.path.join(desktop_dir, 'TIPS_RESULTS.png'), is_mobile=False, show_results=True, season_summary=summary)
             tips_viz.draw_round_tips(self.round, self.target_season, evaluated_tips, os.path.join(insta_post_dir, 'TIPS_RESULTS.png'), is_mobile=True, mobile_format='post', show_results=True, season_summary=summary)
@@ -307,10 +323,42 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--round', type=int, default=2)
     parser.add_argument('--comp_id', type=str, default="2026014")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--compute-only', action='store_true', help='compute + save results to the DB, no images')
+    mode.add_argument('--render-only', action='store_true', help='render images from the results DB (must already be computed)')
     args = parser.parse_args()
 
-    pipeline = RoundProductionPipeline(comp_id=args.comp_id, round_num=args.round)
-    pipeline.run()
+    season = int(args.comp_id[:4])
+
+    # Path A: compute + save (or ensure computed for the combined path)
+    if not args.render_only:
+        import compute_round
+        ing0 = compute_round.load_ingestor()
+        conn = results_db.connect()
+        compute_round.compute_round(ing0, conn, season, args.round)
+        conn.close()
+
+    # Path B: render from the results DB
+    if not args.compute_only:
+        conn = results_db.connect()
+        rows = results_db.load_round(conn, season, args.round)
+        conn.close()
+        if not rows:
+            print(f"No results in DB for {season} R{args.round} — run compute first")
+            return
+        db_rows = {r['match_id']: r for r in rows}
+        correct = sum(1 for r in rows if r['correct'])
+        total = sum(1 for r in rows if r['actual_margin'] is not None)
+        conn = results_db.connect()
+        s_c, s_t = results_db.cumulative_record(conn, season, args.round)
+        conn.close()
+        summary = f"ROUND {args.round} TIPS: {correct}/{total} | SEASON: {s_c}/{s_t} ({100.0*s_c/s_t:.1f}%)"
+
+        pipeline = RoundProductionPipeline(comp_id=args.comp_id, round_num=args.round,
+                                           db_rows=db_rows, season_summary=summary)
+        pipeline.run()
+        print(f"  Summary: {summary}")
+
 
 if __name__ == '__main__':
     main()

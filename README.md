@@ -95,12 +95,14 @@ skips already-downloaded matches, so it can be resumed safely.
 ## Project layout
 
 ```
-Core/          engine, Elo, geometry, visualizers, config
+Core/          engine, Elo, geometry, visualizers, config, results_db
 CSV_DATA/      raw match CSVs (gitignored, regenerable) + profile cache
-tests/         55 pytest tests (unit + integration, no real data needed)
-docs/          architecture, layperson guide, known quirks
-*.py           tools: predict_game, evaluate, generate_round_images, server
+tests/         58 pytest tests (unit + integration, no real data needed)
+docs/          architecture, layperson guide
+*.py           tools: compute_round, render_round, generate_round_images,
+               predict_game, evaluate, refit_hyperparams, server
 ```
 
-See `code_audit_2026-08.md` for the full audit trail (issues found, fixed,
+`compute_round.py` + `render_round.py` are the two paths (results DB →
+images); `generate_round_images.py` runs both. See `code_audit_2026-08.md` for the full audit trail (issues found, fixed,
 and kept-by-design), and `docs/architecture.md` for how the engine works now.

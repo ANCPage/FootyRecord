@@ -80,6 +80,27 @@ table). Hyperparameter optimism measured: ~0.2 pts (lookahead check
 - `generate_round_images.py` — the 2026 round cards
 - `server.py` — local dashboard (sims use `compute_matchup`)
 
+## Compute / render separation (2026-08-11)
+
+- `compute_round.py --season 2026 --all` — Path A: computes every game's
+  decisions (winner, margin, grade, elos, tiers, ranks) and writes them to
+  the results DB with the calibration provenance that produced them. ~30s
+  for a whole season. No matplotlib.
+- `render_round.py --season 2026 --round 22` — Path B: renders the cards
+  from the results DB; decisions come ONLY from the DB (verified
+  byte-identical to the old combined pipeline).
+- `generate_round_images.py` — convenience wrapper (compute then render),
+  or `--compute-only` / `--render-only` for the separate paths.
+
+The results DB is **local** (`~/footyrecord-results/footyrecord.db`) —
+SQLite needs byte-range locks that the SMB mount can't provide. Tables:
+`predictions` (one row per game) and `calibration_log` (which fitted numbers
+made the picks). Analysis = SQL, e.g. residual analysis:
+
+```sql
+SELECT * FROM predictions WHERE correct = 0 AND margin > 30;
+```
+
 ## Known limits (measured)
 
 - Winner picks: 66.3% (margin-sign) — Elo and fitted layers add ~nothing over

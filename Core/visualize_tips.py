@@ -18,28 +18,10 @@ class TipsVisualizer(BaseVisualizer):
         self.header_text = '#F4F1EA'
 
     def _get_confidence_grade(self, edge: float) -> str:
-        """Grade the tip's confidence from the PREDICTED MARGIN (cleanest-model
-        2026-08-10: the margin is the one calibrated output; no probability
-        fiction). |margin| bands in points:
-        F <4, E- <8, E <12, E+ <16, D- <20, D <24, D+ <28, C- <32, C <36,
-        C+ <40, B- <45, B <50, B+ <55, A- <60, A <70, A+ >=70."""
-        score = abs(edge)
-        if score < 4: return 'F'
-        if score < 8: return 'E-'
-        if score < 12: return 'E'
-        if score < 16: return 'E+'
-        if score < 20: return 'D-'
-        if score < 24: return 'D'
-        if score < 28: return 'D+'
-        if score < 32: return 'C-'
-        if score < 36: return 'C'
-        if score < 40: return 'C+'
-        if score < 45: return 'B-'
-        if score < 50: return 'B'
-        if score < 55: return 'B+'
-        if score < 60: return 'A-'
-        if score < 70: return 'A'
-        return 'A+'
+        """Confidence grade from the predicted margin (shared ladder — see
+        calibration.confidence_grade)."""
+        from calibration import confidence_grade
+        return confidence_grade(edge)
 
     def _get_confidence_color(self, grade: str) -> str:
         if 'A' in grade: return '#228B22' # Forest Green

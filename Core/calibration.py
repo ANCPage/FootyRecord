@@ -122,6 +122,32 @@ def compute_tier_cutoffs(team_elos: List[float]) -> Tuple:
     return (s[3], s[7], s[12])
 
 
+def confidence_grade(margin: float) -> str:
+    """Confidence grade from the PREDICTED MARGIN (cleanest-model 2026-08-10:
+    the margin is the one calibrated output; no probability fiction).
+    |margin| bands in points:
+    F <4, E- <8, E <12, E+ <16, D- <20, D <24, D+ <28, C- <32, C <36,
+    C+ <40, B- <45, B <50, B+ <55, A- <60, A <70, A+ >=70. Shared by the
+    results DB (compute path) and the tips card (render path)."""
+    score = abs(margin)
+    if score < 4: return 'F'
+    if score < 8: return 'E-'
+    if score < 12: return 'E'
+    if score < 16: return 'E+'
+    if score < 20: return 'D-'
+    if score < 24: return 'D'
+    if score < 28: return 'D+'
+    if score < 32: return 'C-'
+    if score < 36: return 'C'
+    if score < 40: return 'C+'
+    if score < 45: return 'B-'
+    if score < 50: return 'B'
+    if score < 55: return 'B+'
+    if score < 60: return 'A-'
+    if score < 70: return 'A'
+    return 'A+'
+
+
 def select_window(rows: List[FitRow], cur_season: int,
                   window_seasons: int = None) -> List[FitRow]:
     """Rolling last N seasons (window_seasons=N) or expanding (None)."""
