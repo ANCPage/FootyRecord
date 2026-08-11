@@ -23,8 +23,7 @@ CREATE TABLE IF NOT EXISTS predictions (
 CREATE TABLE IF NOT EXISTS calibration_log (
     season INTEGER, round INTEGER,
     decay REAL, margin_b1 REAL, margin_b2 REAL, total_mean REAL,
-    divisor REAL, window_seasons INTEGER,
-    fitted_at TEXT,
+    divisor REAL, window TEXT, fitted_at TEXT,
     PRIMARY KEY (season, round)
 );
 """
@@ -78,6 +77,32 @@ def load_round(conn, season: int, round_num: int) -> list:
         (season, round_num))
     cols = [d[0] for d in cur.description]
     return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+
+def upsert_prediction(conn, g: dict):
+    """Insert or replace one prediction row."""
+    conn.execute(
+        "INSERT OR REPLACE INTO predictions (season, round, match_id, home, away,"
+        " net_delta, elo_diff, margin, winner, home_elo, away_elo, home_tier, away_tier,"
+        " home_rank, away_rank, total, home_score, away_score, grade, actual_margin, correct)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (g['season'], g['round'], g['match_id'], g['home'], g['away'],
+         g.get('net_delta'), g.get('elo_diff'), g.get('margin'), g['winner'],
+         g.get('home_elo'), g.get('away_elo'), g.get('home_tier'),
+         g.get('away_tier'), g.get('home_rank'), g.get('away_rank'),
+         g.get('total'), g.get('home_score'), g.get('away_score'),
+         g.get('grade'), g.get('actual_margin'), g.get('correct')))
+
+
+def upsert_calibration(conn, season: int, round_num: int, snap: dict):
+    """Insert or replace the calibration provenance for one round."""
+    conn.execute(
+        "INSERT OR REPLACE INTO calibration_log (season, round, decay, margin_b1,"
+        " margin_b2, total_mean, divisor, window, fitted_at)"
+        " VALUES (?,?,?,?,?,?,?,?,?)",
+        (season, round_num, snap.get('decay'), snap.get('margin_b1'),
+         snap.get('margin_b2'), snap.get('total_mean'), snap.get('divisor'),
+         snap.get('window'), snap.get('fitted_at')))
 
 
 def cumulative_record(conn, season: int, through_round: int) -> tuple:

@@ -19,19 +19,18 @@ import bootstrap  # noqa: F401  (side-effect: puts Core/ on sys.path)
 
 def collect_rows(ing, seasons, decay=None, window=None):
     """(season, round, net_delta, elo_diff_raw, home_won, actual_margin,
-    actual_delta) — REUSES ingestor._build_fit_rows() (reuse pass #6): the
-    expected net deltas, Elo diffs and actuals are already stored in
-    match_performance + Elo history, computed once at profile time. No
-    per-match re-computation (was the slow ~4-min part of every eval).
+    total, actual_delta, match_id, home, away) — REUSES ingestor._build_fit_rows()
+    (reuse pass #6): expected net deltas, Elo diffs and actuals are already
+    stored in match_performance + Elo history. No per-match re-computation.
 
     `decay`/`window` (refit tool): recompute expected net deltas at the given
     params (Option B — recombination only, no re-profiling needed)."""
     if decay is None and window is None:
         rows = []
-        for (s, r, net, elo, marg, tot, act) in ing._build_fit_rows():
+        for (s, r, net, elo, marg, tot, act, m_id, home, away) in ing._build_fit_rows():
             if s not in seasons:
                 continue
-            rows.append((s, r, net, elo, marg > 0.0, marg, tot, act))
+            rows.append((s, r, net, elo, marg > 0.0, marg, tot, act, m_id, home, away))
         return rows
 
     import calibration as cal
@@ -67,7 +66,8 @@ def collect_rows(ing, seasons, decay=None, window=None):
             rows.append((info.season, info.round, net, eh - ea,
                          info.home_score > info.away_score,
                          info.home_score - info.away_score,
-                         info.home_score + info.away_score, act))
+                         info.home_score + info.away_score, act,
+                         m_id, info.home, info.away))
         return rows
     finally:
         cal.current.decay_factor = saved_decay
@@ -75,7 +75,12 @@ def collect_rows(ing, seasons, decay=None, window=None):
 
 
 def run_mode(rows, window_seasons, label):
-    """Walk forward: fit calibration on prior rows at each round boundary."""
+    """Walk forward: fit calibration on prior rows at each round boundary.
+
+    Returns (out, fallback_hits, cals) — out rows are
+    (season, round, margin_pred, home_won, margin_pred, actual_margin,
+    match_id, home, away, elo_diff); cals maps (season, round) -> Calibration.
+    """
     from collections import defaultdict
     groups = defaultdict(list)
     for r in rows:
@@ -84,32 +89,82 @@ def run_mode(rows, window_seasons, label):
 
     prior = []
     out = []
+    cals = {}
     fallback_hits = 0
     for (season, rnd), group in ordered:
         sel = select_window(prior, season, window_seasons)
         cal = fit_or_fallback(sel, label)
         if cal.window == 'fallback':
             fallback_hits += 1
-        for (s, r, net, elo, won, marg, tot, act) in group:
+        cals[(season, rnd)] = cal
+        for (s, r, net, elo, won, marg, tot, act, m_id, home, away) in group:
             m = cal.margin(net, elo / 100.0)  # the one calibrated output
-            out.append((s, m, won, m, marg))
+            out.append((s, r, m, won, m, marg, m_id, home, away, elo))
             # FitRow format for the calibration fit: (season, round, net,
-            # elo_diff, margin, total, actual_delta) — NOT the collect_rows layout.
+            # elo_diff, margin, total, actual_delta, ...) — NOT the collect_rows
+            # layout; identity fields are irrelevant to the fit.
             prior.append((s, r, net, elo, marg, tot, act))
-    return out, fallback_hits
+    return out, fallback_hits, cals
 
 
 def aggregate(rows):
     """Accuracy + margin error only (Brier removed 2026-08-10 — the margin is
     the single calibrated output; winner = margin sign)."""
     n = len(rows)
-    acc = sum(1 for _, m, w, _, _ in rows if w == (m > 0)) / n
-    mae = sum(abs(mp - am) for _, _, _, mp, am in rows) / n
-    rmse = math.sqrt(sum((mp - am) ** 2 for _, _, _, mp, am in rows) / n)
+    acc = sum(1 for r in rows if r[3] == (r[2] > 0)) / n
+    mae = sum(abs(r[4] - r[5]) for r in rows) / n
+    rmse = math.sqrt(sum((r[4] - r[5]) ** 2 for r in rows) / n)
     return n, acc, mae, rmse
 
 
-def evaluate(seasons=None):
+def save_rows_to_db(out_rows, cals, ing, db_path=None):
+    """Write walk-forward (no-lookahead) predictions to the results DB.
+
+    The single source of truth: renderer and analysis read these rows.
+    out_rows: (season, margin_pred, home_won, margin_pred, actual_margin,
+    match_id, home, away, elo_diff); cals: (season, round) -> Calibration.
+    """
+    import results_db
+    from calibration import confidence_grade
+
+    conn = results_db.connect() if db_path is None else results_db.connect(db_path)
+    rounds = {}
+    for r in out_rows:
+        rounds.setdefault((r[0], r[1]), []).append(r)
+    games, snaps = [], []
+    for (s, rnd), group in sorted(rounds.items()):
+        cal = cals[(s, rnd)]
+        for r in group:
+            m, won, marg, m_id, home, away, elo = r[2], r[3], r[5], r[6], r[7], r[8], r[9]
+            winner = home if (m > 0 or (m == 0 and elo >= 0)) else away
+            correct = 1 if won == (winner == home) else 0
+            total = cal.total_mean
+            games.append({
+                'season': s, 'round': rnd, 'match_id': m_id, 'home': home,
+                'away': away, 'net_delta': (m - cal.margin_b2 * (elo / 100.0)) / cal.margin_b1
+              if cal.margin_b1 else 0.0,
+                'elo_diff': elo, 'margin': m, 'winner': winner,
+                'home_elo': None, 'away_elo': None, 'home_tier': None,
+                'away_tier': None, 'home_rank': None, 'away_rank': None,
+                'total': total, 'home_score': round((total + m) / 2),
+                'away_score': round((total - m) / 2),
+                'grade': confidence_grade(m),
+                'actual_margin': marg, 'correct': correct,
+            })
+        snaps.append({'season': s, 'round': rnd, 'decay': cal.decay_factor,
+                      'margin_b1': cal.margin_b1, 'margin_b2': cal.margin_b2,
+                      'total_mean': cal.total_mean, 'divisor': cal.margin_divisor,
+                      'window': cal.window, 'fitted_at': 'walk-forward'})
+    for g in games:
+        results_db.upsert_prediction(conn, g)
+    for sn in snaps:
+        results_db.upsert_calibration(conn, sn['season'], sn['round'], sn)
+    conn.commit()
+    conn.close()
+    return len(games)
+
+
+def evaluate(seasons=None, save=False):
     ing = DataIngestor('CSV_DATA')
     ing.load_all_data()
     # Cache load already carries profiles/elo/calibration for the current
@@ -123,8 +178,8 @@ def evaluate(seasons=None):
 
     rows = collect_rows(ing, seasons)
     print(f"matches evaluated: {len(rows)}")
-    roll2, fb2 = run_mode(rows, 2, 'roll2')
-    expand, fbe = run_mode(rows, None, 'expanding')
+    roll2, fb2, cals2 = run_mode(rows, 2, 'roll2')
+    expand, fbe, _cals_e = run_mode(rows, None, 'expanding')
     print(f"rounds predicted on fallback (too little history): roll2={fb2}, expanding={fbe}")
 
     print("=" * 78)
@@ -150,9 +205,9 @@ def evaluate(seasons=None):
     print(" Margin accuracy (pooled, by predicted-margin bands) — rolling-2:")
     print(f"{'band (pts)':<14}{'n':>6}{'actual win rate':>16}")
     for lo, hi in [(-100, -12), (-12, -4), (-4, 4), (4, 12), (12, 100)]:
-        m = [r for r in roll2 if lo <= r[1] < hi]
+        m = [r for r in roll2 if lo <= r[2] < hi]
         if m:
-            print(f"  {lo:>4}-{hi:>4}      {len(m):>5}{sum(1 for _, _, w, _, _ in m if w)/len(m):>16.3f}")
+            print(f"  {lo:>4}-{hi:>4}      {len(m):>5}{sum(1 for r in m if r[3])/len(m):>16.3f}")
 
     # Transparency: the fit at the final round (what production would ship)
     from calibration import current
@@ -160,6 +215,14 @@ def evaluate(seasons=None):
     print(f"\n active calibration (cache, latest fit): margin b1={c.margin_b1:.2f} b2={c.margin_b2:.2f} | "
           f"total {c.total_mean:.1f} | decay {c.decay_factor} | n={c.n_matches} [{c.window}]")
 
+    if save:
+        written = save_rows_to_db(roll2, cals2, ing)
+        print(f"\n walk-forward predictions saved to results DB: {written} games "
+              f"(single source of truth — renderer/analysis read these rows)")
+
 
 if __name__ == '__main__':
-    evaluate(sys.argv[1:] or None)
+    args = sys.argv[1:] or []
+    save = '--save' in args
+    seasons = [a for a in args if a != '--save'] or None
+    evaluate(seasons, save=save)

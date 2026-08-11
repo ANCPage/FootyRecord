@@ -35,7 +35,7 @@ MARGIN_TO_PROB_SCALE = 20.0  # display-only: sigmoid(margin/20) ~ probit fit of 
 FALLBACK_MARGIN = (70.9755, 4.8817)       # b1(net), b2(elo/100)
 FALLBACK_TOTAL = 159.26
 
-FitRow = Tuple[int, int, float, float, float, float, float]  # season, round, net, elo_diff, margin, total, actual_delta
+FitRow = Tuple[int, int, float, float, float, float, float, str, str, str]  # season, round, net, elo_diff, margin, total, actual_delta, match_id, home, away
 
 
 @dataclass

@@ -350,7 +350,8 @@ class DataIngestor:
             rows.append((info.season, info.round, exp, eh - ea,
                          info.home_score - info.away_score,
                          info.home_score + info.away_score,
-                         perf.get('actual', exp)))
+                         perf.get('actual', exp),
+                         m_id, info.home, info.away))
         return rows
 
     def _fit_calibration(self, window_seasons=None):

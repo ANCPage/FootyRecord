@@ -92,6 +92,18 @@ def main():
         rounds = [args.round]
     else:
         parser.error('pass --round N or --all')
+
+    # Live-round guard: compute_round owns UNPLAYED rounds only. Played rounds
+    # are the walk-forward record — populate them with `evaluate.py --save`.
+    rounds = [r for r in rounds
+              if not all(i.home_score > 0 or i.away_score > 0
+                         for i in (ing.match_info[m] for m in ing.match_info
+                                   if ing.match_info[m].season == args.season
+                                   and ing.match_info[m].round == r
+                                   and not m.startswith('POST_')))]
+    if not rounds:
+        raise SystemExit("no unplayed rounds to compute — played rounds come "
+                         "from `evaluate.py --save` (walk-forward record)")
     conn = results_db.connect()
     total = 0
     for r in rounds:

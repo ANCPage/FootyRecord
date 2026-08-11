@@ -127,15 +127,18 @@ def test_evaluate_aggregate_tuple_layout():
     from evaluate import aggregate, run_mode
     rows = _synthetic_rows(n=120)
     # convert FitRow -> collect_rows layout:
-    # (season, round, net, elo, won, margin, total, actual_delta)
-    rows = [(r[0], r[1], r[2], r[3], r[4] > 0.0, r[4], r[5], r[6]) for r in rows]
-    out, _ = run_mode(rows, 2, 'roll2')
+    # (season, round, net, elo, won, margin, total, actual_delta, m_id, home, away)
+    rows = [(r[0], r[1], r[2], r[3], r[4] > 0.0, r[4], r[5], r[6],
+             f'M{i}', 'H', 'A') for i, r in enumerate(rows)]
+    out, _, cals = run_mode(rows, 2, 'roll2')
     n, acc, mae, rmse = aggregate(out)
     assert n == len(out)
     assert 0.0 <= acc <= 1.0
     assert mae >= 0.0
     assert rmse >= 0.0
-    # every row layout: (season, margin_pred, won, margin_pred, actual_margin)
+    assert cals  # per-round calibration provenance captured
+    # every row layout: (season, round, margin_pred, won, margin_pred,
+    # actual_margin, match_id, home, away, elo_diff)
     for r in out:
         assert isinstance(r[0], int)
-        assert isinstance(r[2], (bool, np.bool_))
+        assert isinstance(r[3], (bool, np.bool_))
