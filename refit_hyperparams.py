@@ -16,6 +16,7 @@ import time
 import config
 from engine_data import DataIngestor
 
+import bootstrap  # noqa: F401  (side-effect: puts Core/ on sys.path)
 from evaluate import aggregate, collect_rows, run_mode
 
 OUT = 'refit_results.csv'
@@ -58,26 +59,38 @@ def main():
     with open(OUT, 'w') as f:
         f.write('param,value,acc,brier,mae,n,seconds\n')
 
+    sorted_matches = sorted(ing.match_info.keys(),
+                            key=lambda x: (ing.match_info[x].season, ing.match_info[x].round))
+    shipped = {'elo_k': config.config.elo_k,
+               'regression': ing.elo_engine.regression_factor}
     results = []
     for param, value in VARIANTS:
         t0 = time.time()
-        # Reset every other param to the CURRENT config before each variant —
+        # Reset everything else to the SHIPPED state before each variant —
         # a confounded scan (leftover decay=1.0) produced garbage columns once.
-        set_all(decay=config.config.decay_factor,
-                window=config.config.window_size,
-                elo_k=config.config.elo_k,
-                regression=ing.elo_engine.regression_factor)
+        import calibration as cal
+        cal.current = ing.calibration  # restores the fitted decay too
+        config.config.elo_k = shipped['elo_k']
+        ing.elo_engine.regression_factor = shipped['regression']
         if param == 'decay_factor':
-            set_all(decay=value)
+            rows = collect_rows(ing, seasons, decay=value)
         elif param == 'window_size':
-            set_all(window=value)
-        elif param == 'elo_k':
-            set_all(elo_k=value)
-        elif param == 'regression_factor':
-            set_all(regression=value)
-        ing._skip_profiling = False
-        ing.profile_all_teams()          # decay/window change the profiles
-        n, acc, brier, mae = run_eval()
+            rows = collect_rows(ing, seasons, window=value)
+        elif param in ('elo_k', 'regression_factor'):
+            # Elo parameters need the Elo history recomputed (no re-profile —
+            # Option B keeps positions; Elo is a pure replay).
+            if param == 'elo_k':
+                config.config.elo_k = value
+            else:
+                ing.elo_engine.regression_factor = value
+            ing.team_elo_history = ing.elo_engine.compute_elo_history(
+                sorted_matches, ing.match_info, ing.actual_match_matrices)
+            ing._fit_calibration()
+            rows = collect_rows(ing, seasons)
+        else:
+            continue
+        out, _ = run_mode(rows, 2, 'roll2')
+        n, acc, brier, mae, _ = aggregate(out)
         secs = int(time.time() - t0)
         line = f"{param},{value},{acc:.4f},{brier:.4f},{mae:.1f},{n},{secs}\n"
         with open(OUT, 'a') as f:
@@ -85,9 +98,9 @@ def main():
         results.append((param, value, acc, brier))
         print(f"{param}={value}: acc {100*acc:.1f}%  Brier {brier:.4f}  MAE {mae:.1f}  ({secs}s)", flush=True)
 
-    # Restore the current config's profiles (leave the cache clean).
-    ing._skip_profiling = False
-    ing.profile_all_teams()
+    # Restore the shipped calibration (nothing on disk was modified).
+    import calibration as cal
+    cal.current = ing.calibration
 
     print("\nRecommended (best acc on the grid):")
     best = max(results, key=lambda r: r[2])

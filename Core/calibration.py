@@ -20,6 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
+import config as _config
 import numpy as np
 
 MIN_FIT_MATCHES = 60
@@ -41,7 +42,8 @@ class Calibration:
     margin_b1: float = FALLBACK_MARGIN[0]
     margin_b2: float = FALLBACK_MARGIN[1]
     total_mean: float = FALLBACK_TOTAL
-    margin_divisor: float = 0.3       # dynamic: median|actual_delta| / 1.1
+    margin_divisor: float = _config.config.elo_margin_divisor  # dynamic: median|actual_delta|/1.1
+    decay_factor: float = _config.DECAY_FACTOR                # dynamic: fitted on ingestion (Option B)
     tier_cutoffs: tuple = ()          # (elite_min, contender_min, mid_min) — dynamic percentiles
     n_matches: int = 0
     window: str = 'fallback'

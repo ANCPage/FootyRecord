@@ -15,7 +15,17 @@ logger = logging.getLogger(__name__)
 
 # Bump when profiling semantics change (normalization, decay, grid logic, ...)
 # so stale profile caches are rejected (audit E5).
-CACHE_VERSION = 5  # v5: dynamic margin_divisor + tier cutoffs (audit follow-up)
+CACHE_VERSION = 6  # v6: per-position matrices (Option B — decay recombines at read time)
+
+# Distance buckets for per-position storage (Option B): chain edges are
+# bucketed by distance-from-end 0..POSITIONS-1; longer chains lump the tail
+# into the last bucket. At decay 0.3 the tail contributes <0.01% of weight.
+POSITIONS = 12
+
+
+def _player_factory():
+    """Picklable nested-defaultdict factory for per-distance player credits."""
+    return defaultdict(float)
 
 
 class DataIngestor:
@@ -24,6 +34,9 @@ class DataIngestor:
         self.match_chains = defaultdict(list)
         self.match_info = {}
         self.team_history = defaultdict(list)
+        self.team_positions = defaultdict(list)  # team -> [(m_id, pos_list)]; pos_list[d] = edge->raw weight (distance d from chain end)
+        self.match_positions = {}                # m_id -> (h_pos, a_pos)
+        self._player_positions = {}              # m_id -> (h_player, a_player) distance-bucketed
         self.team_player_history = defaultdict(list)
         self.actual_winners = {}
         self.actual_match_matrices = {}
@@ -133,68 +146,51 @@ class DataIngestor:
             return
 
         sorted_matches = sorted(self.match_info.keys(), key=lambda x: (self.match_info[x].season, self.match_info[x].round))
-        logger.info('Profiling teams using integrated edge-based decay logic...')
+        logger.info('Profiling teams using per-position storage (Option B)...')
 
+        # Pass 1: accumulate DECAY-INDEPENDENT per-position weights
+        # (pos_list[d] = raw edge weights at distance d from the chain end).
+        for m_id in sorted_matches:
+            info = self.match_info[m_id]
+            h_pos, a_pos, h_player, a_player = self._accumulate_positions(m_id)
+            self.match_positions[m_id] = (h_pos, a_pos)
+            self.team_positions[info.home].append((m_id, h_pos))
+            self.team_positions[info.away].append((m_id, a_pos))
+            self._player_positions[m_id] = (h_player, a_player)
+
+        # Fit decay: maximize net-delta sign agreement with actual results
+        # (Elo-free criterion — no circularity). Becomes the ACTIVE decay.
+        import calibration as cal
+        fitted_decay, fit_acc = self._fit_decay()
+        self.fitted_decay = fitted_decay
+        cal.current = cal.Calibration(decay_factor=fitted_decay)
+        logger.info(f'Decay fitted: {fitted_decay} (delta-sign agreement {100*fit_acc:.1f}%)')
+
+        # Pass 2: expectations + actuals + player history at the FITTED decay
+        from engine_core import MatchupEngine
         for m_id in sorted_matches:
             info = self.match_info[m_id]
             h_team, a_team = info.home, info.away
-            h_graph, a_graph = Graph(h_team), Graph(a_team)
 
-            # Calculate expectations based on previous state
+            # Expectations based on previous state (decay-aware reader)
             m_a = self.get_team_average_matrix(h_team, up_to_season=info.season, up_to_round=info.round)
             m_b = self.get_team_average_matrix(a_team, up_to_season=info.season, up_to_round=info.round)
-            from engine_core import MatchupEngine, collapse_chain
             if m_a and m_b:
                 exp_delta = sum(MatchupEngine.calculate_delta(m_a, m_b).values())
                 self.match_performance[m_id] = {'expected': exp_delta, 'actual': 0.0}
 
-            h_player_scores = defaultdict(lambda: defaultdict(float))
-            a_player_scores = defaultdict(lambda: defaultdict(float))
-
-            for chain in self.match_chains[m_id]:
-                has_score = (chain.get('outcome') == 'SCORE')
-                if not has_score: continue
-
-                # Shared chain -> edges collapse (recycle #8)
-                edges, collapsed_players = collapse_chain(chain)
-                if edges is None: continue
-                n = len(edges)
-
-                for i, (start, end) in enumerate(edges, 1):
-                    decay = config.config.decay_factor ** (n - i)
-                    h_graph.add_edge_score(start, end, decay, chain['team'])
-                    a_graph.add_edge_score(start, end, decay, chain['team'])
-
-                    if decay > 0:
-                        inv_players = list(collapsed_players[i-1]) if i-1 < len(collapsed_players) else []
-                        for p in inv_players:
-                            if chain['team'] == h_team:
-                                h_player_scores[p][(start, end)] += decay
-                            else:
-                                a_player_scores[p][(start, end)] += decay
-
-            h_mat = h_graph.get_edge_matrix()
-            a_mat = a_graph.get_edge_matrix()
-
-            # Normalize each match's matrix by total activity weight so deltas
-            # measure tactical PATTERN, not attack volume / chain length
-            # (audit item E2). sum(abs) preserves the net (own minus opponent)
-            # structure while removing the volume scaling.
-            h_abs = sum(abs(v) for v in h_mat.values())
-            a_abs = sum(abs(v) for v in a_mat.values())
-            if h_abs > 0:
-                h_mat = {e: v / h_abs for e, v in h_mat.items()}
-            if a_abs > 0:
-                a_mat = {e: v / a_abs for e, v in a_mat.items()}
-
-            self.team_history[h_team].append((m_id, h_mat))
-            self.team_history[a_team].append((m_id, a_mat))
-            self.team_player_history[h_team].append((m_id, {k: {TransitionEdge(*edge): score for edge, score in v.items()} for k, v in h_player_scores.items()}))
-            self.team_player_history[a_team].append((m_id, {k: {TransitionEdge(*edge): score for edge, score in v.items()} for k, v in a_player_scores.items()}))
+            # Actuals at the fitted decay
+            h_pos, a_pos = self.match_positions[m_id]
+            h_mat = self._recombine(h_pos, fitted_decay)
+            a_mat = self._recombine(a_pos, fitted_decay)
             self.actual_match_matrices[m_id] = (h_mat, a_mat)
-            if m_id in self.match_performance:
-                actual_delta = sum(MatchupEngine.calculate_delta(h_mat, a_mat).values())
-                self.match_performance[m_id]['actual'] = actual_delta
+            if m_id in self.match_performance and h_mat and a_mat:
+                self.match_performance[m_id]['actual'] = sum(MatchupEngine.calculate_delta(h_mat, a_mat).values())
+
+            # Player history baked at the fitted decay
+            h_player, a_player = self._player_positions[m_id]
+            self.team_player_history[h_team].append((m_id, self._bake_players(h_player, fitted_decay)))
+            self.team_player_history[a_team].append((m_id, self._bake_players(a_player, fitted_decay)))
 
         # Delegate ELO calculation entirely to EloEngine after profiling matrices
         self.team_elo_history = self.elo_engine.compute_elo_history(sorted_matches, self.match_info, self.actual_match_matrices)
@@ -202,8 +198,8 @@ class DataIngestor:
         # Dynamic calibration (audit follow-up 2026-08-10): fit the decision
         # coefficients on matches strictly before the latest round, rolling
         # window. Becomes the active calibration for all decision paths.
-        import calibration as cal
         self.calibration = self._fit_calibration(cal.WINDOW_SEASONS)
+        self.calibration.decay_factor = fitted_decay
         cal.current = self.calibration
 
         import pickle
@@ -214,6 +210,115 @@ class DataIngestor:
         with open(cache_path, 'wb') as f:
             pickle.dump({'__cache_version__': self._cache_fingerprint(),
                          'state': self.__dict__}, f)
+
+    def _accumulate_positions(self, m_id):
+        """Per-match, per-distance raw edge weights (decay-independent).
+
+        Mirrors the old Graph accumulation exactly: own chains +1 as-is,
+        opponent chains -1 rotated 180deg; player credits per distance.
+        Returns (h_pos, a_pos, h_player, a_player).
+        """
+        from engine_core import collapse_chain
+        info = self.match_info[m_id]
+        h_team, a_team = info.home, info.away
+        h_pos = [defaultdict(float) for _ in range(POSITIONS)]
+        a_pos = [defaultdict(float) for _ in range(POSITIONS)]
+        h_player = [defaultdict(_player_factory) for _ in range(POSITIONS)]
+        a_player = [defaultdict(_player_factory) for _ in range(POSITIONS)]
+        g = Graph('util')
+
+        for chain in self.match_chains[m_id]:
+            if chain.get('outcome') != 'SCORE':
+                continue
+            edges, collapsed_players = collapse_chain(chain)
+            if edges is None:
+                continue
+            n = len(edges)
+            cteam = chain['team']
+            for i, (start, end) in enumerate(edges, 1):
+                d = n - i
+                if d >= POSITIONS:
+                    d = POSITIONS - 1
+                if cteam == h_team:
+                    s, e, sign = start, end, 1.0
+                else:
+                    s, e, sign = g.rotate_node(start), g.rotate_node(end), -1.0
+                if s in g.nodes:
+                    h_pos[d][TransitionEdge(s, e)] += sign
+                if cteam == a_team:
+                    s2, e2, sign2 = start, end, 1.0
+                else:
+                    s2, e2, sign2 = g.rotate_node(start), g.rotate_node(end), -1.0
+                if s2 in g.nodes:
+                    a_pos[d][TransitionEdge(s2, e2)] += sign2
+                inv = list(collapsed_players[i - 1]) if i - 1 < len(collapsed_players) else []
+                for p in inv:
+                    if cteam == h_team:
+                        h_player[d][p][(start, end)] += 1.0
+                    else:
+                        a_player[d][p][(start, end)] += 1.0
+        return h_pos, a_pos, h_player, a_player
+
+    @staticmethod
+    def _recombine(pos_list, decay):
+        """Recombine per-position weights at a decay and apply E2 normalization."""
+        mat = defaultdict(float)
+        for d, pos in enumerate(pos_list):
+            if not pos:
+                continue
+            w = decay ** d
+            if w == 0.0:
+                continue
+            for e, v in pos.items():
+                mat[e] += w * v
+        total = sum(abs(v) for v in mat.values())
+        if total <= 0:
+            return {}
+        return {e: v / total for e, v in mat.items()}
+
+    @staticmethod
+    def _bake_players(player_pos, decay):
+        """Bake distance-bucketed player credits at a decay (old schema)."""
+        baked = {}
+        for d, pid_map in enumerate(player_pos):
+            w = decay ** d
+            if w == 0.0:
+                continue
+            for pid, edges in pid_map.items():
+                dct = baked.setdefault(pid, {})
+                for (s, e), v in edges.items():
+                    dct[(s, e)] = dct.get((s, e), 0.0) + w * v
+        return {k: {TransitionEdge(*edge): score for edge, score in v.items()}
+                for k, v in baked.items()}
+
+    def _fit_decay(self, candidates=(0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.9, 1.0)):
+        """Fit decay on net-delta sign agreement with actual results.
+
+        Elo-free (no circularity) and fast: recombination only, no profiling.
+        """
+        from engine_core import MatchupEngine
+        best, best_acc = None, -1.0
+        for cand in candidates:
+            correct = total = 0
+            for m_id, (h_pos, a_pos) in self.match_positions.items():
+                info = self.match_info.get(m_id)
+                if info is None or m_id.startswith('POST_'):
+                    continue
+                actual = self.actual_winners.get(m_id)
+                if actual not in (info.home, info.away):
+                    continue
+                h_mat = self._recombine(h_pos, cand)
+                a_mat = self._recombine(a_pos, cand)
+                if not h_mat or not a_mat:
+                    continue
+                net = sum(MatchupEngine.calculate_delta(h_mat, a_mat).values())
+                if (net > 0) == (actual == info.home):
+                    correct += 1
+                total += 1
+            acc = correct / total if total else 0.0
+            if acc > best_acc:
+                best, best_acc = cand, acc
+        return best, best_acc
 
     def _build_fit_rows(self):
         """Rows for calibration fitting: (season, round, expected net_delta,
@@ -271,15 +376,19 @@ class DataIngestor:
     def get_team_average_matrix(self, team_id: str, window: int = None, up_to_match_id: str = None, up_to_season: int = None, up_to_round: int = None, return_history_info: bool = False) -> Any:
         if window is None:
             window = config.config.window_size
-        history = self.team_history.get(team_id, [])
+        # Decay is DYNAMIC (Option B): recombine per-position weights at the
+        # active calibration decay (fallback: config bootstrap).
+        from calibration import current as cal
+        decay = getattr(cal, 'decay_factor', None) or config.config.decay_factor
+        history = self.team_positions.get(team_id, [])
         filtered_history = []
-        for m_id, mat in history:
+        for m_id, pos in history:
             if up_to_match_id and m_id == up_to_match_id: break
             if up_to_season is not None and up_to_round is not None:
                 info = self.match_info.get(m_id)
                 if info and (info.season > up_to_season or (info.season == up_to_season and info.round >= up_to_round)):
                     continue
-            filtered_history.append((m_id, mat))
+            filtered_history.append((m_id, pos))
 
         history = filtered_history[-window:]
         if not history:
@@ -287,12 +396,13 @@ class DataIngestor:
 
         avg_matrix = defaultdict(float)
         used_matches = []
-        for m_id, mat in history:
+        for m_id, pos in history:
             info = self.match_info.get(m_id)
             if info:
                 used_matches.append(f"R{info.round}_{info.season}")
             else:
                 used_matches.append(m_id)
+            mat = self._recombine(pos, decay)
             for edge, score in mat.items(): avg_matrix[edge] += score / len(history)
 
         if return_history_info:

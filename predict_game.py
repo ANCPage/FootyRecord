@@ -8,6 +8,8 @@ from engine_data import DataIngestor
 from geometry import rotate_node
 from mappings import TEAM_DATA
 
+import bootstrap  # noqa: F401  (side-effect: puts Core/ on sys.path)
+
 
 def predict_game(round_num, game_num):
     # Setup Engine

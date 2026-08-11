@@ -14,19 +14,64 @@ import sys
 from calibration import fit_or_fallback, select_window
 from engine_data import DataIngestor
 
+import bootstrap  # noqa: F401  (side-effect: puts Core/ on sys.path)
 
-def collect_rows(ing, seasons):
+
+def collect_rows(ing, seasons, decay=None, window=None):
     """(season, round, net_delta, elo_diff_raw, home_won, actual_margin,
     actual_delta) — REUSES ingestor._build_fit_rows() (reuse pass #6): the
     expected net deltas, Elo diffs and actuals are already stored in
     match_performance + Elo history, computed once at profile time. No
-    per-match re-computation (was the slow ~4-min part of every eval)."""
-    rows = []
-    for (s, r, net, elo, marg, tot, act) in ing._build_fit_rows():
-        if s not in seasons:
-            continue
-        rows.append((s, r, net, elo, marg > 0.0, marg, tot, act))
-    return rows
+    per-match re-computation (was the slow ~4-min part of every eval).
+
+    `decay`/`window` (refit tool): recompute expected net deltas at the given
+    params (Option B — recombination only, no re-profiling needed)."""
+    if decay is None and window is None:
+        rows = []
+        for (s, r, net, elo, marg, tot, act) in ing._build_fit_rows():
+            if s not in seasons:
+                continue
+            rows.append((s, r, net, elo, marg > 0.0, marg, tot, act))
+        return rows
+
+    import calibration as cal
+    import config as cfg
+    from engine_core import MatchupEngine
+    saved_decay = cal.current.decay_factor
+    saved_window = cfg.config.window_size
+    if decay is not None:
+        cal.current.decay_factor = decay
+    if window is not None:
+        cfg.config.window_size = window
+    try:
+        rows = []
+        for m_id, info in ing.match_info.items():
+            if info.season not in seasons or m_id.startswith('POST_'):
+                continue
+            if info.home_score == 0 and info.away_score == 0:
+                continue
+            if info.home_score == info.away_score:
+                continue
+            ma = ing.get_team_average_matrix(info.home, window=window,
+                                             up_to_season=info.season,
+                                             up_to_round=info.round)
+            mb = ing.get_team_average_matrix(info.away, window=window,
+                                             up_to_season=info.season,
+                                             up_to_round=info.round)
+            if not ma or not mb:
+                continue
+            net = sum(MatchupEngine.calculate_delta(ma, mb).values())
+            eh = ing.get_team_elo(info.home, info.season, info.round)
+            ea = ing.get_team_elo(info.away, info.season, info.round)
+            act = ing.match_performance.get(m_id, {}).get('actual', net)
+            rows.append((info.season, info.round, net, eh - ea,
+                         info.home_score > info.away_score,
+                         info.home_score - info.away_score,
+                         info.home_score + info.away_score, act))
+        return rows
+    finally:
+        cal.current.decay_factor = saved_decay
+        cfg.config.window_size = saved_window
 
 
 def run_mode(rows, window_seasons, label):
@@ -69,7 +114,7 @@ def evaluate(seasons=None):
     ing.load_all_data()
     # Cache load already carries profiles/elo/calibration for the current
     # config (fingerprint-gated) — skip the ~4-min rebuild (reuse pass #6).
-    if not ing.team_history:
+    if not ing.team_positions:
         ing.profile_all_teams()
 
     if seasons is None:
