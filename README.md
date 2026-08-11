@@ -97,11 +97,10 @@ skips already-downloaded matches, so it can be resumed safely.
 ```
 Core/          engine, Elo, geometry, visualizers, config
 CSV_DATA/      raw match CSVs (gitignored, regenerable) + profile cache
-tests/         47 pytest tests (unit + integration, no real data needed)
-docs/          architecture/design assessments
+tests/         55 pytest tests (unit + integration, no real data needed)
+docs/          architecture, layperson guide, known quirks
 *.py           tools: predict_game, evaluate, generate_round_images, server
 ```
 
 See `code_audit_2026-08.md` for the full audit trail (issues found, fixed,
-and kept-by-design), and `production_scripts_flaws.md` (historical, largely
-resolved).
+and kept-by-design), and `docs/architecture.md` for how the engine works now.
