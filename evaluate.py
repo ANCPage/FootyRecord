@@ -127,6 +127,9 @@ def save_rows_to_db(out_rows, cals, ing, db_path=None):
     from calibration import confidence_grade
 
     conn = results_db.connect() if db_path is None else results_db.connect(db_path)
+    # Orphan cleanup: predictions must refer to matches in the current state
+    # (a state rebuild can leave stale rows with old/different ids behind).
+    conn.execute("DELETE FROM predictions WHERE match_id NOT IN (SELECT m_id FROM matches)")
     rounds = {}
     for r in out_rows:
         rounds.setdefault((r[0], r[1]), []).append(r)
