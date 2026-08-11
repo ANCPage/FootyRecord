@@ -4,21 +4,24 @@ import config
 
 
 class EloEngine:
-    def __init__(self, elo_k: float = None, regression_factor: float = 0.75, mean_rating: float = 1500.0):
+    def __init__(self, elo_k: float = None, regression_factor: float = 0.75,
+                 mean_rating: float = 1500.0, results_based: bool = False):
         self.elo_k = elo_k if elo_k is not None else config.config.elo_k
         self.regression_factor = regression_factor
         self.mean_rating = mean_rating
+        self.results_based = results_based  # E1 A/B: train on scoreboard, not delta sign
         self.team_elo_by_round = {}  # team_id -> {(season, round): elo}
         self.season_start_elos = {}  # team_id -> {season: elo}
 
     @staticmethod
     def elo_update(h_elo: float, a_elo: float, actual_delta: float,
-                   elo_k: float = None) -> Tuple[float, float, float]:
+                   elo_k: float = None, divisor: float = None) -> Tuple[float, float, float]:
         """Single source of truth for the Elo update formula (audit #1/#2).
 
-        Winner comes from the tactical delta sign (delta-Elo design, E1).
-        Margin scaling uses the recalibrated divisor (config.elo_margin_divisor)
-        so updates stay responsive on normalized deltas.
+        Winner comes from the sign of `actual_delta` (delta-Elo design, E1;
+        the results-based A/B variant passes the score margin here instead).
+        Margin scaling uses the dynamic divisor (calibration.py:
+        median|delta|/1.1; config value is the bootstrap fallback).
         Returns (delta_home, delta_away, margin_mult).
         """
         if elo_k is None:
@@ -33,10 +36,9 @@ class EloEngine:
         S_a = 1.0 - S_h
         E_h = 1 / (1 + 10 ** ((a_elo - h_elo) / 400.0))
         E_a = 1 - E_h
-        # Margin scaling divisor is DYNAMIC (calibration.py: median|delta|/1.1,
-        # fitted on ingestion); config value is the bootstrap fallback.
-        from calibration import current as cal
-        divisor = getattr(cal, 'margin_divisor', None) or config.config.elo_margin_divisor
+        if divisor is None:
+            from calibration import current as cal
+            divisor = getattr(cal, 'margin_divisor', None) or config.config.elo_margin_divisor
         margin_mult = min(3.0, max(0.5,
                                    abs(actual_delta) / divisor + 1.0))
         return (elo_k * margin_mult * (S_h - E_h),
@@ -58,6 +60,17 @@ class EloEngine:
         self.season_start_elos = {}
 
         current_season = None
+
+        # E1 A/B: results-trained variant uses score margins with their own
+        # dynamic divisor (median |score margin| / 1.1) instead of delta sign.
+        if self.results_based:
+            margins = [abs(match_info[m].home_score - match_info[m].away_score)
+                       for m in sorted_matches
+                       if match_info[m].home_score + match_info[m].away_score > 0
+                       and match_info[m].home_score != match_info[m].away_score]
+            score_divisor = (sorted(margins)[len(margins) // 2] / 1.1) if margins else 30.0
+        else:
+            score_divisor = None
 
         for m_id in sorted_matches:
             info = match_info[m_id]
@@ -88,9 +101,19 @@ class EloEngine:
 
             # Update ratings if match was actually played
             if m_id in actual_match_matrices:
-                h_mat, a_mat = actual_match_matrices[m_id]
-                actual_delta = sum(MatchupEngine.calculate_delta(h_mat, a_mat).values())
-                d_h, d_a, _ = self.elo_update(ratings[h_team], ratings[a_team], actual_delta)
+                if self.results_based:
+                    # Results-trained: winner = scoreboard, magnitude = margin
+                    # (missing scores / draws -> zero delta -> no update, but
+                    # the round-rating recording below still runs)
+                    if info.home_score + info.away_score == 0:
+                        actual_delta = 0.0
+                    else:
+                        actual_delta = float(info.home_score - info.away_score)
+                else:
+                    h_mat, a_mat = actual_match_matrices[m_id]
+                    actual_delta = sum(MatchupEngine.calculate_delta(h_mat, a_mat).values())
+                d_h, d_a, _ = self.elo_update(ratings[h_team], ratings[a_team],
+                                              actual_delta, divisor=score_divisor)
                 ratings[h_team] += d_h
                 ratings[a_team] += d_a
 

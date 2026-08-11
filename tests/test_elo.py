@@ -77,3 +77,10 @@ def test_elo_winner_uses_delta_not_scores():
     mats = {'m1': ({e: 0.1}, {e: 0.9})}  # ... but delta favours A
     hist = eng.compute_elo_history(matches, info, mats)
     assert hist['A'][0][1] < hist['A'][-1][1]  # A's rating rose
+
+
+def test_elo_update_divisor_override():
+    """E1 A/B: explicit divisor (results-Elo uses median score margin / 1.1)."""
+    d_h, d_a, mult = EloEngine.elo_update(1500, 1500, 30.0, divisor=27.0)
+    assert mult == min(3.0, max(0.5, 30.0 / 27.0 + 1.0))
+    assert d_h > 0 and d_a < 0  # positive delta -> home wins
