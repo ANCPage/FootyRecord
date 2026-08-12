@@ -224,8 +224,8 @@ for s in ax.spines.values():
     s.set_color(SUB)
 worst = sorted([r for r in ALL if not r[5]], key=lambda r: -abs(gap(r)))[:2]
 for r in worst:
-    nm = TEAM_MAP.get(r[2], r[2])
-    ax.annotate(f'R{r[0]} {nm[:7]} won', (gap(r), r[4]), xytext=(6, 6),
+    wnm = TEAM_MAP.get(r[2], r[2])
+    ax.annotate(f'R{r[0]} {wnm[:7]} won', (gap(r), r[4]), xytext=(6, 6),
                 textcoords='offset points', fontsize=7, color=RED)
 ax.legend(fontsize=7, loc='upper left', framealpha=0.9)
 fig.tight_layout()
