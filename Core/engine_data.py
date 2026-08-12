@@ -52,7 +52,7 @@ class DataIngestor:
         changed (the stale-cache footgun that bit the E2 normalization change)."""
         import hashlib
 
-        import calibration as cal
+        import Core.calibration as cal
         c = config.config
         raw = (f"{CACHE_VERSION}|{c.decay_factor}|{c.window_size}"
                f"|{c.elo_k}|{c.elo_margin_divisor}|{cal.WINDOW_SEASONS}")
@@ -72,7 +72,7 @@ class DataIngestor:
         """Load state from the one-store SQLite DB (fingerprint-gated), or
         ingest the CSVs + profile + save (one-store overhaul, 2026-08-11:
         the pickle cache is gone)."""
-        import state_store
+        import Core.state_store as state_store
         files = glob.glob(os.path.join(self.csv_dir, 'flattened_stats_202*.csv'))
         files = [f for f in files if 'simple' not in f]
 
@@ -88,7 +88,7 @@ class DataIngestor:
             self.__dict__.update(state)
             self.elo_engine = EloEngine()
             self._skip_profiling = True
-            import calibration as cal
+            import Core.calibration as cal
             cal.current = getattr(self, 'calibration', cal.Calibration.fallback())
             return
 
@@ -160,14 +160,14 @@ class DataIngestor:
 
         # Fit decay: maximize net-delta sign agreement with actual results
         # (Elo-free criterion — no circularity). Becomes the ACTIVE decay.
-        import calibration as cal
+        import Core.calibration as cal
         fitted_decay, fit_acc = self._fit_decay()
         self.fitted_decay = fitted_decay
         cal.current = cal.Calibration(decay_factor=fitted_decay)
         logger.info(f'Decay fitted: {fitted_decay} (delta-sign agreement {100*fit_acc:.1f}%)')
 
         # Pass 2: expectations + actuals + player history at the FITTED decay
-        from engine_core import MatchupEngine
+        from Core.engine_core import MatchupEngine
         for m_id in sorted_matches:
             info = self.match_info[m_id]
             h_team, a_team = info.home, info.away
@@ -208,7 +208,7 @@ class DataIngestor:
         self.calibration.decay_factor = fitted_decay
         cal.current = self.calibration
 
-        import state_store
+        import Core.state_store as state_store
         conn = state_store.connect(self.db_path)
         state_store.save_state(conn, self)
         state_store.meta_set(conn, 'fingerprint', self._cache_fingerprint())
@@ -225,7 +225,7 @@ class DataIngestor:
         opponent chains -1 rotated 180deg; player credits per distance.
         Returns (h_pos, a_pos, h_player, a_player).
         """
-        from engine_core import collapse_chain
+        from Core.engine_core import collapse_chain
         info = self.match_info[m_id]
         h_team, a_team = info.home, info.away
         h_pos = [defaultdict(float) for _ in range(POSITIONS)]
@@ -303,7 +303,7 @@ class DataIngestor:
 
         Elo-free (no circularity) and fast: recombination only, no profiling.
         """
-        from engine_core import MatchupEngine
+        from Core.engine_core import MatchupEngine
         best, best_acc = None, -1.0
         for cand in candidates:
             correct = total = 0
@@ -365,7 +365,7 @@ class DataIngestor:
     def _fit_calibration(self, window_seasons=None):
         """Fit dynamic calibration on matches before the latest round, plus
         distribution-relative tier cutoffs from the live Elo field."""
-        import calibration as cal
+        import Core.calibration as cal
         rows = self._build_fit_rows()
         if not rows:
             return cal.Calibration.fallback()
@@ -387,7 +387,7 @@ class DataIngestor:
             window = config.config.window_size
         # Decay is DYNAMIC (Option B): recombine per-position weights at the
         # active calibration decay (fallback: config bootstrap).
-        from calibration import current as cal
+        from Core.calibration import current as cal
         decay = getattr(cal, 'decay_factor', None) or config.config.decay_factor
         history = self.team_positions.get(team_id, [])
         filtered_history = []

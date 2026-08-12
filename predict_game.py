@@ -102,7 +102,7 @@ def predict_game(round_num, game_num):
 
     # Record the pending prediction in the results DB (walk-forward replaces
     # it once the round is played and the CSVs land)
-    import calibration as cal
+    import Core.calibration as cal
     game = {
         'season': 2026, 'round': round_num, 'match_id': mid,
         'home': h_id, 'away': a_id, 'net_delta': pred.net_delta,
@@ -118,11 +118,9 @@ def predict_game(round_num, game_num):
     }
     conn = results_db.connect()
     results_db.upsert_prediction(conn, game)
-    results_db.upsert_calibration(conn, 2026, round_num, {
-        'decay': cal.current.decay_factor, 'margin_b1': cal.current.margin_b1,
-        'margin_b2': cal.current.margin_b2, 'total_mean': cal.current.total_mean,
-        'divisor': cal.current.margin_divisor, 'window': cal.current.window,
-        'fitted_at': 'live-api'})
+    results_db.upsert_calibration(
+        conn, 2026, round_num,
+        results_db.build_calibration_snapshot(cal.current, 'live-api'))
     conn.commit()
     conn.close()
     print(f"\nPrediction recorded: {h_n} vs {a_n} -> {TEAM_DATA.get(pred.winner_id, {'name': pred.winner_id})['name']} by {pred.margin_pred:.0f} pts")

@@ -9,12 +9,8 @@ Usage:
     python compute_round.py --season 2026 --all
 """
 import argparse
-import os
-import sys
 import time
 from datetime import datetime, timezone
-
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Core'))
 
 import Core.calibration as cal
 import Core.config as config
@@ -76,15 +72,8 @@ def compute_round(ing, conn, season: int, round_num: int) -> int:
             'delta': results_db.serialize_delta(pred.delta),
             'actual_margin': actual_margin, 'correct': correct,
         })
-    snapshot = {
-        'decay': cal.current.decay_factor,
-        'margin_b1': cal.current.margin_b1,
-        'margin_b2': cal.current.margin_b2,
-        'total_mean': cal.current.total_mean,
-        'divisor': cal.current.margin_divisor,
-        'window': cal.WINDOW_SEASONS,
-        'fitted_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
-    }
+    snapshot = results_db.build_calibration_snapshot(
+        cal.current, datetime.now(timezone.utc).isoformat(timespec='seconds'))
     results_db.upsert_round(conn, season, round_num, games, snapshot)
     return len(games)
 

@@ -13,7 +13,6 @@ change is a human decision. Result table: refit_results.csv.
 """
 import time
 
-import bootstrap  # noqa: F401  (side-effect: puts Core/ on sys.path)
 import Core.config as config
 from Core.engine_data import DataIngestor
 from evaluate import aggregate, collect_rows, run_mode
@@ -67,7 +66,7 @@ def main():
         t0 = time.time()
         # Reset everything else to the SHIPPED state before each variant —
         # a confounded scan (leftover decay=1.0) produced garbage columns once.
-        import calibration as cal
+        import Core.calibration as cal
         cal.current = ing.calibration  # restores the fitted decay too
         config.config.elo_k = shipped['elo_k']
         ing.elo_engine.regression_factor = shipped['regression']
@@ -98,7 +97,7 @@ def main():
         print(f"{param}={value}: acc {100*acc:.1f}%  Brier {brier:.4f}  MAE {mae:.1f}  ({secs}s)", flush=True)
 
     # Restore the shipped calibration (nothing on disk was modified).
-    import calibration as cal
+    import Core.calibration as cal
     cal.current = ing.calibration
 
     print("\nRecommended (best acc on the grid):")

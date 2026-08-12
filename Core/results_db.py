@@ -42,7 +42,16 @@ def connect(path: str = DB_PATH) -> sqlite3.Connection:
     return conn
 
 
-def upsert_round(conn, season: int, round_num: int, games: list, calibration: dict) -> int:
+def build_calibration_snapshot(cal, fitted_at: str) -> dict:
+    """One builder for the calibration_log row shape (RRR #6: was triplicated
+    across compute_round / predict_game / evaluate)."""
+    return {'decay': cal.decay_factor, 'margin_b1': cal.margin_b1,
+            'margin_b2': cal.margin_b2, 'total_mean': cal.total_mean,
+            'divisor': cal.margin_divisor, 'window': cal.window,
+            'fitted_at': fitted_at}
+
+
+def upsert_round(conn, season, round_num, games, calibration):
     """Insert/replace one round's predictions + calibration snapshot.
     games: list of dicts with the keys of the predictions table.
     Returns the number of games written."""
@@ -90,7 +99,7 @@ def deserialize_delta(s: str) -> dict:
     """JSON string -> {TransitionEdge: weight}."""
     if not s:
         return {}
-    from engine_core import TransitionEdge
+    from Core.engine_core import TransitionEdge
     return {TransitionEdge(*k.split('->')): v for k, v in json.loads(s).items()}
 
 

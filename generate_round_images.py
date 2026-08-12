@@ -1,13 +1,8 @@
-# ruff: noqa: E402  (imports follow the path bootstrap below)
 import argparse
 import os
 
 import matplotlib.pyplot as plt
 import requests
-
-import bootstrap  # shared sys.path bootstrap (recycle #9)
-
-root_dir = bootstrap.ROOT
 
 import Core.config as config
 import Core.results_db as results_db
@@ -116,7 +111,7 @@ class RoundProductionPipeline:
             # Shared matchup computation (reuse pass #7) — matrices/delta are
             # render material; DECISIONS come from the results DB when present
             # (compute/render separation, 2026-08-11).
-            from prediction import compute_matchup
+            from Core.prediction import compute_matchup
             pred = compute_matchup(self.ingestor, h_id, a_id,
                                    self.target_season, self.round)
             if pred is None:
@@ -323,13 +318,48 @@ class RoundProductionPipeline:
         print(f"  Created team journey plots in {desktop_dir} and Mobile subfolders")
         plt.close('all')
 
+def render_round_from_db(season: int, round_num: int, comp_id: str = None) -> str:
+    """Path B: render one round's cards from the results DB (shared by
+    render_round.py and generate_round_images --render-only; RRR #7)."""
+    comp_id = comp_id or f'{season}014'
+    conn = results_db.connect()
+    rows = results_db.load_round(conn, season, round_num)
+    conn.close()
+    if not rows:
+        print(f"No results in DB for {season} R{round_num} — run compute first")
+        return None
+    db_rows = {r['match_id']: r for r in rows}
+    correct = sum(1 for r in rows if r['correct'])
+    total = sum(1 for r in rows if r['actual_margin'] is not None)
+    conn = results_db.connect()
+    # Stale-panels guard: decisions come from the DB, but player/journey
+    # panels read the live state — warn if the state changed since the
+    # record was saved (run `evaluate.py --save` to re-align).
+    import Core.state_store as state_store
+    sfp = state_store.meta_get(conn, 'fingerprint')
+    rfp = state_store.meta_get(conn, 'record_fingerprint')
+    if sfp and rfp and sfp != rfp:
+        print(f"WARNING: state rebuilt since the record was saved "
+              f"({rfp[:8]} -> {sfp[:8]}) — run `evaluate.py --save` and "
+              f"re-render for consistent panels")
+    s_c, s_t = results_db.cumulative_record(conn, season, round_num)
+    conn.close()
+    summary = f"ROUND {round_num} TIPS: {correct}/{total} | SEASON: {s_c}/{s_t} ({100.0*s_c/s_t:.1f}%)"
+
+    pipeline = RoundProductionPipeline(comp_id=comp_id, round_num=round_num,
+                                       db_rows=db_rows, season_summary=summary)
+    pipeline.run()
+    print(f"  Summary: {summary}")
+    return summary
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--round', type=int, default=2)
     parser.add_argument('--comp_id', type=str, default="2026014")
     mode = parser.add_mutually_exclusive_group()
-    mode.add_argument('--compute-only', action='store_true', help='compute + save results to the DB, no images')
-    mode.add_argument('--render-only', action='store_true', help='render images from the results DB (must already be computed)')
+    mode.add_argument('--compute-only', action='store_true')
+    mode.add_argument('--render-only', action='store_true')
     args = parser.parse_args()
 
     season = int(args.comp_id[:4])
@@ -344,34 +374,7 @@ def main():
 
     # Path B: render from the results DB
     if not args.compute_only:
-        conn = results_db.connect()
-        rows = results_db.load_round(conn, season, args.round)
-        conn.close()
-        if not rows:
-            print(f"No results in DB for {season} R{args.round} — run compute first")
-            return
-        db_rows = {r['match_id']: r for r in rows}
-        correct = sum(1 for r in rows if r['correct'])
-        total = sum(1 for r in rows if r['actual_margin'] is not None)
-        conn = results_db.connect()
-        # Stale-panels guard: decisions come from the DB, but player/journey
-        # panels read the live state — warn if the state changed since the
-        # record was saved (run `evaluate.py --save` to re-align).
-        import state_store
-        sfp = state_store.meta_get(conn, 'fingerprint')
-        rfp = state_store.meta_get(conn, 'record_fingerprint')
-        if sfp and rfp and sfp != rfp:
-            print(f"WARNING: state rebuilt since the record was saved "
-                  f"({rfp[:8]} -> {sfp[:8]}) — run `evaluate.py --save` and "
-                  f"re-render for consistent panels")
-        s_c, s_t = results_db.cumulative_record(conn, season, args.round)
-        conn.close()
-        summary = f"ROUND {args.round} TIPS: {correct}/{total} | SEASON: {s_c}/{s_t} ({100.0*s_c/s_t:.1f}%)"
-
-        pipeline = RoundProductionPipeline(comp_id=args.comp_id, round_num=args.round,
-                                           db_rows=db_rows, season_summary=summary)
-        pipeline.run()
-        print(f"  Summary: {summary}")
+        render_round_from_db(season, args.round, args.comp_id)
 
 
 if __name__ == '__main__':

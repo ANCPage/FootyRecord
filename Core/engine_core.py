@@ -88,7 +88,7 @@ def home_favored(net_delta: float, h_elo: float, a_elo: float) -> bool:
     Home favored iff predicted margin > 0; dead-even margins fall to the
     higher Elo (rare — margin is a continuous linear combination).
     """
-    from calibration import current as cal
+    from Core.calibration import current as cal
     m = cal.margin(net_delta, (h_elo - a_elo) / 100.0)
     if m > 0:
         return True

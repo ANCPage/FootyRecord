@@ -3,10 +3,7 @@
 Covers: coefficient recovery on synthetic data, no-intercept semantics,
 rolling vs expanding window selection, and the too-little-data fallback.
 """
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'Core'))
 import numpy as np
 
 from Core.calibration import MIN_FIT_MATCHES, Calibration, fit_or_fallback, select_window
@@ -66,7 +63,7 @@ def test_fit_computes_dynamic_margin_divisor():
 
 
 def test_tier_cutoffs_and_tier():
-    from calibration import compute_tier_cutoffs
+    from Core.calibration import compute_tier_cutoffs
     elos = [1400 + i * 12 for i in range(18)]  # 1400..1604
     cutoffs = compute_tier_cutoffs(elos)
     assert len(cutoffs) == 3

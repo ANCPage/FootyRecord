@@ -73,5 +73,5 @@ def test_compute_round_live_path(tmp_path):
     # calibration snapshot present and schema-valid
     snap = conn.execute('SELECT decay, margin_b1, window FROM calibration_log '
                         'WHERE season=2026 AND round=2').fetchone()
-    assert snap is not None and snap[1] != 0.0 and int(snap[2]) == 2
+    assert snap is not None and snap[1] != 0.0 and snap[2] in ('roll2', 'expanding', 'fallback')
     conn.close()

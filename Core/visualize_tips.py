@@ -21,7 +21,7 @@ class TipsVisualizer(BaseVisualizer):
     def _get_confidence_grade(self, edge: float) -> str:
         """Confidence grade from the predicted margin (shared ladder — see
         calibration.confidence_grade)."""
-        from calibration import confidence_grade
+        from Core.calibration import confidence_grade
         return confidence_grade(edge)
 
     def _get_confidence_color(self, grade: str) -> str:

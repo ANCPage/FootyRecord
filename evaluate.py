@@ -11,7 +11,6 @@ Run:  python evaluate.py [season ...]
 import math
 import sys
 
-import bootstrap  # noqa: F401  (side-effect: puts Core/ on sys.path)
 from Core.calibration import fit_or_fallback, select_window
 from Core.engine_data import DataIngestor
 
@@ -32,9 +31,9 @@ def collect_rows(ing, seasons, decay=None, window=None):
             rows.append((s, r, net, elo, marg > 0.0, marg, tot, act, m_id, home, away))
         return rows
 
-    import calibration as cal
-    import config as cfg
-    from engine_core import MatchupEngine
+    import Core.calibration as cal
+    import Core.config as cfg
+    from Core.engine_core import MatchupEngine
     saved_decay = cal.current.decay_factor
     saved_window = cfg.config.window_size
     if decay is not None:
@@ -122,8 +121,8 @@ def save_rows_to_db(out_rows, cals, ing, db_path=None):
     out_rows: (season, margin_pred, home_won, margin_pred, actual_margin,
     match_id, home, away, elo_diff); cals: (season, round) -> Calibration.
     """
-    import results_db
-    from calibration import confidence_grade
+    import Core.results_db as results_db
+    from Core.calibration import confidence_grade
 
     conn = results_db.connect() if db_path is None else results_db.connect(db_path)
     # Orphan cleanup: predictions must refer to matches in the current state
@@ -156,20 +155,19 @@ def save_rows_to_db(out_rows, cals, ing, db_path=None):
                 'actual_margin': marg, 'correct': correct,
                 'delta': results_db.serialize_delta(delta),
             })
-        snaps.append({'season': s, 'round': rnd,
-                      # the PROFILE decay (what the matrices were actually built
-                      # with), not the fit's config default (provenance fix)
-                      'decay': getattr(ing.calibration, 'decay_factor', cal.decay_factor),
-                      'margin_b1': cal.margin_b1, 'margin_b2': cal.margin_b2,
-                      'total_mean': cal.total_mean, 'divisor': cal.margin_divisor,
-                      'window': cal.window, 'fitted_at': 'walk-forward'})
+        snap = results_db.build_calibration_snapshot(cal, 'walk-forward')
+        # the PROFILE decay (what the matrices were actually built with), not
+        # the fit's config default (provenance fix)
+        snap['decay'] = getattr(ing.calibration, 'decay_factor', cal.decay_factor)
+        snap['season'], snap['round'] = s, rnd
+        snaps.append(snap)
     for g in games:
         results_db.upsert_prediction(conn, g)
     for sn in snaps:
         results_db.upsert_calibration(conn, sn['season'], sn['round'], sn)
     # record_fingerprint: the state fingerprint the record was saved against —
     # render_round warns when they diverge (stale panels guard, 2026-08-11)
-    import state_store
+    import Core.state_store as state_store
     state_store.meta_set(conn, 'record_fingerprint',
                          state_store.meta_get(conn, 'fingerprint') or '')
     conn.commit()
@@ -223,7 +221,7 @@ def evaluate(seasons=None, save=False):
             print(f"  {lo:>4}-{hi:>4}      {len(m):>5}{sum(1 for r in m if r[3])/len(m):>16.3f}")
 
     # Transparency: the fit at the final round (what production would ship)
-    from calibration import current
+    from Core.calibration import current
     c = current
     print(f"\n active calibration (cache, latest fit): margin b1={c.margin_b1:.2f} b2={c.margin_b2:.2f} | "
           f"total {c.total_mean:.1f} | decay {c.decay_factor} | n={c.n_matches} [{c.window}]")

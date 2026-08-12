@@ -37,7 +37,7 @@ class EloEngine:
         E_h = 1 / (1 + 10 ** ((a_elo - h_elo) / 400.0))
         E_a = 1 - E_h
         if divisor is None:
-            from calibration import current as cal
+            from Core.calibration import current as cal
             divisor = getattr(cal, 'margin_divisor', None) or config.config.elo_margin_divisor
         margin_mult = min(3.0, max(0.5,
                                    abs(actual_delta) / divisor + 1.0))
@@ -52,7 +52,7 @@ class EloEngine:
         team_elo_history: team_id -> [(match_id, elo_before_match)]
         Additionally populates team_elo_by_round and season_start_elos.
         """
-        from engine_core import MatchupEngine
+        from Core.engine_core import MatchupEngine
 
         ratings = {}  # team_id -> current_elo
         team_elo_history = {}  # team_id -> [(match_id, elo_before_match)]
@@ -157,11 +157,11 @@ class EloEngine:
         """Distribution-relative tier via the ACTIVE calibration (top-4 ELITE /
         next-4 CONTENDER / next-5 MID-TABLE, dynamic cutoffs from the live Elo
         field); absolute thresholds only as the no-fit fallback."""
-        from calibration import current as cal
+        from Core.calibration import current as cal
         return cal.tier(elo)
 
     def get_league_rankings(self, season: int, round_num: int) -> Dict[str, int]:
-        from mappings import TEAM_DATA
+        from Core.mappings import TEAM_DATA
         team_elos = []
         for team_id in TEAM_DATA.keys():
             elo = self.get_team_elo(team_id, season, round_num)

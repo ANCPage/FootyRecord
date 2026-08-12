@@ -219,7 +219,7 @@ def load_state(conn) -> dict:
     row = c.execute("SELECT decay, margin_b1, margin_b2, total_mean, divisor,"
                     " window, n_matches, tier_cutoffs FROM calibration WHERE id=1").fetchone()
     if row:
-        from calibration import Calibration
+        from Core.calibration import Calibration
         state['calibration'] = Calibration(
             margin_b1=row[1], margin_b2=row[2], total_mean=row[3],
             margin_divisor=row[4], window=row[5], n_matches=row[6],

@@ -106,7 +106,7 @@ class MatchupVisualizer(FieldVisualizer):
         n_b = TEAM_DATA.get(team_b, {'name': team_b})['name']
         c_a, c_b = self.get_team_colors(team_a, team_b)
         net_delta = sum(delta_matrix.values())
-        from calibration import current as cal
+        from Core.calibration import current as cal
         margin = cal.margin(net_delta, (elo_a - elo_b) / 100.0)  # the one calibrated output
         winner_name = n_a if home_favored(net_delta, elo_a, elo_b) else n_b
         target_edges = [e for e, s in sorted(delta_matrix.items(), key=lambda x: abs(x[1]), reverse=True)[:20]]
@@ -166,7 +166,7 @@ class MatchupVisualizer(FieldVisualizer):
 
         net_expected = sum(expected_delta.values())
         net_actual = sum(actual_delta.values())
-        from calibration import current as cal
+        from Core.calibration import current as cal
         expected_margin = cal.margin(net_expected, (elo_a - elo_b) / 100.0)
         if actual_margin is None:
             actual_margin = net_actual

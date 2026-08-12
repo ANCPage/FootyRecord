@@ -51,7 +51,7 @@ def test_compute_matchup_returns_full_prediction(tmp_path):
     assert pred.h_tier in ('ELITE', 'CONTENDER', 'MID-TABLE', 'REBUILDING')
     assert pred.a_rank >= 1 and pred.h_rank >= 1
     # winner consistent with the decision edge (dead-even -> higher Elo)
-    from engine_core import home_favored
+    from Core.engine_core import home_favored
     assert pred.winner_id == ('H' if home_favored(pred.net_delta, pred.h_elo, pred.a_elo) else 'A')
 
 
