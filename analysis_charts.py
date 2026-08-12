@@ -65,23 +65,36 @@ roll = []
 for i, r in enumerate(rnds):
     w = [x for j, rr in enumerate(rnds) if i - 4 <= j <= i for x in by_round[rr]]
     roll.append(100 * sum(w) / len(w))
+# per-round confidence: average predicted |margin|
+conf = []
+for r in rnds:
+    gm = [x for x in rows26 if x[0] == r]
+    conf.append(sum(abs(x[3]) for x in gm) / len(gm))
 
 fig, (ax, ax2) = plt.subplots(2, 1, figsize=(13, 9),
                               gridspec_kw={'height_ratios': [1.15, 1], 'hspace': 0.42})
 fig.patch.set_facecolor(BG)
 
-# --- Panel A: the accuracy arc ---
+# --- Panel A: the accuracy arc + confidence ---
 ax.plot(rnds, cum, '-o', color=BLUE, lw=2.2, ms=5, label='cumulative accuracy')
 ax.plot(rnds, roll, '-', color=GREEN, lw=1.6, alpha=0.85, label='rolling-5 accuracy')
 ax.axhline(66.4, color=SUB, lw=1.1, ls='--', alpha=0.75)
 ax.text(rnds[0] + 0.3, 67.3, 'all-seasons average 66.4%', fontsize=8, color=SUB)
 ax.axhline(50, color=SUB, lw=0.8, ls=':', alpha=0.6)
+axc = ax.twinx()
+axc.plot(rnds, conf, '--', color=AMBER, lw=1.6, alpha=0.9, label='confidence (avg predicted |margin|)')
+axc.set_ylim(0, 40)
+axc.set_ylabel('avg predicted |margin| (pts)', color=AMBER, fontsize=8)
+axc.tick_params(axis='y', colors=AMBER, labelsize=8)
 # the story markers
 ax.annotate('R15–R21 purple patch\n47/59 (80%) — the line steepens',
             xy=(21, 74.5), xytext=(13.5, 84), fontsize=9, color=GREEN,
             arrowprops=dict(arrowstyle='->', color=GREEN, lw=1))
-ax.annotate('R22 stumble 4/9 —\nthe line dips', xy=(22, 70.4), xytext=(18.2, 58),
-            fontsize=9, color=RED, arrowprops=dict(arrowstyle='->', color=RED, lw=1))
+ax.annotate('R22 stumble 4/9 —\nmost confident round, worst result',
+            xy=(22, 70.4), xytext=(17.8, 56), fontsize=9, color=RED,
+            arrowprops=dict(arrowstyle='->', color=RED, lw=1))
+axc.annotate('confidence peaked here (23.6)', xy=(22, 23.6), xytext=(18.6, 31),
+             fontsize=8, color=AMBER, arrowprops=dict(arrowstyle='->', color=AMBER, lw=1))
 ax.scatter([22], [cum[-1]], color=BLUE, s=60, zorder=5)
 ax.text(22, cum[-1] + 1.6, f'{cum[-1]:.1f}% (133/189)', fontsize=10,
         fontweight='bold', color=BLUE, ha='center')
@@ -89,9 +102,12 @@ ax.set_xticks(rnds)
 ax.set_xticklabels([f'R{r}' for r in rnds], fontsize=7, color=TXT, rotation=45)
 ax.set_ylim(45, 95)
 ax.set_ylabel('accuracy (%)', color=TXT, fontsize=9)
-ax.set_title('The season, as an arc — cumulative and rolling accuracy through 2026',
+ax.set_title('The season, as an arc — accuracy (blue/green) vs confidence (amber)\n'
+             '2026: the model was most confident exactly when it was most wrong',
              color=TXT, fontsize=12, fontweight='bold')
-ax.legend(fontsize=8, loc='lower right', framealpha=0.9)
+h1, l1 = ax.get_legend_handles_labels()
+h2, l2 = axc.get_legend_handles_labels()
+ax.legend(h1 + h2, l1 + l2, fontsize=8, loc='lower right', framealpha=0.9)
 ax.set_facecolor(BG)
 ax.tick_params(colors=TXT, labelsize=8)
 for s in ax.spines.values():
