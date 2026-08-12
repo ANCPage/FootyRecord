@@ -112,8 +112,7 @@ ax.set_xticks(rnds[::2])
 ax.set_xticklabels([])  # labels live on the strip below (shared time axis)
 ax.set_ylim(45, 95)
 ax.set_ylabel('accuracy (%)', color=TXT, fontsize=8)
-ax.set_title('1 · The season\'s arc — and every call beneath it', color=TXT,
-             fontsize=12, loc='left')
+ax.set_title('1 · Season record, round by round', color=TXT, fontsize=12, loc='left')
 ax.set_facecolor(BG)
 ax.tick_params(colors=TXT, labelsize=7)
 for s in ax.spines.values():
@@ -132,8 +131,7 @@ ax2.set_yticklabels([str(i + 1) for i in range(max_games)], fontsize=6, color=TX
 ax2.set_xticks(rnds[::2])
 ax2.set_xticklabels([f'R{r}' for r in rnds[::2]], fontsize=6.5, color=TXT)
 ax2.set_ylabel('game', color=TXT, fontsize=7)
-ax2.set_title('2 · Round results — correct (green) / incorrect (red)', color=TXT,
-              fontsize=11, loc='left')
+ax2.set_title('2 · Every round\u2019s calls', color=TXT, fontsize=11, loc='left')
 ax2.set_facecolor(BG)
 ax2.tick_params(colors=TXT, labelsize=6)
 for s in ax2.spines.values():
@@ -163,8 +161,7 @@ ax4.set_xticks(xpos4)
 ax4.set_xticklabels(tlabels, color=TXT, fontsize=8)
 ax4.set_ylim(0, 110)
 ax4.set_ylabel('winner accuracy (%)', color=TXT, fontsize=8)
-ax4.set_title('3 · Accuracy by confidence tier', color=TXT, fontsize=12,
-              loc='left')
+ax4.set_title('3 · Accuracy by confidence level', color=TXT, fontsize=12, loc='left')
 ax4.set_facecolor(BG)
 ax4.tick_params(colors=TXT, labelsize=7)
 for s in ax4.spines.values():
