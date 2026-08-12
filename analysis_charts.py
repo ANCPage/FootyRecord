@@ -57,6 +57,7 @@ def name(t):
 
 
 # ================= Chart 1: the season story (ONE mobile-sized portrait) =================
+season_avg = 100 * sum(r[5] for r in rows26) / len(rows26)  # 2026 season average
 # brand header · Panel A arc · Panel B strip · Panel C confidence · Panel D tiers · footer
 tiers26 = defaultdict(lambda: [0, 0])
 for r in rows26:
@@ -100,8 +101,8 @@ fig.text(0.5, 0.945, 'THE 2026 SEASON, AS THE MODEL SAW IT', ha='center', va='to
 # --- Panel 1: the accuracy arc ---
 ax.plot(rnds, cum, '-o', color=BLUE, lw=2.2, ms=4, label='Cumulative accuracy')
 ax.plot(rnds, roll, '-', color=GREEN, lw=1.5, alpha=0.85, label='Rolling 5-round accuracy')
-ax.axhline(66.4, color=SUB, lw=1.1, ls='--', alpha=0.75)
-ax.text(rnds[0] + 0.3, 67.4, 'All-seasons average 66.4%', fontsize=7.5, color=SUB)
+ax.axhline(season_avg, color=SUB, lw=1.1, ls='--', alpha=0.75)
+ax.text(rnds[0] + 0.3, season_avg + 1.2, f'Season average {season_avg:.1f}%', fontsize=7.5, color=SUB)
 ax.axhline(50, color=SUB, lw=0.8, ls=':', alpha=0.6)
 ax.scatter([22], [cum[-1]], color=BLUE, s=50, zorder=5)
 ax.text(22, cum[-1] + 1.6, f'{cum[-1]:.1f}% (133/189)', fontsize=9.5,
