@@ -149,7 +149,8 @@ ax4.axhline(50, color=SUB, lw=0.8, ls=':', alpha=0.6)
 ax4.legend(handles=[Patch(color=GREEN, label='At or above season average'),
                     Patch(color=AMBER, label='Below season average'),
                     Patch(color=RED, label='At chance level (≈50%)')],
-           fontsize=7.5, loc='upper left', framealpha=0.9, ncol=3)
+           fontsize=7.5, loc='lower center', bbox_to_anchor=(0.5, 1.02),
+           framealpha=0.9, ncol=3)
 ax4.set_xticks(xpos4)
 ax4.set_xticklabels(tlabels, color=TXT, fontsize=8)
 ax4.set_ylim(0, 110)
