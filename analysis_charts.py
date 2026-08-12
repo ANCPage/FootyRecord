@@ -2,7 +2,7 @@
 fit explains — every chart is descriptive, misses shown honestly).
 
 Charts:
-  1. predicted-vs-actual margin scatter (2026 + all seasons)
+  1. the season narrative — accuracy arc + game strip (2026)
   2. confidence ladder (accuracy per grade tier, all seasons)
   3. trap quadrant (Elo gap vs actual margin — where the model errs)
 
@@ -18,6 +18,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.patches import Rectangle
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Core'))
 from Core import results_db, state_store
@@ -36,7 +37,7 @@ AMBER = '#B7791F'
 
 conn = results_db.connect()
 rows26 = list(conn.execute(
-    "SELECT round, home, away, margin, actual_margin, correct, home_elo, away_elo, grade, match_id"
+    "SELECT round, home, away, margin, actual_margin, correct, match_id"
     " FROM predictions WHERE season=2026 AND actual_margin IS NOT NULL"))
 ALL = list(conn.execute(
     "SELECT round, home, away, margin, actual_margin, correct, home_elo, away_elo, grade, match_id"
@@ -44,120 +45,96 @@ ALL = list(conn.execute(
 conn.close()
 
 
-# ---- Panel A: the scatter with a narrative ----
-fig, (ax, ax2) = plt.subplots(1, 2, figsize=(16, 7), gridspec_kw={'width_ratios': [1, 1]})
+def name(t):
+    return TEAM_MAP.get(t, t)
+
+
+# ================= Chart 1: the season narrative =================
+by_round = defaultdict(list)
+for r in rows26:
+    by_round[r[0]].append(r[5])
+rnds = sorted(by_round)
+
+# cumulative + rolling-5 accuracy
+cum, c, t = [], 0, 0
+for r in rnds:
+    c += sum(by_round[r])
+    t += len(by_round[r])
+    cum.append(100 * c / t)
+roll = []
+for i, r in enumerate(rnds):
+    w = [x for j, rr in enumerate(rnds) if i - 4 <= j <= i for x in by_round[rr]]
+    roll.append(100 * sum(w) / len(w))
+
+fig, (ax, ax2) = plt.subplots(2, 1, figsize=(13, 9),
+                              gridspec_kw={'height_ratios': [1.15, 1], 'hspace': 0.42})
 fig.patch.set_facecolor(BG)
 
-rows = rows26  # 2026 games from main
-pred = np.array([r[3] for r in rows])
-act = np.array([r[4] for r in rows])
-ok = np.array([r[5] for r in rows], dtype=bool)
-
-# zone labels
-ax.axvspan(-65, 0, 0, 0.5, color=RED, alpha=0.05)
-ax.axvspan(0, 65, 0.5, 1, color=RED, alpha=0.05)
-ax.text(60, -118, 'THE UPSETS\nmodel said home,\naway won', fontsize=8, color=RED, ha='right', alpha=0.85)
-ax.text(-60, 118, 'THE UPSETS\nmodel said away,\nhome won', fontsize=8, color=RED, ha='left', alpha=0.85, va='top')
-ax.axhline(0, color=SUB, lw=0.8, alpha=0.5)
-ax.axvline(0, color=SUB, lw=0.8, alpha=0.5)
-lim = 130
-ax.plot([-65, 65], [-65, 65], color=BLUE, lw=1.2, ls='--', alpha=0.6)
-ax.scatter(pred[ok], act[ok], c=GREEN, s=16, alpha=0.55)
-ax.scatter(pred[~ok], act[~ok], c=RED, s=26, alpha=0.85, zorder=3)
-
-# landmark annotations (team names, not ids)
-def nm(t):
-    return TEAM_MAP.get(t, t).replace(' ', '\n') if False else TEAM_MAP.get(t, t)
-
-landmarks = [
-    # (find by round+teams) — hardcode the season's stories
-]
-for r in rows:
-    if r[0] == 13 and r[2] == 'CD_T60' and r[4] < -100:
-        ax.annotate("R13: Freo beat North by 123\n(model said 30)", (r[3], r[4]),
-                    xytext=(10, -6), textcoords='offset points', fontsize=8, color=RED,
-                    arrowprops=dict(arrowstyle='->', color=RED, lw=0.8))
-    if r[0] == 22 and r[1] == 'CD_T10' and r[2] == 'CD_T120':
-        ax.annotate("R22: Richmond upset Adelaide\n(pred +49, actual -4)", (r[3], r[4]),
-                    xytext=(-14, 6), textcoords='offset points', fontsize=8, color=RED,
-                    arrowprops=dict(arrowstyle='->', color=RED, lw=0.8))
-    if r[0] == 22 and r[1] == 'CD_T70' and r[2] == 'CD_T50':
-        ax.annotate("R22: Geelong by 59\n(model said 52)", (r[3], r[4]),
-                    xytext=(10, 6), textcoords='offset points', fontsize=8, color=GREEN,
-                    arrowprops=dict(arrowstyle='->', color=GREEN, lw=0.8))
-    if r[0] == 6 and r[1] == 'CD_T100' and r[4] > 70:
-        ax.annotate("R6: North by 75", (r[3], r[4]), xytext=(8, 4),
-                    textcoords='offset points', fontsize=8, color=GREEN,
-                    arrowprops=dict(arrowstyle='->', color=GREEN, lw=0.8))
-    if r[0] == 20 and r[1] == 'CD_T80' and r[4] > 80:
-        ax.annotate("R20: Hawthorn by 88\n(model said 49)", (r[3], r[4]),
-                    xytext=(8, -14), textcoords='offset points', fontsize=8, color=GREEN,
-                    arrowprops=dict(arrowstyle='->', color=GREEN, lw=0.8))
-    if r[0] == 5 and r[1] == 'CD_T20' and r[2] == 'CD_T100':
-        ax.annotate("R5: Brisbane by 18", (r[3], r[4]), xytext=(8, -14),
-                    textcoords='offset points', fontsize=8, color=GREEN,
-                    arrowprops=dict(arrowstyle='->', color=GREEN, lw=0.8))
-
-ax.set_title('2026 — every game, model vs reality\n(green = right, red = upsets, line = perfect call)',
-             color=TXT, fontsize=11, fontweight='bold')
-ax.set_xlabel('predicted margin (pts, home frame)', color=TXT, fontsize=9)
-ax.set_ylabel('actual margin (pts, home frame)', color=TXT, fontsize=9)
-ax.set_xlim(-65, 65)
-ax.set_ylim(-lim, lim)
+# --- Panel A: the accuracy arc ---
+ax.plot(rnds, cum, '-o', color=BLUE, lw=2.2, ms=5, label='cumulative accuracy')
+ax.plot(rnds, roll, '-', color=GREEN, lw=1.6, alpha=0.85, label='rolling-5 accuracy')
+ax.axhline(66.4, color=SUB, lw=1.1, ls='--', alpha=0.75)
+ax.text(rnds[0] + 0.3, 67.3, 'all-seasons average 66.4%', fontsize=8, color=SUB)
+ax.axhline(50, color=SUB, lw=0.8, ls=':', alpha=0.6)
+# the story markers
+ax.annotate('R15–R21 purple patch\n47/59 (80%) — the line steepens',
+            xy=(21, 74.5), xytext=(13.5, 84), fontsize=9, color=GREEN,
+            arrowprops=dict(arrowstyle='->', color=GREEN, lw=1))
+ax.annotate('R22 stumble 4/9 —\nthe line dips', xy=(22, 70.4), xytext=(18.2, 58),
+            fontsize=9, color=RED, arrowprops=dict(arrowstyle='->', color=RED, lw=1))
+ax.scatter([22], [cum[-1]], color=BLUE, s=60, zorder=5)
+ax.text(22, cum[-1] + 1.6, f'{cum[-1]:.1f}% (133/189)', fontsize=10,
+        fontweight='bold', color=BLUE, ha='center')
+ax.set_xticks(rnds)
+ax.set_xticklabels([f'R{r}' for r in rnds], fontsize=7, color=TXT, rotation=45)
+ax.set_ylim(45, 95)
+ax.set_ylabel('accuracy (%)', color=TXT, fontsize=9)
+ax.set_title('The season, as an arc — cumulative and rolling accuracy through 2026',
+             color=TXT, fontsize=12, fontweight='bold')
+ax.legend(fontsize=8, loc='lower right', framealpha=0.9)
 ax.set_facecolor(BG)
 ax.tick_params(colors=TXT, labelsize=8)
 for s in ax.spines.values():
     s.set_color(SUB)
 
-# ---- Panel B: the season strip (the narrative) ----
-rounds = defaultdict(lambda: [0, 0, []])  # rnd -> [correct, total, margins]
-for r in rows:
-    rounds[r[0]][0] += r[5]
-    rounds[r[0]][1] += 1
-    rounds[r[0]][2].append(r)
-
-rnds = sorted(rounds)
-x = np.arange(len(rnds))
-accs = [100 * rounds[r][0] / rounds[r][1] for r in rnds]
-ns = [rounds[r][1] for r in rnds]
-cols = [GREEN if rounds[r][0] >= rounds[r][1] / 2 else RED for r in rnds]
-bars = ax2.bar(x, accs, color=cols, alpha=0.85, width=0.66)
-for xi, a, n, r in zip(x, accs, ns, rnds):
-    ax2.text(xi, a + 1.5, f'{rounds[r][0]}/{n}', ha='center', fontsize=7, color=TXT)
-ax2.axhline(66.4, color=BLUE, lw=1.2, ls='--', alpha=0.85)
-ax2.text(len(rnds) - 0.4, 67.5, 'model average 66.4%', fontsize=8, color=BLUE, ha='right')
-ax2.axhline(50, color=SUB, lw=0.8, ls=':', alpha=0.7)
-# story markers
-ax2.annotate('R15–R21 purple patch\n47/59 (80%)', xy=(18, 74), xytext=(14.5, 88),
-             fontsize=8, color=GREEN, arrowprops=dict(arrowstyle='->', color=GREEN, lw=0.8))
-ax2.annotate('R22 stumble 4/9', xy=(21.5, 44), xytext=(17.5, 26),
-             fontsize=8, color=RED, arrowprops=dict(arrowstyle='->', color=RED, lw=0.8))
-ax2.set_xticks(x)
+# --- Panel B: the game strip (calls in order) ---
+for i, r in enumerate(rnds):
+    for j, correct in enumerate(by_round[r]):
+        ax2.add_patch(Rectangle((i - 0.4, j - 0.4), 0.8, 0.8,
+                                facecolor=GREEN if correct else RED, alpha=0.85))
+# purple patch band
+ax2.axvspan(15 - 0.5, 21 + 0.5, color=GREEN, alpha=0.06)
+ax2.text(18, 8.6, 'R15–R21 purple patch', fontsize=8, color=GREEN, ha='center')
+ax2.axvspan(22 - 0.5, 22 + 0.5, color=RED, alpha=0.08)
+ax2.text(22, -1.6, 'R22', fontsize=7, color=RED, ha='center')
+# y: game slots (most rounds have 9)
+max_games = max(len(v) for v in by_round.values())
+ax2.set_xlim(-0.6, len(rnds) - 0.4)
+ax2.set_ylim(-0.6, max_games - 0.4)
+ax2.set_yticks(range(max_games))
+ax2.set_yticklabels([str(i + 1) for i in range(max_games)], fontsize=7, color=TXT)
+ax2.set_xticks(range(len(rnds)))
 ax2.set_xticklabels([f'R{r}' for r in rnds], fontsize=7, color=TXT, rotation=45)
-ax2.set_ylim(0, 100)
-ax2.set_title('2026 — the season as a story\n(accuracy per round, green ≥ 50%)',
+ax2.set_ylabel('game in round', color=TXT, fontsize=8)
+ax2.set_title('Every call, in order — green right, red wrong (streaks are the story)',
               color=TXT, fontsize=11, fontweight='bold')
-ax2.set_ylabel('round accuracy (%)', color=TXT, fontsize=9)
 ax2.set_facecolor(BG)
-ax2.tick_params(colors=TXT, labelsize=8)
+ax2.tick_params(colors=TXT, labelsize=7)
 for s in ax2.spines.values():
     s.set_color(SUB)
 
-fig.tight_layout()
-fig.savefig(f'{OUT}/1_margin_scatter.png', facecolor=BG, dpi=130)
+fig.savefig(f'{OUT}/1_season_arc.png', facecolor=BG, dpi=130)
 plt.close(fig)
 
-
-# ---- Chart 2: confidence ladder (all seasons) ----
+# ================= Chart 2: confidence ladder (all seasons) =================
 tiers = defaultdict(lambda: [0, 0])
 for r in ALL:
     tiers[r[8]][0] += r[5]
     tiers[r[8]][1] += 1
 order = ['F', 'E-', 'E', 'E+', 'D-', 'D', 'D+', 'C-', 'C', 'C+', 'B-', 'B', 'B+', 'A-', 'A', 'A+']
-names = ['F', 'E-', 'E', 'E+', 'D-', 'D', 'D+', 'C-', 'C', 'C+', 'B-', 'B', 'B+', 'A-', 'A', 'A+']
-accs = [100 * tiers[t][0] / tiers[t][1] for t in order if tiers[t][1]]
-ns = [tiers[t][1] for t in order if tiers[t][1]]
 labels = [t for t in order if tiers[t][1]]
+accs = [100 * tiers[t][0] / tiers[t][1] for t in labels]
+ns = [tiers[t][1] for t in labels]
 overall = 100 * sum(tiers[t][0] for t in order) / sum(tiers[t][1] for t in order)
 fig, ax = plt.subplots(figsize=(9, 6))
 fig.patch.set_facecolor(BG)
@@ -184,7 +161,7 @@ fig.tight_layout()
 fig.savefig(f'{OUT}/2_confidence_ladder.png', facecolor=BG, dpi=130)
 plt.close(fig)
 
-# ---- Chart 3: trap quadrant (all seasons) ----
+# ================= Chart 3: trap quadrant (all seasons) =================
 # home_elo/away_elo can be NULL in older rows — join the state's elo_history
 sconn = state_store.connect()
 elo_at = {}
@@ -205,7 +182,6 @@ act = np.array([r[4] for r in ALL])
 ok = np.array([r[5] for r in ALL], dtype=bool)
 fig, ax = plt.subplots(figsize=(10, 6.2))
 fig.patch.set_facecolor(BG)
-# trap zone: clear favorite by Elo (>= 45 pts) that LOST at home
 ax.axvspan(45, elo_gap.max() + 10, ymin=0, ymax=0.5, color=RED, alpha=0.06)
 ax.axvspan(-(elo_gap.max() + 10), -45, ymin=0.5, ymax=1, color=RED, alpha=0.06)
 ax.axhline(0, color=SUB, lw=0.8, alpha=0.4)
@@ -216,21 +192,24 @@ ax.set_title('The trap zone — strong favourites that lost (all seasons)',
              color=TXT, fontsize=12, fontweight='bold')
 ax.set_xlabel('Elo gap, home minus away (pts)', color=TXT, fontsize=9)
 ax.set_ylabel('actual margin, home frame (pts)', color=TXT, fontsize=9)
-ax.text(elo_gap.max() - 8, -ax.get_ylim()[1] * 0.92, 'favourite lost\nat home', fontsize=8,
-        color=RED, ha='right', alpha=0.8)
 ax.set_facecolor(BG)
 ax.tick_params(colors=TXT, labelsize=8)
 for s in ax.spines.values():
     s.set_color(SUB)
 worst = sorted([r for r in ALL if not r[5]], key=lambda r: -abs(gap(r)))[:2]
 for r in worst:
-    wnm = TEAM_MAP.get(r[2], r[2])
+    wnm = name(r[2])
     ax.annotate(f'R{r[0]} {wnm[:7]} won', (gap(r), r[4]), xytext=(6, 6),
                 textcoords='offset points', fontsize=7, color=RED)
 ax.legend(fontsize=7, loc='upper left', framealpha=0.9)
 fig.tight_layout()
 fig.savefig(f'{OUT}/3_trap_quadrant.png', facecolor=BG, dpi=130)
 plt.close(fig)
+
+# clean up the old narrative scatter name (renamed to the arc chart)
+old = f'{OUT}/1_margin_scatter.png'
+if os.path.exists(old):
+    os.remove(old)
 
 print(f'charts written to {OUT}/')
 for f in sorted(os.listdir(OUT)):
