@@ -141,7 +141,7 @@ ax2.set_xticks(rnds[::2])
 ax2.set_xticklabels([f'R{r}' for r in rnds[::2]], fontsize=6.5, color=TXT)
 ax2.set_ylabel('game in round', color=TXT, fontsize=7)
 ax2.set_title('2 · Every call, in order (green right, red wrong)', color=TXT,
-              fontsize=12, , loc='left')
+              fontsize=12, loc='left')
 ax2.set_facecolor(BG)
 ax2.tick_params(colors=TXT, labelsize=6.5)
 for s in ax2.spines.values():
@@ -159,7 +159,7 @@ ax3.set_xticklabels([f'R{r}' for r in rnds[::2]], fontsize=6.5, color=TXT)
 ax3.set_ylim(0, 40)
 ax3.set_ylabel('avg predicted |margin| (pts)', color=TXT, fontsize=7)
 ax3.set_title('3 · Confidence per round — and where it hurt', color=TXT,
-              fontsize=12, , loc='left')
+              fontsize=12, loc='left')
 ax3.set_facecolor(BG)
 ax3.tick_params(colors=TXT, labelsize=7)
 for s in ax3.spines.values():
