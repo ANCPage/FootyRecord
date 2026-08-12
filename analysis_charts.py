@@ -74,27 +74,27 @@ landmarks = [
 ]
 for r in rows:
     if r[0] == 13 and r[2] == 'CD_T60' and r[4] < -100:
-        ax.annotate(f"R13: Freo beat North by 123\n(model said 30)", (r[3], r[4]),
+        ax.annotate("R13: Freo beat North by 123\n(model said 30)", (r[3], r[4]),
                     xytext=(10, -6), textcoords='offset points', fontsize=8, color=RED,
                     arrowprops=dict(arrowstyle='->', color=RED, lw=0.8))
     if r[0] == 22 and r[1] == 'CD_T10' and r[2] == 'CD_T120':
-        ax.annotate(f"R22: Richmond upset Adelaide\n(pred +49, actual -4)", (r[3], r[4]),
+        ax.annotate("R22: Richmond upset Adelaide\n(pred +49, actual -4)", (r[3], r[4]),
                     xytext=(-14, 6), textcoords='offset points', fontsize=8, color=RED,
                     arrowprops=dict(arrowstyle='->', color=RED, lw=0.8))
     if r[0] == 22 and r[1] == 'CD_T70' and r[2] == 'CD_T50':
-        ax.annotate(f"R22: Geelong by 59\n(model said 52)", (r[3], r[4]),
+        ax.annotate("R22: Geelong by 59\n(model said 52)", (r[3], r[4]),
                     xytext=(10, 6), textcoords='offset points', fontsize=8, color=GREEN,
                     arrowprops=dict(arrowstyle='->', color=GREEN, lw=0.8))
     if r[0] == 6 and r[1] == 'CD_T100' and r[4] > 70:
-        ax.annotate(f"R6: North by 75", (r[3], r[4]), xytext=(8, 4),
+        ax.annotate("R6: North by 75", (r[3], r[4]), xytext=(8, 4),
                     textcoords='offset points', fontsize=8, color=GREEN,
                     arrowprops=dict(arrowstyle='->', color=GREEN, lw=0.8))
     if r[0] == 20 and r[1] == 'CD_T80' and r[4] > 80:
-        ax.annotate(f"R20: Hawthorn by 88\n(model said 49)", (r[3], r[4]),
+        ax.annotate("R20: Hawthorn by 88\n(model said 49)", (r[3], r[4]),
                     xytext=(8, -14), textcoords='offset points', fontsize=8, color=GREEN,
                     arrowprops=dict(arrowstyle='->', color=GREEN, lw=0.8))
     if r[0] == 5 and r[1] == 'CD_T20' and r[2] == 'CD_T100':
-        ax.annotate(f"R5: Brisbane by 18", (r[3], r[4]), xytext=(8, -14),
+        ax.annotate("R5: Brisbane by 18", (r[3], r[4]), xytext=(8, -14),
                     textcoords='offset points', fontsize=8, color=GREEN,
                     arrowprops=dict(arrowstyle='->', color=GREEN, lw=0.8))
 
