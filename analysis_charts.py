@@ -155,7 +155,7 @@ ax4.axhline(overall26, color=BLUE, lw=1.3, ls='--', alpha=0.9)
 ax4.axhline(50, color=SUB, lw=0.8, ls=':', alpha=0.6)
 ax4.legend(handles=[Patch(color=GREEN, label='At or above season average'),
                     Patch(color=AMBER, label='Below season average'),
-                    Patch(color=RED, label='Coin-flip zone')],
+                    Patch(color=RED, label='At chance level (≈50%)')],
            fontsize=7.5, loc='lower right', framealpha=0.9, ncol=3)
 ax4.set_xticks(xpos4)
 ax4.set_xticklabels(tlabels, color=TXT, fontsize=8)
