@@ -172,8 +172,8 @@ for s in ax4.spines.values():
 
 # honesty footer (audit T3)
 fig.text(0.5, 0.012,
-         'walk-forward picks · draws count as misses · direction from the raw delta, size from the fit',
-         ha='center', va='bottom', fontsize=7.5, color=SUB, family='Roboto')
+         'Every pick uses only the information available before the round · draws count as misses',
+         ha='center', va='bottom', fontsize=8, color=SUB)
 
 fig.savefig(f'{OUT}/1_season_story.png', facecolor=BG, dpi=130)
 plt.close(fig)
