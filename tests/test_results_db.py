@@ -23,7 +23,7 @@ def test_schema_and_upsert_round(tmp_path):
     conn = results_db.connect(db)
     n = results_db.upsert_round(conn, 2026, 1, [_game()], {
         'decay': 0.5, 'margin_b1': 109.0, 'margin_b2': 3.5, 'total_mean': 164.0,
-        'divisor': 0.3, 'window_seasons': 2, 'fitted_at': '2026-08-11T00:00:00+00:00'})
+        'divisor': 0.3, 'window': 2, 'fitted_at': '2026-08-11T00:00:00+00:00'})
     assert n == 1
     rows = results_db.load_round(conn, 2026, 1)
     assert len(rows) == 1
@@ -36,7 +36,7 @@ def test_upsert_is_idempotent(tmp_path):
     db = os.path.join(str(tmp_path), 'test.db')
     conn = results_db.connect(db)
     snap = {'decay': 0.5, 'margin_b1': 1, 'margin_b2': 1, 'total_mean': 1,
-            'divisor': 1, 'window_seasons': 2, 'fitted_at': 'x'}
+            'divisor': 1, 'window': 2, 'fitted_at': 'x'}
     results_db.upsert_round(conn, 2026, 1, [_game()], snap)
     results_db.upsert_round(conn, 2026, 1, [_game(margin=14.0)], snap)
     rows = results_db.load_round(conn, 2026, 1)
@@ -49,7 +49,7 @@ def test_cumulative_and_team_records(tmp_path):
     db = os.path.join(str(tmp_path), 'test.db')
     conn = results_db.connect(db)
     snap = {'decay': 0.5, 'margin_b1': 1, 'margin_b2': 1, 'total_mean': 1,
-            'divisor': 1, 'window_seasons': 2, 'fitted_at': 'x'}
+            'divisor': 1, 'window': 2, 'fitted_at': 'x'}
     results_db.upsert_round(conn, 2026, 1, [_game(correct=1), _game(mid='CD_M20260140102', home='C', away='D', winner='C', actual_margin=-4, correct=0)], snap)
     results_db.upsert_round(conn, 2026, 2, [_game(mid='CD_M20260140201', home='H', away='D', winner='H', correct=1, round_num=2)], snap)
     assert results_db.cumulative_record(conn, 2026, 1) == (1, 2)

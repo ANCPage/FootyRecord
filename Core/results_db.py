@@ -63,7 +63,7 @@ def upsert_round(conn, season: int, round_num: int, games: list, calibration: di
         " VALUES (?,?,?,?,?,?,?,?,?)",
         (season, round_num, calibration['decay'], calibration['margin_b1'],
          calibration['margin_b2'], calibration['total_mean'], calibration['divisor'],
-         calibration['window_seasons'], calibration['fitted_at']),
+         calibration['window'], calibration['fitted_at']),
     )
     conn.commit()
     return len(games)

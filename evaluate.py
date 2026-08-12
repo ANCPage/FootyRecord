@@ -157,7 +157,10 @@ def save_rows_to_db(out_rows, cals, ing, db_path=None):
                 'actual_margin': marg, 'correct': correct,
                 'delta': results_db.serialize_delta(delta),
             })
-        snaps.append({'season': s, 'round': rnd, 'decay': cal.decay_factor,
+        snaps.append({'season': s, 'round': rnd,
+                      # the PROFILE decay (what the matrices were actually built
+                      # with), not the fit's config default (provenance fix)
+                      'decay': getattr(ing.calibration, 'decay_factor', cal.decay_factor),
                       'margin_b1': cal.margin_b1, 'margin_b2': cal.margin_b2,
                       'total_mean': cal.total_mean, 'divisor': cal.margin_divisor,
                       'window': cal.window, 'fitted_at': 'walk-forward'})

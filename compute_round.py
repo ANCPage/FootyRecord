@@ -26,18 +26,30 @@ DATA_DIR = config.DATA_DIR
 
 
 def load_ingestor():
-    ing = DataIngestor(DATA_DIR)
+    ing = DataIngestor('CSV_DATA')
     ing.load_all_data()
+    if not ing.team_positions:
+        ing.profile_all_teams()  # live path needs profiles (regression: was missing)
     return ing
 
 
 def compute_round(ing, conn, season: int, round_num: int) -> int:
-    """Compute one round's predictions and upsert them. Returns game count."""
-    games = []
+    """Compute one round's predictions and upsert them. Returns game count.
+
+    LIVE rounds only: if every match in the round already has scores, the
+    walk-forward record owns it (use `evaluate.py --save`) and nothing is
+    written.
+    """
     matches = sorted(
         (m for m, i in ing.match_info.items()
          if i.season == season and i.round == round_num and not m.startswith('POST_')),
         key=lambda m: m)
+    if not matches:
+        return 0
+    if all(ing.match_info[m].home_score + ing.match_info[m].away_score > 0
+           for m in matches):
+        return 0  # played round — not the live path's job
+    games = []
     for m_id in matches:
         info = ing.match_info[m_id]
         pred = compute_matchup(ing, info.home, info.away, season, round_num)
@@ -70,7 +82,7 @@ def compute_round(ing, conn, season: int, round_num: int) -> int:
         'margin_b2': cal.current.margin_b2,
         'total_mean': cal.current.total_mean,
         'divisor': cal.current.margin_divisor,
-        'window_seasons': cal.WINDOW_SEASONS,
+        'window': cal.WINDOW_SEASONS,
         'fitted_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
     }
     results_db.upsert_round(conn, season, round_num, games, snapshot)
