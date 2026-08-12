@@ -16,26 +16,33 @@ from collections import defaultdict
 import matplotlib
 
 matplotlib.use('Agg')
+import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.patches import Rectangle
+from matplotlib.patches import Patch, Rectangle
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Core'))
-from Core import results_db, state_store
+from Core.config import FONTS_DIR
 from Core.mappings import TEAM_MAP
+from Core.results_db import connect
+from Core.theme import BG_COLOR, SUB_TEXT_COLOR, TEXT_COLOR
+
+# match the card system's typography (audit S2/S3)
+fm.fontManager.addfont(os.path.join(FONTS_DIR, 'Roboto-Regular.ttf'))
+fm.fontManager.addfont(os.path.join(FONTS_DIR, 'FasterOne.ttf'))
+plt.rcParams['font.family'] = 'Roboto'
+plt.rcParams['axes.unicode_minus'] = False
 
 OUT = 'ROUND_IMAGES_UPDATE/2026/ANALYSIS'
 os.makedirs(OUT, exist_ok=True)
 
-BG = '#F4F1EA'
-TXT = '#3E3A35'
-SUB = '#6A655F'
+BG, TXT, SUB = BG_COLOR, TEXT_COLOR, SUB_TEXT_COLOR
 GREEN = '#2F855A'
 RED = '#C53030'
 BLUE = '#2B6CB0'
 AMBER = '#B7791F'
 
-conn = results_db.connect()
+conn = connect()
 rows26 = list(conn.execute(
     "SELECT round, home, away, margin, actual_margin, correct, match_id, grade"
     " FROM predictions WHERE season=2026 AND actual_margin IS NOT NULL"))
@@ -50,7 +57,7 @@ def name(t):
 
 
 # ================= Chart 1: the season story (ONE mobile-sized portrait) =================
-# Panel A: accuracy arc · Panel B: game strip · Panel C: accuracy by confidence tier
+# brand header · Panel A arc · Panel B strip · Panel C confidence · Panel D tiers · footer
 tiers26 = defaultdict(lambda: [0, 0])
 for r in rows26:
     tiers26[r[7]][0] += r[5]
@@ -61,7 +68,7 @@ taccs = [100 * tiers26[t][0] / tiers26[t][1] for t in tlabels]
 tns = [tiers26[t][1] for t in tlabels]
 overall26 = 100 * sum(tiers26[t][0] for t in tlabels) / sum(tiers26[t][1] for t in tlabels)
 
-# per-round data: calls, cumulative + rolling-5 accuracy
+# per-round data: calls, cumulative + rolling-5 accuracy, confidence (avg |margin|)
 by_round = defaultdict(list)
 for r in rows26:
     by_round[r[0]].append(r[5])
@@ -75,11 +82,20 @@ roll = []
 for i, r in enumerate(rnds):
     w = [x for j, rr in enumerate(rnds) if i - 4 <= j <= i for x in by_round[rr]]
     roll.append(100 * sum(w) / len(w))
+conf = []
+for r in rnds:
+    gm = [x for x in rows26 if x[0] == r]
+    conf.append(sum(abs(x[3]) for x in gm) / len(gm))
 
-fig, (ax, ax2, ax3) = plt.subplots(3, 1, figsize=(7.5, 13.4),
-                                   gridspec_kw={'height_ratios': [1.05, 0.9, 0.75],
-                                                'hspace': 0.55})
+fig, (ax, ax2, ax3, ax4) = plt.subplots(
+    4, 1, figsize=(7.5, 14.2),
+    gridspec_kw={'height_ratios': [1.0, 0.82, 0.5, 0.68], 'hspace': 0.6})
 fig.patch.set_facecolor(BG)
+# brand header (audit S1)
+fig.text(0.5, 0.975, 'FOOTYRECORD', ha='center', va='top', fontsize=26,
+         color=TXT, family='Faster One')
+fig.text(0.5, 0.948, 'THE 2026 SEASON, AS THE MODEL SAW IT', ha='center', va='top',
+         fontsize=10, color=SUB, family='Roboto')
 
 # --- Panel A: the accuracy arc ---
 ax.plot(rnds, cum, '-o', color=BLUE, lw=2.2, ms=4, label='cumulative accuracy')
@@ -87,21 +103,21 @@ ax.plot(rnds, roll, '-', color=GREEN, lw=1.5, alpha=0.85, label='rolling-5 accur
 ax.axhline(66.4, color=SUB, lw=1.1, ls='--', alpha=0.75)
 ax.text(rnds[0] + 0.3, 67.4, 'all-seasons avg 66.4%', fontsize=7.5, color=SUB)
 ax.axhline(50, color=SUB, lw=0.8, ls=':', alpha=0.6)
-ax.annotate('R15–R21 purple patch\n47/59 (80%)', xy=(21, 74.5), xytext=(13, 84),
+ax.annotate('R15–R21 purple patch\n47/59 (80%)', xy=(21, 74.5), xytext=(12.8, 85),
             fontsize=8.5, color=GREEN,
             arrowprops=dict(arrowstyle='->', color=GREEN, lw=1))
-ax.annotate('R22 stumble 4/9', xy=(22, 70.4), xytext=(18.3, 57),
+ax.annotate('R22 stumble 4/9', xy=(22, 70.4), xytext=(16.6, 54),
             fontsize=8.5, color=RED, arrowprops=dict(arrowstyle='->', color=RED, lw=1))
 ax.scatter([22], [cum[-1]], color=BLUE, s=50, zorder=5)
 ax.text(22, cum[-1] + 1.6, f'{cum[-1]:.1f}% (133/189)', fontsize=9.5,
-        fontweight='bold', color=BLUE, ha='center')
-ax.set_xticks(rnds)
-ax.set_xticklabels([f'R{r}' for r in rnds], fontsize=6.5, color=TXT, rotation=45)
+        color=BLUE, ha='center')
+ax.set_xticks(rnds[::2])  # thinned labels (audit S5)
+ax.set_xticklabels([f'R{r}' for r in rnds[::2]], fontsize=6.5, color=TXT)
 ax.set_ylim(45, 95)
 ax.set_ylabel('accuracy (%)', color=TXT, fontsize=8)
-ax.set_title('1 · The season as an arc — 2026', color=TXT, fontsize=12,
-             fontweight='bold', loc='left')
-ax.legend(fontsize=7.5, loc='lower right', framealpha=0.9)
+ax.set_title('1 · The season as an arc', color=TXT, fontsize=12,
+             , loc='left')
+ax.legend(fontsize=7.5, loc='upper left', framealpha=0.9)  # moved (audit S4)
 ax.set_facecolor(BG)
 ax.tick_params(colors=TXT, labelsize=7)
 for s in ax.spines.values():
@@ -115,43 +131,73 @@ for i, r in enumerate(rnds):
 ax2.axvspan(15 - 0.5, 21 + 0.5, color=GREEN, alpha=0.06)
 ax2.text(18, 8.7, 'R15–R21 purple patch', fontsize=7.5, color=GREEN, ha='center')
 ax2.axvspan(22 - 0.5, 22 + 0.5, color=RED, alpha=0.08)
+ax2.text(22, -1.5, 'R22', fontsize=7, color=RED, ha='center', )  # labelled (audit S6)
 max_games = max(len(v) for v in by_round.values())
 ax2.set_xlim(-0.6, len(rnds) - 0.4)
-ax2.set_ylim(-0.6, max_games - 0.4)
+ax2.set_ylim(-1.9, max_games - 0.2)
 ax2.set_yticks(range(max_games))
 ax2.set_yticklabels([str(i + 1) for i in range(max_games)], fontsize=6.5, color=TXT)
-ax2.set_xticks(range(len(rnds)))
-ax2.set_xticklabels([f'R{r}' for r in rnds], fontsize=6.5, color=TXT, rotation=45)
+ax2.set_xticks(rnds[::2])
+ax2.set_xticklabels([f'R{r}' for r in rnds[::2]], fontsize=6.5, color=TXT)
 ax2.set_ylabel('game in round', color=TXT, fontsize=7)
 ax2.set_title('2 · Every call, in order (green right, red wrong)', color=TXT,
-              fontsize=12, fontweight='bold', loc='left')
+              fontsize=12, , loc='left')
 ax2.set_facecolor(BG)
 ax2.tick_params(colors=TXT, labelsize=6.5)
 for s in ax2.spines.values():
     s.set_color(SUB)
 
-# --- Panel C: accuracy by confidence tier ---
-xpos = np.arange(len(tlabels))
-colors = [GREEN if a >= overall26 else (AMBER if a >= 55 else RED) for a in taccs]
-ax3.bar(xpos, taccs, color=colors, alpha=0.85, width=0.62)
-for xi, (a, n) in enumerate(zip(taccs, tns)):
-    ax3.text(xi, a + 1.5, f'{a:.0f}%', ha='center', fontsize=8, fontweight='bold', color=TXT)
-    ax3.text(xi, 1.5, f'n={n}', ha='center', fontsize=6.5, color=BG, fontweight='bold')
-ax3.axhline(overall26, color=BLUE, lw=1.3, ls='--', alpha=0.9)
-ax3.text(len(tlabels) - 0.4, overall26 + 1.6, f'season avg {overall26:.1f}%',
-         fontsize=7.5, color=BLUE, ha='right')
-ax3.axhline(50, color=SUB, lw=0.8, ls=':', alpha=0.7)
-ax3.text(len(tlabels) - 0.4, 51, 'coin flip', fontsize=7, color=SUB, ha='right')
-ax3.set_xticks(xpos)
-ax3.set_xticklabels(tlabels, color=TXT, fontsize=8)
-ax3.set_ylim(0, 110)
-ax3.set_ylabel('winner accuracy (%)', color=TXT, fontsize=8)
-ax3.set_title('3 · Accuracy by confidence tier', color=TXT, fontsize=12,
-              fontweight='bold', loc='left')
+# --- Panel C: confidence per round — where it peaked and what it cost (audit T2) ---
+xpos = np.arange(len(rnds))
+bar_colors = [RED if r == 22 else AMBER for r in rnds]
+ax3.bar(xpos, conf, color=bar_colors, alpha=0.85, width=0.72)
+ax3.annotate('most confident round —\nworst result (4/9)', xy=(22, 23.6),
+             xytext=(15.5, 33), fontsize=8, color=RED,
+             arrowprops=dict(arrowstyle='->', color=RED, lw=1))
+ax3.set_xticks(rnds[::2])
+ax3.set_xticklabels([f'R{r}' for r in rnds[::2]], fontsize=6.5, color=TXT)
+ax3.set_ylim(0, 40)
+ax3.set_ylabel('avg predicted |margin| (pts)', color=TXT, fontsize=7)
+ax3.set_title('3 · Confidence per round — and where it hurt', color=TXT,
+              fontsize=12, , loc='left')
 ax3.set_facecolor(BG)
 ax3.tick_params(colors=TXT, labelsize=7)
 for s in ax3.spines.values():
     s.set_color(SUB)
+
+# --- Panel D: accuracy by confidence tier ---
+xpos4 = np.arange(len(tlabels))
+colors4 = [GREEN if a >= overall26 else (AMBER if a >= 55 else RED) for a in taccs]
+ax4.bar(xpos4, taccs, color=colors4, alpha=0.85, width=0.62)
+for xi, (a, n) in enumerate(zip(taccs, tns)):
+    ax4.text(xi, a + 1.5, f'{a:.0f}%', ha='center', fontsize=8, color=TXT)
+    ax4.text(xi, 1.5, f'n={n}', ha='center', fontsize=6.5, color=BG, )
+ax4.axhline(overall26, color=BLUE, lw=1.3, ls='--', alpha=0.9)
+ax4.text(len(tlabels) - 0.4, overall26 + 1.6, f'season avg {overall26:.1f}%',
+         fontsize=7.5, color=BLUE, ha='right')
+ax4.axhline(50, color=SUB, lw=0.8, ls=':', alpha=0.7)
+ax4.text(len(tlabels) - 0.4, 51, 'coin flip', fontsize=7, color=SUB, ha='right')
+# tier colour legend (audit T4)
+
+ax4.legend(handles=[Patch(color=GREEN, label='at/above season avg'),
+                    Patch(color=AMBER, label='below avg'),
+                    Patch(color=RED, label='coin-flip zone')],
+           fontsize=6.5, loc='lower right', framealpha=0.9, ncol=3)
+ax4.set_xticks(xpos4)
+ax4.set_xticklabels(tlabels, color=TXT, fontsize=8)
+ax4.set_ylim(0, 110)
+ax4.set_ylabel('winner accuracy (%)', color=TXT, fontsize=8)
+ax4.set_title('4 · Accuracy by confidence tier', color=TXT, fontsize=12,
+              , loc='left')
+ax4.set_facecolor(BG)
+ax4.tick_params(colors=TXT, labelsize=7)
+for s in ax4.spines.values():
+    s.set_color(SUB)
+
+# honesty footer (audit T3)
+fig.text(0.5, 0.012,
+         'walk-forward picks · draws count as misses · direction from the raw delta, size from the fit',
+         ha='center', va='bottom', fontsize=7.5, color=SUB, family='Roboto')
 
 fig.savefig(f'{OUT}/1_season_story.png', facecolor=BG, dpi=130)
 plt.close(fig)
@@ -182,7 +228,7 @@ ax.set_yticklabels(labels, color=TXT, fontsize=9)
 ax.set_xlim(0, 108)
 ax.set_xlabel('winner accuracy (%)', color=TXT, fontsize=9)
 ax.set_title('Confidence ladder — every tier is measured, weak ones shown honestly',
-             color=TXT, fontsize=12, fontweight='bold')
+             color=TXT, fontsize=12, )
 ax.set_facecolor(BG)
 ax.tick_params(colors=TXT, labelsize=8)
 for s in ax.spines.values():
@@ -193,7 +239,7 @@ plt.close(fig)
 
 # ================= Chart 3: trap quadrant (all seasons) =================
 # home_elo/away_elo can be NULL in older rows — join the state's elo_history
-sconn = state_store.connect()
+sconn = connect()
 elo_at = {}
 for team, m_id, elo in sconn.execute("SELECT team, m_id, elo FROM elo_history"):
     elo_at.setdefault(m_id, {})[team] = elo
@@ -219,7 +265,7 @@ ax.axvline(0, color=SUB, lw=0.8, alpha=0.4)
 ax.scatter(elo_gap[ok], act[ok], c=GREEN, s=14, alpha=0.5, label='correct')
 ax.scatter(elo_gap[~ok], act[~ok], c=RED, s=18, alpha=0.75, label='wrong')
 ax.set_title('The trap zone — strong favourites that lost (all seasons)',
-             color=TXT, fontsize=12, fontweight='bold')
+             color=TXT, fontsize=12, )
 ax.set_xlabel('Elo gap, home minus away (pts)', color=TXT, fontsize=9)
 ax.set_ylabel('actual margin, home frame (pts)', color=TXT, fontsize=9)
 ax.set_facecolor(BG)
