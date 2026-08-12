@@ -88,16 +88,16 @@ for r in rnds:
     conf.append(sum(abs(x[3]) for x in gm) / len(gm))
 
 fig, (ax, ax2, ax4) = plt.subplots(
-    3, 1, figsize=(7.5, 13.6),
-    gridspec_kw={'height_ratios': [1.05, 0.85, 0.7], 'hspace': 0.55})
+    3, 1, figsize=(7.5, 13.4),
+    gridspec_kw={'height_ratios': [1.0, 0.34, 0.72], 'hspace': 0.5})
 fig.patch.set_facecolor(BG)
 # brand header (audit S1)
-fig.text(0.5, 0.975, 'FOOTYRECORD', ha='center', va='top', fontsize=26,
+fig.text(0.5, 0.972, 'FOOTYRECORD', ha='center', va='top', fontsize=26,
          color=TXT, family='Faster One')
-fig.text(0.5, 0.948, 'THE 2026 SEASON, AS THE MODEL SAW IT', ha='center', va='top',
+fig.text(0.5, 0.945, 'THE 2026 SEASON, AS THE MODEL SAW IT', ha='center', va='top',
          fontsize=10, color=SUB, family='Roboto')
 
-# --- Panel A: the accuracy arc ---
+# --- Panel 1: the accuracy arc ---
 ax.plot(rnds, cum, '-o', color=BLUE, lw=2.2, ms=4, label='cumulative accuracy')
 ax.plot(rnds, roll, '-', color=GREEN, lw=1.5, alpha=0.85, label='rolling-5 accuracy')
 ax.axhline(66.4, color=SUB, lw=1.1, ls='--', alpha=0.75)
@@ -106,46 +106,51 @@ ax.axhline(50, color=SUB, lw=0.8, ls=':', alpha=0.6)
 ax.annotate('R15–R21 purple patch\n47/59 (80%)', xy=(21, 74.5), xytext=(12.8, 85),
             fontsize=8.5, color=GREEN,
             arrowprops=dict(arrowstyle='->', color=GREEN, lw=1))
-ax.annotate('R22 stumble 4/9 — most confident round,\nworst result', xy=(22, 70.4), xytext=(15.4, 54),
-            fontsize=8.5, color=RED, arrowprops=dict(arrowstyle='->', color=RED, lw=1))
+ax.annotate('R22 stumble 4/9 — most confident round,\nworst result', xy=(22, 70.4),
+            xytext=(15.0, 54), fontsize=8.5, color=RED,
+            arrowprops=dict(arrowstyle='->', color=RED, lw=1))
 ax.scatter([22], [cum[-1]], color=BLUE, s=50, zorder=5)
 ax.text(22, cum[-1] + 1.6, f'{cum[-1]:.1f}% (133/189)', fontsize=9.5,
         color=BLUE, ha='center')
-ax.set_xticks(rnds[::2])  # thinned labels (audit S5)
-ax.set_xticklabels([f'R{r}' for r in rnds[::2]], fontsize=6.5, color=TXT)
+ax.set_xlim(-0.6, len(rnds) - 0.4)
+ax.set_xticks(rnds[::2])
+ax.set_xticklabels([])  # labels live on the strip below (shared time axis)
 ax.set_ylim(45, 95)
 ax.set_ylabel('accuracy (%)', color=TXT, fontsize=8)
-ax.set_title('1 · The season as an arc', color=TXT, fontsize=12,
-             loc='left')
-ax.legend(fontsize=7.5, loc='upper left', framealpha=0.9)  # moved (audit S4)
+ax.set_title('1 · The season\'s arc — and every call beneath it', color=TXT,
+             fontsize=12, loc='left')
+ax.legend(fontsize=7.5, loc='upper left', framealpha=0.9)
 ax.set_facecolor(BG)
 ax.tick_params(colors=TXT, labelsize=7)
 for s in ax.spines.values():
     s.set_color(SUB)
 
-# --- Panel B: the game strip (calls in order) ---
+# --- Panel 2: the strip as a rug under the arc (shared time axis) ---
 for i, r in enumerate(rnds):
     for j, correct in enumerate(by_round[r]):
         ax2.add_patch(Rectangle((i - 0.4, j - 0.4), 0.8, 0.8,
-                                facecolor=GREEN if correct else RED, alpha=0.85))
-ax2.axvspan(15 - 0.5, 21 + 0.5, color=GREEN, alpha=0.06)
-ax2.text(18, 8.7, 'R15–R21 purple patch', fontsize=7.5, color=GREEN, ha='center')
-ax2.axvspan(22 - 0.5, 22 + 0.5, color=RED, alpha=0.08)
-ax2.text(22, -1.5, 'R22', fontsize=7, color=RED, ha='center', )  # labelled (audit S6)
+                                facecolor=GREEN if correct else RED, alpha=0.9))
 max_games = max(len(v) for v in by_round.values())
 ax2.set_xlim(-0.6, len(rnds) - 0.4)
-ax2.set_ylim(-1.9, max_games - 0.2)
+ax2.set_ylim(-1.7, max_games - 0.4)
 ax2.set_yticks(range(max_games))
-ax2.set_yticklabels([str(i + 1) for i in range(max_games)], fontsize=6.5, color=TXT)
+ax2.set_yticklabels([str(i + 1) for i in range(max_games)], fontsize=6, color=TXT)
 ax2.set_xticks(rnds[::2])
 ax2.set_xticklabels([f'R{r}' for r in rnds[::2]], fontsize=6.5, color=TXT)
-ax2.set_ylabel('game in round', color=TXT, fontsize=7)
-ax2.set_title('2 · Every call, in order (green right, red wrong)', color=TXT,
-              fontsize=12, loc='left')
+ax2.set_ylabel('game', color=TXT, fontsize=7)
+ax2.set_title('2 · Every call in order — green right, red wrong', color=TXT,
+              fontsize=11, loc='left')
 ax2.set_facecolor(BG)
-ax2.tick_params(colors=TXT, labelsize=6.5)
+ax2.tick_params(colors=TXT, labelsize=6)
 for s in ax2.spines.values():
     s.set_color(SUB)
+
+# continuous season-story shading across both time panels
+for _ax in (ax, ax2):
+    _ax.axvspan(15 - 0.5, 21 + 0.5, color=GREEN, alpha=0.05)
+    _ax.axvspan(22 - 0.5, 22 + 0.5, color=RED, alpha=0.07)
+ax2.text(18, -1.2, 'R15\u2013R21 purple patch', fontsize=7, color=GREEN, ha='center')
+ax2.text(22, -1.2, 'R22', fontsize=7, color=RED, ha='center')
 
 # --- Panel D: accuracy by confidence tier ---
 xpos4 = np.arange(len(tlabels))
