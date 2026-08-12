@@ -5,8 +5,6 @@ with the cleaned header (no norm_x/norm_y, no x_norm/y_norm).
 """
 import csv
 import os
-import sys
-
 
 import Core.engine_scraper as sc
 

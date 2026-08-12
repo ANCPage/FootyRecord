@@ -6,8 +6,6 @@ must have no actuals, a correct=0 default, and a valid calibration snapshot
 """
 import csv
 import os
-import sys
-
 
 import compute_round
 import Core.results_db as results_db

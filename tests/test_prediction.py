@@ -4,8 +4,6 @@ Uses the same synthetic two-team fixture as test_integration — no real data.
 """
 import csv
 import os
-import sys
-
 
 from Core.engine_data import DataIngestor
 from Core.prediction import compute_matchup

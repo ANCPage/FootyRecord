@@ -1,7 +1,5 @@
 """Tests for the SQLite results store (compute/render separation)."""
 import os
-import sys
-
 
 import Core.results_db as results_db
 

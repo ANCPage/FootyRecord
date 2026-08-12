@@ -5,8 +5,6 @@ chains only, in the same team-relative frame the engine expects.
 """
 import csv
 import os
-import sys
-
 
 from Core.engine_core import MatchupEngine
 from Core.engine_data import DataIngestor

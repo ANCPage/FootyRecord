@@ -2,15 +2,13 @@
 
 import argparse
 import logging
-import os
 
 logging.basicConfig(level=logging.INFO, format='%(message)s')
-
-from Core.engine_scraper import update_all_data
 
 from Core.config import config
 from Core.engine_core import MatchupEngine
 from Core.engine_data import DataIngestor
+from Core.engine_scraper import update_all_data
 from Core.mappings import TEAM_MAP
 from Core.visualize_matchup import MatchupVisualizer
 
