@@ -87,9 +87,9 @@ for r in rnds:
     gm = [x for x in rows26 if x[0] == r]
     conf.append(sum(abs(x[3]) for x in gm) / len(gm))
 
-fig, (ax, ax2, ax3, ax4) = plt.subplots(
-    4, 1, figsize=(7.5, 14.2),
-    gridspec_kw={'height_ratios': [1.0, 0.82, 0.5, 0.68], 'hspace': 0.6})
+fig, (ax, ax2, ax4) = plt.subplots(
+    3, 1, figsize=(7.5, 13.6),
+    gridspec_kw={'height_ratios': [1.05, 0.85, 0.7], 'hspace': 0.55})
 fig.patch.set_facecolor(BG)
 # brand header (audit S1)
 fig.text(0.5, 0.975, 'FOOTYRECORD', ha='center', va='top', fontsize=26,
@@ -106,7 +106,7 @@ ax.axhline(50, color=SUB, lw=0.8, ls=':', alpha=0.6)
 ax.annotate('R15–R21 purple patch\n47/59 (80%)', xy=(21, 74.5), xytext=(12.8, 85),
             fontsize=8.5, color=GREEN,
             arrowprops=dict(arrowstyle='->', color=GREEN, lw=1))
-ax.annotate('R22 stumble 4/9', xy=(22, 70.4), xytext=(16.6, 54),
+ax.annotate('R22 stumble 4/9 — most confident round,\nworst result', xy=(22, 70.4), xytext=(15.4, 54),
             fontsize=8.5, color=RED, arrowprops=dict(arrowstyle='->', color=RED, lw=1))
 ax.scatter([22], [cum[-1]], color=BLUE, s=50, zorder=5)
 ax.text(22, cum[-1] + 1.6, f'{cum[-1]:.1f}% (133/189)', fontsize=9.5,
@@ -147,31 +147,6 @@ ax2.tick_params(colors=TXT, labelsize=6.5)
 for s in ax2.spines.values():
     s.set_color(SUB)
 
-# --- Panel C: how sure (bar) vs how right (%) — the R22 story visible in-panel ---
-xpos = np.arange(len(rnds))
-bar_colors = [RED if r == 22 else AMBER for r in rnds]
-ax3.bar(xpos, conf, color=bar_colors, alpha=0.85, width=0.72)
-season_conf = sum(conf) / len(conf)
-ax3.axhline(season_conf, color=SUB, lw=1.1, ls='--', alpha=0.8)
-ax3.text(rnds[0] + 0.3, season_conf + 0.6, f'season-average confidence {season_conf:.1f} pts',
-         fontsize=6.5, color=SUB)
-for i, r in enumerate(rnds):
-    acc = 100 * sum(by_round[r]) / len(by_round[r])
-    ax3.text(i, 0.6, f'{acc:.0f}%', ha='center', fontsize=6, color=BG)
-ax3.annotate('most confident round — got 4/9 right (33%)',
-             xy=(22, 23.6), xytext=(14.5, 32.5), fontsize=8, color=RED,
-             arrowprops=dict(arrowstyle='->', color=RED, lw=1))
-ax3.set_xticks(rnds[::2])
-ax3.set_xticklabels([f'R{r}' for r in rnds[::2]], fontsize=6.5, color=TXT)
-ax3.set_ylim(0, 40)
-ax3.set_ylabel('how sure (avg predicted margin, pts)', color=TXT, fontsize=7)
-ax3.set_title('3 · How sure the model was (bar) vs how right it was (%)',
-              color=TXT, fontsize=12, loc='left')
-ax3.set_facecolor(BG)
-ax3.tick_params(colors=TXT, labelsize=7)
-for s in ax3.spines.values():
-    s.set_color(SUB)
-
 # --- Panel D: accuracy by confidence tier ---
 xpos4 = np.arange(len(tlabels))
 colors4 = [GREEN if a >= overall26 else (AMBER if a >= 55 else RED) for a in taccs]
@@ -194,7 +169,7 @@ ax4.set_xticks(xpos4)
 ax4.set_xticklabels(tlabels, color=TXT, fontsize=8)
 ax4.set_ylim(0, 110)
 ax4.set_ylabel('winner accuracy (%)', color=TXT, fontsize=8)
-ax4.set_title('4 · Accuracy by confidence tier', color=TXT, fontsize=12,
+ax4.set_title('3 · Accuracy by confidence tier', color=TXT, fontsize=12,
               loc='left')
 ax4.set_facecolor(BG)
 ax4.tick_params(colors=TXT, labelsize=7)
