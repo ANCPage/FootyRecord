@@ -11,6 +11,7 @@ Output: ROUND_IMAGES_UPDATE/2026/ANALYSIS/
 """
 import os
 import sys
+from collections import defaultdict
 
 import matplotlib
 
@@ -19,7 +20,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Core'))
-from Core import results_db
+from Core import results_db, state_store
 from Core.mappings import TEAM_MAP
 
 OUT = 'ROUND_IMAGES_UPDATE/2026/ANALYSIS'
@@ -83,8 +84,6 @@ fig.savefig(f'{OUT}/1_margin_scatter.png', facecolor=BG, dpi=130)
 plt.close(fig)
 
 # ---- Chart 2: confidence ladder (all seasons) ----
-from collections import defaultdict
-
 tiers = defaultdict(lambda: [0, 0])
 for r in ALL:
     tiers[r[8]][0] += r[5]
@@ -122,8 +121,6 @@ plt.close(fig)
 
 # ---- Chart 3: trap quadrant (all seasons) ----
 # home_elo/away_elo can be NULL in older rows — join the state's elo_history
-from Core import state_store
-
 sconn = state_store.connect()
 elo_at = {}
 for team, m_id, elo in sconn.execute("SELECT team, m_id, elo FROM elo_history"):
