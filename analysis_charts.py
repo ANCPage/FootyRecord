@@ -211,47 +211,32 @@ old = f'{OUT}/1_margin_scatter.png'
 if os.path.exists(old):
     os.remove(old)
 
-# ================= Chart 4: accuracy by confidence (the punch) =================
-# binned by |predicted margin|; left axis = accuracy, right axis = share of picks
-bins = [(0, 5), (5, 10), (10, 15), (15, 20), (20, 30), (30, 40), (40, 100)]
-bacc = []
-bshare = []
-bn = []
-for lo, hi in bins:
-    g = [r for r in ALL if lo <= abs(r[3]) < hi]
-    if not g:
-        bacc.append(0)
-        bshare.append(0)
-        bn.append(0)
-        continue
-    bacc.append(100 * sum(r[5] for r in g) / len(g))
-    bshare.append(100 * len(g) / len(ALL))
-    bn.append(len(g))
+# ================= Chart 4: the confidence threshold (the punch) =================
+# x = "only take picks where |predicted margin| >= X", y = accuracy of those picks
+thresholds = [0, 5, 10, 15, 20, 30, 40]
+tacc, tn = [], []
+for th in thresholds:
+    g = [r for r in ALL if abs(r[3]) >= th]
+    tacc.append(100 * sum(r[5] for r in g) / len(g))
+    tn.append(len(g))
 
 fig, ax = plt.subplots(figsize=(10, 5.8))
 fig.patch.set_facecolor(BG)
-xpos = np.arange(len(bins))
-labels = [f'{lo}–{hi - 1}' if hi < 100 else f'{lo}+' for lo, hi in bins]
-bars = ax.bar(xpos, bshare, color=BLUE, alpha=0.22, width=0.6, label='share of picks (right axis)')
-ax.set_ylabel('share of all picks (%)', color=BLUE, fontsize=9)
-ax.set_ylim(0, max(bshare) * 2.1)
-ax.tick_params(axis='y', colors=BLUE, labelsize=8)
-ax2 = ax.twinx()
-ax2.plot(xpos, bacc, '-o', color=GREEN, lw=2.2, ms=6, label='accuracy (left axis)')
-ax2.axhline(66.4, color=SUB, lw=1, ls='--', alpha=0.7)
-ax2.text(len(bins) - 0.4, 67.5, 'overall 66.4%', fontsize=8, color=SUB, ha='right')
-ax2.axhline(50, color=SUB, lw=0.8, ls=':', alpha=0.6)
-ax2.set_ylabel('winner accuracy (%)', color=GREEN, fontsize=9)
-ax2.set_ylim(40, 100)
-ax2.tick_params(axis='y', colors=GREEN, labelsize=8)
-for xi, (a, n, sh) in enumerate(zip(bacc, bn, bshare)):
-    ax2.text(xi, a + 1.8, f'{a:.0f}%', ha='center', fontsize=9, fontweight='bold', color=GREEN)
-    ax.text(xi, sh + 0.8, f'{sh:.0f}%', ha='center', fontsize=7, color=BLUE)
+xpos = np.arange(len(thresholds))
+ax.plot(xpos, tacc, '-o', color=GREEN, lw=2.4, ms=7, zorder=4)
+ax.fill_between(xpos, 40, tacc, color=GREEN, alpha=0.08)
+for xi, (a, n) in enumerate(zip(tacc, tn)):
+    ax.text(xi, a + 1.6, f'{a:.0f}%', ha='center', fontsize=10, fontweight='bold', color=GREEN)
+    ax.text(xi, 42.5, f'{n} games', ha='center', fontsize=7.5, color=SUB)
+ax.axhline(66.4, color=SUB, lw=1, ls='--', alpha=0.7)
+ax.text(0.1, 67.6, 'overall 66.4% (all picks)', fontsize=8.5, color=SUB)
 ax.set_xticks(xpos)
-ax.set_xticklabels(labels, color=TXT, fontsize=8)
-ax.set_xlabel('predicted margin, magnitude (pts)', color=TXT, fontsize=9)
-ax.set_title('The punch — accuracy rises with confidence, and here is how often\n'
-             'each confidence level actually occurs (all seasons, 1,204 games)',
+ax.set_xticklabels([f'≥{t}' for t in thresholds], color=TXT, fontsize=10)
+ax.set_xlabel('only take picks the model rates at least this confident (predicted margin)', color=TXT, fontsize=9)
+ax.set_ylabel('winner accuracy of those picks (%)', color=TXT, fontsize=9)
+ax.set_ylim(40, 100)
+ax.set_title('The confidence threshold — the record gets better the more\n'
+             'confident you demand the model to be (all seasons, 1,204 games)',
              color=TXT, fontsize=11.5, fontweight='bold')
 ax.set_facecolor(BG)
 ax.tick_params(colors=TXT, labelsize=8)
