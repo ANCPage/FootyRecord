@@ -98,20 +98,15 @@ fig.text(0.5, 0.945, 'THE 2026 SEASON, AS THE MODEL SAW IT', ha='center', va='to
          fontsize=10, color=SUB, family='Roboto')
 
 # --- Panel 1: the accuracy arc ---
-ax.plot(rnds, cum, '-o', color=BLUE, lw=2.2, ms=4, label='cumulative accuracy')
-ax.plot(rnds, roll, '-', color=GREEN, lw=1.5, alpha=0.85, label='rolling-5 accuracy')
+ax.plot(rnds, cum, '-o', color=BLUE, lw=2.2, ms=4, label='season record so far')
+ax.plot(rnds, roll, '-', color=GREEN, lw=1.5, alpha=0.85, label='recent form (last 5 rounds)')
 ax.axhline(66.4, color=SUB, lw=1.1, ls='--', alpha=0.75)
-ax.text(rnds[0] + 0.3, 67.4, 'all-seasons avg 66.4%', fontsize=7.5, color=SUB)
+ax.text(rnds[0] + 0.3, 67.4, 'all-seasons average 66.4%', fontsize=7.5, color=SUB)
 ax.axhline(50, color=SUB, lw=0.8, ls=':', alpha=0.6)
-ax.annotate('R15–R21 purple patch\n47/59 (80%)', xy=(21, 74.5), xytext=(12.8, 85),
-            fontsize=8.5, color=GREEN,
-            arrowprops=dict(arrowstyle='->', color=GREEN, lw=1))
-ax.annotate('R22 stumble 4/9 — most confident round,\nworst result', xy=(22, 70.4),
-            xytext=(15.0, 54), fontsize=8.5, color=RED,
-            arrowprops=dict(arrowstyle='->', color=RED, lw=1))
 ax.scatter([22], [cum[-1]], color=BLUE, s=50, zorder=5)
 ax.text(22, cum[-1] + 1.6, f'{cum[-1]:.1f}% (133/189)', fontsize=9.5,
         color=BLUE, ha='center')
+ax.legend(fontsize=8, loc='upper left', framealpha=0.9)
 ax.set_xlim(-0.6, len(rnds) - 0.4)
 ax.set_xticks(rnds[::2])
 ax.set_xticklabels([])  # labels live on the strip below (shared time axis)
@@ -148,7 +143,7 @@ for s in ax2.spines.values():
 for _ax in (ax, ax2):
     _ax.axvspan(15 - 0.5, 21 + 0.5, color=GREEN, alpha=0.05)
     _ax.axvspan(22 - 0.5, 22 + 0.5, color=RED, alpha=0.07)
-ax2.text(18, -1.2, 'R15\u2013R21 purple patch', fontsize=7, color=GREEN, ha='center')
+ax2.text(18, -1.2, 'R15–R21', fontsize=7, color=GREEN, ha='center')
 ax2.text(22, -1.2, 'R22', fontsize=7, color=RED, ha='center')
 
 # --- Panel D: accuracy by confidence tier ---
@@ -157,18 +152,13 @@ colors4 = [GREEN if a >= overall26 else (AMBER if a >= 55 else RED) for a in tac
 ax4.bar(xpos4, taccs, color=colors4, alpha=0.85, width=0.62)
 for xi, (a, n) in enumerate(zip(taccs, tns)):
     ax4.text(xi, a + 1.5, f'{a:.0f}%', ha='center', fontsize=8, color=TXT)
-    ax4.text(xi, 1.5, f'n={n}', ha='center', fontsize=6.5, color=BG, )
+    ax4.text(xi, 1.5, f'n={n}', ha='center', fontsize=6.5, color=BG)
 ax4.axhline(overall26, color=BLUE, lw=1.3, ls='--', alpha=0.9)
-ax4.text(len(tlabels) - 0.4, overall26 + 1.6, f'season avg {overall26:.1f}%',
-         fontsize=7.5, color=BLUE, ha='right')
-ax4.axhline(50, color=SUB, lw=0.8, ls=':', alpha=0.7)
-ax4.text(len(tlabels) - 0.4, 51, 'coin flip', fontsize=7, color=SUB, ha='right')
-# tier colour legend (audit T4)
-
-ax4.legend(handles=[Patch(color=GREEN, label='at/above season avg'),
-                    Patch(color=AMBER, label='below avg'),
-                    Patch(color=RED, label='coin-flip zone')],
-           fontsize=6.5, loc='lower right', framealpha=0.9, ncol=3)
+ax4.axhline(50, color=SUB, lw=0.8, ls=':', alpha=0.6)
+ax4.legend(handles=[Patch(color=GREEN, label='better than the season average'),
+                    Patch(color=AMBER, label='below the season average'),
+                    Patch(color=RED, label='coin-flip territory')],
+           fontsize=7.5, loc='lower right', framealpha=0.9, ncol=3)
 ax4.set_xticks(xpos4)
 ax4.set_xticklabels(tlabels, color=TXT, fontsize=8)
 ax4.set_ylim(0, 110)
