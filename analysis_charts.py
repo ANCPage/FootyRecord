@@ -119,7 +119,6 @@ ax.set_ylim(45, 95)
 ax.set_ylabel('accuracy (%)', color=TXT, fontsize=8)
 ax.set_title('1 · The season\'s arc — and every call beneath it', color=TXT,
              fontsize=12, loc='left')
-ax.legend(fontsize=7.5, loc='upper left', framealpha=0.9)
 ax.set_facecolor(BG)
 ax.tick_params(colors=TXT, labelsize=7)
 for s in ax.spines.values():
