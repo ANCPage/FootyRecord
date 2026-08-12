@@ -125,7 +125,7 @@ for i, r in enumerate(rnds):
                                 facecolor=GREEN if correct else RED, alpha=0.9))
 max_games = max(len(v) for v in by_round.values())
 ax2.set_xlim(-0.6, len(rnds) - 0.4)
-ax2.set_ylim(-1.7, max_games - 0.4)
+ax2.set_ylim(-0.6, max_games - 0.4)
 ax2.set_yticks(range(max_games))
 ax2.set_yticklabels([str(i + 1) for i in range(max_games)], fontsize=6, color=TXT)
 ax2.set_xticks(rnds[::2])
@@ -136,13 +136,6 @@ ax2.set_facecolor(BG)
 ax2.tick_params(colors=TXT, labelsize=6)
 for s in ax2.spines.values():
     s.set_color(SUB)
-
-# continuous season-story shading across both time panels
-for _ax in (ax, ax2):
-    _ax.axvspan(15 - 0.5, 21 + 0.5, color=GREEN, alpha=0.05)
-    _ax.axvspan(22 - 0.5, 22 + 0.5, color=RED, alpha=0.07)
-ax2.text(18, -1.2, 'R15–R21', fontsize=7, color=GREEN, ha='center')
-ax2.text(22, -1.2, 'R22', fontsize=7, color=RED, ha='center')
 
 # --- Panel D: accuracy by confidence tier ---
 xpos4 = np.arange(len(tlabels))
