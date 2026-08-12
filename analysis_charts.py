@@ -44,44 +44,109 @@ ALL = list(conn.execute(
 conn.close()
 
 
-def scatter_panel(ax, data, title):
-    pred = np.array([r[3] for r in data])
-    act = np.array([r[4] for r in data])
-    ok = np.array([r[5] for r in data], dtype=bool)
-    ax.axhline(0, color=SUB, lw=0.8, alpha=0.4)
-    ax.axvline(0, color=SUB, lw=0.8, alpha=0.4)
-    lim = max(abs(act.max()), abs(act.min()), 60)
-    ax.plot([-60, 60], [-60, 60], color=BLUE, lw=1.2, ls='--', alpha=0.7, label='y = x')
-    ax.scatter(pred[ok], act[ok], c=GREEN, s=14, alpha=0.55, label='correct')
-    ax.scatter(pred[~ok], act[~ok], c=RED, s=18, alpha=0.7, label='wrong')
-    ax.set_title(title, color=TXT, fontsize=12, fontweight='bold')
-    ax.set_xlabel('predicted margin (pts)', color=TXT, fontsize=9)
-    ax.set_ylabel('actual margin (pts)', color=TXT, fontsize=9)
-    ax.set_xlim(-65, 65)
-    ax.set_ylim(-lim, lim)
-    ax.set_facecolor(BG)
-    ax.tick_params(colors=TXT, labelsize=8)
-    for s in ax.spines.values():
-        s.set_color(SUB)
-    # annotate the biggest misses
-    worst = sorted([r for r in data if not r[5]], key=lambda r: -abs(r[3]))[:2]
-    for r in worst:
-        nm = TEAM_MAP.get(r[1], r[1])
-        ax.annotate(f'R{r[0]} {nm[:6]}', (r[3], r[4]), xytext=(6, 6),
-                    textcoords='offset points', fontsize=7, color=RED, alpha=0.85)
-    ax.legend(fontsize=7, loc='lower right', framealpha=0.9)
-
-
-# ---- Chart 1: scatter ----
-fig, axes = plt.subplots(1, 2, figsize=(14, 6.2))
+# ---- Panel A: the scatter with a narrative ----
+fig, (ax, ax2) = plt.subplots(1, 2, figsize=(16, 7), gridspec_kw={'width_ratios': [1, 1]})
 fig.patch.set_facecolor(BG)
-scatter_panel(axes[0], rows26, '2026 season (189 games)')
-scatter_panel(axes[1], ALL, 'All seasons (1,204 games)')
-fig.suptitle('Predicted vs actual margin — the model is honest, here is where it is blind',
-             color=TXT, fontsize=13, fontweight='bold')
-fig.tight_layout(rect=[0, 0, 1, 0.95])
+
+rows = rows26  # 2026 games from main
+pred = np.array([r[3] for r in rows])
+act = np.array([r[4] for r in rows])
+ok = np.array([r[5] for r in rows], dtype=bool)
+
+# zone labels
+ax.axvspan(-65, 0, 0, 0.5, color=RED, alpha=0.05)
+ax.axvspan(0, 65, 0.5, 1, color=RED, alpha=0.05)
+ax.text(60, -118, 'THE UPSETS\nmodel said home,\naway won', fontsize=8, color=RED, ha='right', alpha=0.85)
+ax.text(-60, 118, 'THE UPSETS\nmodel said away,\nhome won', fontsize=8, color=RED, ha='left', alpha=0.85, va='top')
+ax.axhline(0, color=SUB, lw=0.8, alpha=0.5)
+ax.axvline(0, color=SUB, lw=0.8, alpha=0.5)
+lim = 130
+ax.plot([-65, 65], [-65, 65], color=BLUE, lw=1.2, ls='--', alpha=0.6)
+ax.scatter(pred[ok], act[ok], c=GREEN, s=16, alpha=0.55)
+ax.scatter(pred[~ok], act[~ok], c=RED, s=26, alpha=0.85, zorder=3)
+
+# landmark annotations (team names, not ids)
+def nm(t):
+    return TEAM_MAP.get(t, t).replace(' ', '\n') if False else TEAM_MAP.get(t, t)
+
+landmarks = [
+    # (find by round+teams) — hardcode the season's stories
+]
+for r in rows:
+    if r[0] == 13 and r[2] == 'CD_T60' and r[4] < -100:
+        ax.annotate(f"R13: Freo beat North by 123\n(model said 30)", (r[3], r[4]),
+                    xytext=(10, -6), textcoords='offset points', fontsize=8, color=RED,
+                    arrowprops=dict(arrowstyle='->', color=RED, lw=0.8))
+    if r[0] == 22 and r[1] == 'CD_T10' and r[2] == 'CD_T120':
+        ax.annotate(f"R22: Richmond upset Adelaide\n(pred +49, actual -4)", (r[3], r[4]),
+                    xytext=(-14, 6), textcoords='offset points', fontsize=8, color=RED,
+                    arrowprops=dict(arrowstyle='->', color=RED, lw=0.8))
+    if r[0] == 22 and r[1] == 'CD_T70' and r[2] == 'CD_T50':
+        ax.annotate(f"R22: Geelong by 59\n(model said 52)", (r[3], r[4]),
+                    xytext=(10, 6), textcoords='offset points', fontsize=8, color=GREEN,
+                    arrowprops=dict(arrowstyle='->', color=GREEN, lw=0.8))
+    if r[0] == 6 and r[1] == 'CD_T100' and r[4] > 70:
+        ax.annotate(f"R6: North by 75", (r[3], r[4]), xytext=(8, 4),
+                    textcoords='offset points', fontsize=8, color=GREEN,
+                    arrowprops=dict(arrowstyle='->', color=GREEN, lw=0.8))
+    if r[0] == 20 and r[1] == 'CD_T80' and r[4] > 80:
+        ax.annotate(f"R20: Hawthorn by 88\n(model said 49)", (r[3], r[4]),
+                    xytext=(8, -14), textcoords='offset points', fontsize=8, color=GREEN,
+                    arrowprops=dict(arrowstyle='->', color=GREEN, lw=0.8))
+    if r[0] == 5 and r[1] == 'CD_T20' and r[2] == 'CD_T100':
+        ax.annotate(f"R5: Brisbane by 18", (r[3], r[4]), xytext=(8, -14),
+                    textcoords='offset points', fontsize=8, color=GREEN,
+                    arrowprops=dict(arrowstyle='->', color=GREEN, lw=0.8))
+
+ax.set_title('2026 — every game, model vs reality\n(green = right, red = upsets, line = perfect call)',
+             color=TXT, fontsize=11, fontweight='bold')
+ax.set_xlabel('predicted margin (pts, home frame)', color=TXT, fontsize=9)
+ax.set_ylabel('actual margin (pts, home frame)', color=TXT, fontsize=9)
+ax.set_xlim(-65, 65)
+ax.set_ylim(-lim, lim)
+ax.set_facecolor(BG)
+ax.tick_params(colors=TXT, labelsize=8)
+for s in ax.spines.values():
+    s.set_color(SUB)
+
+# ---- Panel B: the season strip (the narrative) ----
+rounds = defaultdict(lambda: [0, 0, []])  # rnd -> [correct, total, margins]
+for r in rows:
+    rounds[r[0]][0] += r[5]
+    rounds[r[0]][1] += 1
+    rounds[r[0]][2].append(r)
+
+rnds = sorted(rounds)
+x = np.arange(len(rnds))
+accs = [100 * rounds[r][0] / rounds[r][1] for r in rnds]
+ns = [rounds[r][1] for r in rnds]
+cols = [GREEN if rounds[r][0] >= rounds[r][1] / 2 else RED for r in rnds]
+bars = ax2.bar(x, accs, color=cols, alpha=0.85, width=0.66)
+for xi, a, n, r in zip(x, accs, ns, rnds):
+    ax2.text(xi, a + 1.5, f'{rounds[r][0]}/{n}', ha='center', fontsize=7, color=TXT)
+ax2.axhline(66.4, color=BLUE, lw=1.2, ls='--', alpha=0.85)
+ax2.text(len(rnds) - 0.4, 67.5, 'model average 66.4%', fontsize=8, color=BLUE, ha='right')
+ax2.axhline(50, color=SUB, lw=0.8, ls=':', alpha=0.7)
+# story markers
+ax2.annotate('R15–R21 purple patch\n47/59 (80%)', xy=(18, 74), xytext=(14.5, 88),
+             fontsize=8, color=GREEN, arrowprops=dict(arrowstyle='->', color=GREEN, lw=0.8))
+ax2.annotate('R22 stumble 4/9', xy=(21.5, 44), xytext=(17.5, 26),
+             fontsize=8, color=RED, arrowprops=dict(arrowstyle='->', color=RED, lw=0.8))
+ax2.set_xticks(x)
+ax2.set_xticklabels([f'R{r}' for r in rnds], fontsize=7, color=TXT, rotation=45)
+ax2.set_ylim(0, 100)
+ax2.set_title('2026 — the season as a story\n(accuracy per round, green ≥ 50%)',
+              color=TXT, fontsize=11, fontweight='bold')
+ax2.set_ylabel('round accuracy (%)', color=TXT, fontsize=9)
+ax2.set_facecolor(BG)
+ax2.tick_params(colors=TXT, labelsize=8)
+for s in ax2.spines.values():
+    s.set_color(SUB)
+
+fig.tight_layout()
 fig.savefig(f'{OUT}/1_margin_scatter.png', facecolor=BG, dpi=130)
 plt.close(fig)
+
 
 # ---- Chart 2: confidence ladder (all seasons) ----
 tiers = defaultdict(lambda: [0, 0])
