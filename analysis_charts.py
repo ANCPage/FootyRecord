@@ -98,10 +98,10 @@ fig.text(0.5, 0.945, 'THE 2026 SEASON, AS THE MODEL SAW IT', ha='center', va='to
          fontsize=10, color=SUB, family='Roboto')
 
 # --- Panel 1: the accuracy arc ---
-ax.plot(rnds, cum, '-o', color=BLUE, lw=2.2, ms=4, label='season record so far')
-ax.plot(rnds, roll, '-', color=GREEN, lw=1.5, alpha=0.85, label='recent form (last 5 rounds)')
+ax.plot(rnds, cum, '-o', color=BLUE, lw=2.2, ms=4, label='Cumulative accuracy')
+ax.plot(rnds, roll, '-', color=GREEN, lw=1.5, alpha=0.85, label='Rolling 5-round accuracy')
 ax.axhline(66.4, color=SUB, lw=1.1, ls='--', alpha=0.75)
-ax.text(rnds[0] + 0.3, 67.4, 'all-seasons average 66.4%', fontsize=7.5, color=SUB)
+ax.text(rnds[0] + 0.3, 67.4, 'All-seasons average 66.4%', fontsize=7.5, color=SUB)
 ax.axhline(50, color=SUB, lw=0.8, ls=':', alpha=0.6)
 ax.scatter([22], [cum[-1]], color=BLUE, s=50, zorder=5)
 ax.text(22, cum[-1] + 1.6, f'{cum[-1]:.1f}% (133/189)', fontsize=9.5,
@@ -132,7 +132,7 @@ ax2.set_yticklabels([str(i + 1) for i in range(max_games)], fontsize=6, color=TX
 ax2.set_xticks(rnds[::2])
 ax2.set_xticklabels([f'R{r}' for r in rnds[::2]], fontsize=6.5, color=TXT)
 ax2.set_ylabel('game', color=TXT, fontsize=7)
-ax2.set_title('2 · Every call in order — green right, red wrong', color=TXT,
+ax2.set_title('2 · Round results — correct (green) / incorrect (red)', color=TXT,
               fontsize=11, loc='left')
 ax2.set_facecolor(BG)
 ax2.tick_params(colors=TXT, labelsize=6)
@@ -155,9 +155,9 @@ for xi, (a, n) in enumerate(zip(taccs, tns)):
     ax4.text(xi, 1.5, f'n={n}', ha='center', fontsize=6.5, color=BG)
 ax4.axhline(overall26, color=BLUE, lw=1.3, ls='--', alpha=0.9)
 ax4.axhline(50, color=SUB, lw=0.8, ls=':', alpha=0.6)
-ax4.legend(handles=[Patch(color=GREEN, label='better than the season average'),
-                    Patch(color=AMBER, label='below the season average'),
-                    Patch(color=RED, label='coin-flip territory')],
+ax4.legend(handles=[Patch(color=GREEN, label='At or above season average'),
+                    Patch(color=AMBER, label='Below season average'),
+                    Patch(color=RED, label='Coin-flip zone')],
            fontsize=7.5, loc='lower right', framealpha=0.9, ncol=3)
 ax4.set_xticks(xpos4)
 ax4.set_xticklabels(tlabels, color=TXT, fontsize=8)
