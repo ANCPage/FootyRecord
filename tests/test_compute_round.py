@@ -8,7 +8,6 @@ import csv
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'Core'))
 
 import compute_round
 import Core.results_db as results_db

@@ -6,7 +6,6 @@ import csv
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'Core'))
 
 from Core.engine_data import DataIngestor
 from Core.prediction import compute_matchup
