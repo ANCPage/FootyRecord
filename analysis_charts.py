@@ -116,7 +116,7 @@ ax.set_xticklabels([f'R{r}' for r in rnds[::2]], fontsize=6.5, color=TXT)
 ax.set_ylim(45, 95)
 ax.set_ylabel('accuracy (%)', color=TXT, fontsize=8)
 ax.set_title('1 · The season as an arc', color=TXT, fontsize=12,
-             , loc='left')
+             loc='left')
 ax.legend(fontsize=7.5, loc='upper left', framealpha=0.9)  # moved (audit S4)
 ax.set_facecolor(BG)
 ax.tick_params(colors=TXT, labelsize=7)
@@ -188,7 +188,7 @@ ax4.set_xticklabels(tlabels, color=TXT, fontsize=8)
 ax4.set_ylim(0, 110)
 ax4.set_ylabel('winner accuracy (%)', color=TXT, fontsize=8)
 ax4.set_title('4 · Accuracy by confidence tier', color=TXT, fontsize=12,
-              , loc='left')
+              loc='left')
 ax4.set_facecolor(BG)
 ax4.tick_params(colors=TXT, labelsize=7)
 for s in ax4.spines.values():
