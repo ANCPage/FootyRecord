@@ -37,7 +37,7 @@ AMBER = '#B7791F'
 
 conn = results_db.connect()
 rows26 = list(conn.execute(
-    "SELECT round, home, away, margin, actual_margin, correct, match_id"
+    "SELECT round, home, away, margin, actual_margin, correct, match_id, grade"
     " FROM predictions WHERE season=2026 AND actual_margin IS NOT NULL"))
 ALL = list(conn.execute(
     "SELECT round, home, away, margin, actual_margin, correct, home_elo, away_elo, grade, match_id"
@@ -65,7 +65,7 @@ roll = []
 for i, r in enumerate(rnds):
     w = [x for j, rr in enumerate(rnds) if i - 4 <= j <= i for x in by_round[rr]]
     roll.append(100 * sum(w) / len(w))
-# per-round confidence: average predicted |margin|
+# per-round confidence: average predicted |margin| (used by chart 5)
 conf = []
 for r in rnds:
     gm = [x for x in rows26 if x[0] == r]
@@ -75,26 +75,18 @@ fig, (ax, ax2) = plt.subplots(2, 1, figsize=(13, 9),
                               gridspec_kw={'height_ratios': [1.15, 1], 'hspace': 0.42})
 fig.patch.set_facecolor(BG)
 
-# --- Panel A: the accuracy arc + confidence ---
+# --- Panel A: the accuracy arc ---
 ax.plot(rnds, cum, '-o', color=BLUE, lw=2.2, ms=5, label='cumulative accuracy')
 ax.plot(rnds, roll, '-', color=GREEN, lw=1.6, alpha=0.85, label='rolling-5 accuracy')
 ax.axhline(66.4, color=SUB, lw=1.1, ls='--', alpha=0.75)
 ax.text(rnds[0] + 0.3, 67.3, 'all-seasons average 66.4%', fontsize=8, color=SUB)
 ax.axhline(50, color=SUB, lw=0.8, ls=':', alpha=0.6)
-axc = ax.twinx()
-axc.plot(rnds, conf, '--', color=AMBER, lw=1.6, alpha=0.9, label='confidence (avg predicted |margin|)')
-axc.set_ylim(0, 40)
-axc.set_ylabel('avg predicted |margin| (pts)', color=AMBER, fontsize=8)
-axc.tick_params(axis='y', colors=AMBER, labelsize=8)
 # the story markers
 ax.annotate('R15–R21 purple patch\n47/59 (80%) — the line steepens',
             xy=(21, 74.5), xytext=(13.5, 84), fontsize=9, color=GREEN,
             arrowprops=dict(arrowstyle='->', color=GREEN, lw=1))
-ax.annotate('R22 stumble 4/9 —\nmost confident round, worst result',
-            xy=(22, 70.4), xytext=(17.8, 56), fontsize=9, color=RED,
-            arrowprops=dict(arrowstyle='->', color=RED, lw=1))
-axc.annotate('confidence peaked here (23.6)', xy=(22, 23.6), xytext=(18.6, 31),
-             fontsize=8, color=AMBER, arrowprops=dict(arrowstyle='->', color=AMBER, lw=1))
+ax.annotate('R22 stumble 4/9 —\nthe line dips', xy=(22, 70.4), xytext=(18.2, 58),
+            fontsize=9, color=RED, arrowprops=dict(arrowstyle='->', color=RED, lw=1))
 ax.scatter([22], [cum[-1]], color=BLUE, s=60, zorder=5)
 ax.text(22, cum[-1] + 1.6, f'{cum[-1]:.1f}% (133/189)', fontsize=10,
         fontweight='bold', color=BLUE, ha='center')
@@ -102,12 +94,9 @@ ax.set_xticks(rnds)
 ax.set_xticklabels([f'R{r}' for r in rnds], fontsize=7, color=TXT, rotation=45)
 ax.set_ylim(45, 95)
 ax.set_ylabel('accuracy (%)', color=TXT, fontsize=9)
-ax.set_title('The season, as an arc — accuracy (blue/green) vs confidence (amber)\n'
-             '2026: the model was most confident exactly when it was most wrong',
+ax.set_title('The season, as an arc — cumulative and rolling accuracy through 2026',
              color=TXT, fontsize=12, fontweight='bold')
-h1, l1 = ax.get_legend_handles_labels()
-h2, l2 = axc.get_legend_handles_labels()
-ax.legend(h1 + h2, l1 + l2, fontsize=8, loc='lower right', framealpha=0.9)
+ax.legend(fontsize=8, loc='lower right', framealpha=0.9)
 ax.set_facecolor(BG)
 ax.tick_params(colors=TXT, labelsize=8)
 for s in ax.spines.values():
@@ -227,33 +216,39 @@ old = f'{OUT}/1_margin_scatter.png'
 if os.path.exists(old):
     os.remove(old)
 
-# ================= Chart 4: the confidence threshold (the punch) =================
-# x = "only take picks where |predicted margin| >= X", y = accuracy of those picks
-thresholds = [0, 5, 10, 15, 20, 30, 40]
-tacc, tn = [], []
-for th in thresholds:
-    g = [r for r in ALL if abs(r[3]) >= th]
-    tacc.append(100 * sum(r[5] for r in g) / len(g))
-    tn.append(len(g))
+# ================= Chart 4: accuracy by confidence tier (2026) =================
+# simple bars: one axis, n labels, season + coin-flip reference lines
+tiers26 = defaultdict(lambda: [0, 0])
+for r in rows26:
+    tiers26[r[7]][0] += r[5]
+    tiers26[r[7]][1] += 1
+order = ['F', 'E-', 'E', 'E+', 'D-', 'D', 'D+', 'C-', 'C', 'C+', 'B-', 'B', 'B+', 'A-', 'A', 'A+']
+labels = [t for t in order if tiers26[t][1]]
+accs = [100 * tiers26[t][0] / tiers26[t][1] for t in labels]
+ns = [tiers26[t][1] for t in labels]
+overall26 = 100 * sum(tiers26[t][0] for t in labels) / sum(tiers26[t][1] for t in labels)
 
-fig, ax = plt.subplots(figsize=(10, 5.8))
+fig, ax = plt.subplots(figsize=(11, 5.6))
 fig.patch.set_facecolor(BG)
-xpos = np.arange(len(thresholds))
-ax.plot(xpos, tacc, '-o', color=GREEN, lw=2.4, ms=7, zorder=4)
-ax.fill_between(xpos, 40, tacc, color=GREEN, alpha=0.08)
-for xi, (a, n) in enumerate(zip(tacc, tn)):
-    ax.text(xi, a + 1.6, f'{a:.0f}%', ha='center', fontsize=10, fontweight='bold', color=GREEN)
-    ax.text(xi, 42.5, f'{n} games', ha='center', fontsize=7.5, color=SUB)
-ax.axhline(66.4, color=SUB, lw=1, ls='--', alpha=0.7)
-ax.text(0.1, 67.6, 'overall 66.4% (all picks)', fontsize=8.5, color=SUB)
+xpos = np.arange(len(labels))
+colors = [GREEN if a >= overall26 else (AMBER if a >= 55 else RED) for a in accs]
+ax.bar(xpos, accs, color=colors, alpha=0.85, width=0.62)
+for xi, (a, n) in enumerate(zip(accs, ns)):
+    ax.text(xi, a + 1.5, f'{a:.0f}%', ha='center', fontsize=9, fontweight='bold', color=TXT)
+    ax.text(xi, 1.5, f'n={n}', ha='center', fontsize=7, color=BG, fontweight='bold')
+ax.axhline(overall26, color=BLUE, lw=1.4, ls='--', alpha=0.9)
+ax.text(len(labels) - 0.5, overall26 + 1.5, f'season average {overall26:.1f}%',
+        fontsize=8.5, color=BLUE, ha='right')
+ax.axhline(50, color=SUB, lw=0.8, ls=':', alpha=0.7)
+ax.text(len(labels) - 0.5, 51, 'coin flip', fontsize=8, color=SUB, ha='right')
 ax.set_xticks(xpos)
-ax.set_xticklabels([f'≥{t}' for t in thresholds], color=TXT, fontsize=10)
-ax.set_xlabel('only take picks the model rates at least this confident (predicted margin)', color=TXT, fontsize=9)
-ax.set_ylabel('winner accuracy of those picks (%)', color=TXT, fontsize=9)
-ax.set_ylim(40, 100)
-ax.set_title('The confidence threshold — the record gets better the more\n'
-             'confident you demand the model to be (all seasons, 1,204 games)',
-             color=TXT, fontsize=11.5, fontweight='bold')
+ax.set_xticklabels(labels, color=TXT, fontsize=9)
+ax.set_ylim(0, 110)
+ax.set_ylabel('winner accuracy (%)', color=TXT, fontsize=9)
+ax.set_xlabel('confidence tier (predicted |margin|)', color=TXT, fontsize=9)
+ax.set_title('2026 — accuracy by confidence tier\n'
+             'the model is right more often the more confident it is (except the traps)',
+             color=TXT, fontsize=12, fontweight='bold')
 ax.set_facecolor(BG)
 ax.tick_params(colors=TXT, labelsize=8)
 for s in ax.spines.values():
