@@ -82,18 +82,11 @@ def physical_placement(start: str, end: str, is_away_edge: bool = False,
     return phys_start, phys_end
 
 def home_favored(net_delta: float, h_elo: float, a_elo: float) -> bool:
-    """Winner decision from the ACTIVE margin model (cleanest-model 2026-08-10:
-    the margin is the single calibrated output; probability layer removed).
-
-    Home favored iff predicted margin > 0; dead-even margins fall to the
-    higher Elo (rare — margin is a continuous linear combination).
-    """
-    from Core.calibration import current as cal
-    m = cal.margin(net_delta, (h_elo - a_elo) / 100.0)
-    if m > 0:
-        return True
-    if m < 0:
-        return False
+    """Winner decision = RAW delta sign (philosophy 2026-08-11: no fitted
+    layer may override the raw signal). Elo breaks exact dead-evens only;
+    the margin model sets the size/grades, never the direction."""
+    if net_delta != 0:
+        return net_delta > 0
     return h_elo >= a_elo
 
 class MatchupEngine:

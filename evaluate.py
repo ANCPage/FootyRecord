@@ -11,7 +11,7 @@ Run:  python evaluate.py [season ...]
 import math
 import sys
 
-from Core.calibration import fit_or_fallback, select_window
+from Core.calibration import align_margin, fit_or_fallback, select_window
 from Core.engine_data import DataIngestor
 
 
@@ -95,8 +95,8 @@ def run_mode(rows, window_seasons, label):
             fallback_hits += 1
         cals[(season, rnd)] = cal
         for (s, r, net, elo, won, marg, tot, act, m_id, home, away) in group:
-            m = cal.margin(net, elo / 100.0)  # the one calibrated output
-            out.append((s, r, m, won, m, marg, m_id, home, away, elo))
+            m = align_margin(cal.margin(net, elo / 100.0), net, elo / 100.0)
+            out.append((s, r, m, won, m, marg, m_id, home, away, elo, net))
             # FitRow format for the calibration fit: (season, round, net,
             # elo_diff, margin, total, actual_delta, ...) — NOT the collect_rows
             # layout; identity fields are irrelevant to the fit.
@@ -135,8 +135,10 @@ def save_rows_to_db(out_rows, cals, ing, db_path=None):
     for (s, rnd), group in sorted(rounds.items()):
         cal = cals[(s, rnd)]
         for r in group:
-            m, won, marg, m_id, home, away, elo = r[2], r[3], r[5], r[6], r[7], r[8], r[9]
-            winner = home if (m > 0 or (m == 0 and elo >= 0)) else away
+            m, won, marg, m_id, home, away, elo, net = r[2], r[3], r[5], r[6], r[7], r[8], r[9], r[10]
+            # winner = RAW delta sign (no fitted layer overrides the signal);
+            # Elo only breaks exact dead-evens — matches home_favored()
+            winner = home if (net > 0 or (net == 0 and elo >= 0)) else away
             correct = 1 if won == (winner == home) else 0
             total = cal.total_mean
             # The pre-match delta matrix that produced this pick (walk-forward

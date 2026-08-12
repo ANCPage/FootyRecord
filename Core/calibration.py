@@ -123,6 +123,16 @@ def compute_tier_cutoffs(team_elos: List[float]) -> Tuple:
     return (s[3], s[7], s[12])
 
 
+def align_margin(margin: float, net_delta: float, elo_diff_hundreds: float) -> float:
+    """Direction comes from the RAW signal, never from the fit (2026-08-11:
+    the Elo blend sets the SIZE only — the fitted margin can never flip the
+    raw delta's direction). Dead-even delta -> Elo side, matching
+    home_favored()."""
+    if net_delta > 0 or (net_delta == 0 and elo_diff_hundreds >= 0):
+        return abs(margin)
+    return -abs(margin)
+
+
 def confidence_grade(margin: float) -> str:
     """Confidence grade from the PREDICTED MARGIN (cleanest-model 2026-08-10:
     the margin is the one calibrated output; no probability fiction).

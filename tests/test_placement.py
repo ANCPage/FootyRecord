@@ -9,7 +9,15 @@ drawn starting from the home LFP zone position, spanning the pitch — the
 from Core.engine_core import Graph, home_favored, physical_placement
 
 
-def test_home_favored_elo_breaks_tie():
+def test_home_favored_raw_delta_never_overridden():
+    # Philosophy (2026-08-11): the fitted margin can disagree with the raw
+    # delta — the DELTA decides. Fallback b1=70.98, b2=4.88:
+    # margin(+0.05, -300/100) = 3.55 - 14.64 = -11 -> old rule said away;
+    # the raw delta says home, and home must win.
+    assert home_favored(0.05, 1400.0, 1700.0) is True
+    # margin(-0.05, +300/100) = -3.55 + 14.64 = +11 -> old rule said home;
+    # the raw delta says away.
+    assert home_favored(-0.05, 1700.0, 1400.0) is False
     # Dead-even tactical score: the fitted Elo gap decides (audit #6, option A).
     assert home_favored(0.0, 1550.0, 1500.0) is True   # home stronger by Elo
     assert home_favored(0.0, 1500.0, 1550.0) is False  # away stronger by Elo
