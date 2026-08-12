@@ -51,27 +51,9 @@ def compute_round(ing, conn, season: int, round_num: int) -> int:
         pred = compute_matchup(ing, info.home, info.away, season, round_num)
         if pred is None:
             continue
-        played = info.home_score + info.away_score > 0
-        actual_margin = info.home_score - info.away_score if played else None
-        correct = 1 if (played and actual_margin != 0
-                        and (actual_margin > 0) == (pred.winner_id == info.home)) else 0
-        if actual_margin == 0:
-            correct = 0  # draws are not tip wins (matches eval semantics)
-        games.append({
-            'season': season, 'round': round_num, 'match_id': m_id,
-            'home': info.home, 'away': info.away,
-            'net_delta': pred.net_delta, 'elo_diff': pred.elo_diff,
-            'margin': pred.margin_pred, 'winner': pred.winner_id,
-            'home_elo': pred.h_elo, 'away_elo': pred.a_elo,
-            'home_tier': pred.h_tier, 'away_tier': pred.a_tier,
-            'home_rank': pred.h_rank, 'away_rank': pred.a_rank,
-            'total': pred.home_score + pred.away_score,
-            'home_score': info.home_score,
-            'away_score': info.away_score,
-            'grade': cal.confidence_grade(pred.margin_pred),
-            'delta': results_db.serialize_delta(pred.delta),
-            'actual_margin': actual_margin, 'correct': correct,
-        })
+        played = info.home_score > 0 or info.away_score > 0
+        games.append(results_db.game_row_from_prediction(
+            pred, info, season, round_num, cal.current, m_id, played=played))
     snapshot = results_db.build_calibration_snapshot(
         cal.current, datetime.now(timezone.utc).isoformat(timespec='seconds'))
     results_db.upsert_round(conn, season, round_num, games, snapshot)

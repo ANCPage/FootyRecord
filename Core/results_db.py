@@ -10,6 +10,8 @@ import json
 import os
 import sqlite3
 
+from Core.calibration import confidence_grade
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS predictions (
     season INTEGER, round INTEGER, match_id TEXT,
@@ -40,6 +42,35 @@ def connect(path: str = DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(path)
     conn.executescript(SCHEMA)
     return conn
+
+
+def game_row_from_prediction(pred, info, season: int, round_num: int, cal,
+                             m_id: str, played: bool = False) -> dict:
+    """One builder for live-prediction rows (RRR #6: was duplicated across
+    compute_round and predict_game). `pred` is a MatchupPrediction (shared
+    compute path); `info` is the match_info entry; `cal` provides the grade
+    ladder. Draws are not tip wins (matches eval semantics)."""
+    actual_margin = info.home_score - info.away_score if played else None
+    if played and actual_margin == 0:
+        correct = 0  # draws are not tip wins
+    elif played:
+        correct = 1 if (actual_margin > 0) == (pred.winner_id == info.home) else 0
+    else:
+        correct = 0
+    return {
+        'season': season, 'round': round_num, 'match_id': m_id,
+        'home': info.home, 'away': info.away,
+        'net_delta': pred.net_delta, 'elo_diff': pred.elo_diff,
+        'margin': pred.margin_pred, 'winner': pred.winner_id,
+        'home_elo': pred.h_elo, 'away_elo': pred.a_elo,
+        'home_tier': pred.h_tier, 'away_tier': pred.a_tier,
+        'home_rank': pred.h_rank, 'away_rank': pred.a_rank,
+        'total': pred.home_score + pred.away_score,
+        'home_score': info.home_score, 'away_score': info.away_score,
+        'grade': confidence_grade(pred.margin_pred),
+        'delta': serialize_delta(pred.delta),
+        'actual_margin': actual_margin, 'correct': correct,
+    }
 
 
 def build_calibration_snapshot(cal, fitted_at: str) -> dict:

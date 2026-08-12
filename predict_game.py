@@ -102,20 +102,12 @@ def predict_game(round_num, game_num):
 
     # Record the pending prediction in the results DB (walk-forward replaces
     # it once the round is played and the CSVs land)
+    from types import SimpleNamespace
+
     import Core.calibration as cal
-    game = {
-        'season': 2026, 'round': round_num, 'match_id': mid,
-        'home': h_id, 'away': a_id, 'net_delta': pred.net_delta,
-        'elo_diff': pred.elo_diff, 'margin': pred.margin_pred,
-        'winner': pred.winner_id, 'home_elo': pred.h_elo, 'away_elo': pred.a_elo,
-        'home_tier': pred.h_tier, 'away_tier': pred.a_tier,
-        'home_rank': pred.h_rank, 'away_rank': pred.a_rank,
-        'total': pred.home_score + pred.away_score,
-        'home_score': None, 'away_score': None,
-        'grade': cal.current.confidence_grade(pred.margin_pred),
-        'actual_margin': None, 'correct': 0,
-        'delta': results_db.serialize_delta(delta),
-    }
+    game = results_db.game_row_from_prediction(
+        pred, SimpleNamespace(home=h_id, away=a_id, home_score=0, away_score=0),
+        2026, round_num, cal.current, mid, played=False)
     conn = results_db.connect()
     results_db.upsert_prediction(conn, game)
     results_db.upsert_calibration(
