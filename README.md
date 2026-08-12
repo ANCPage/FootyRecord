@@ -22,17 +22,17 @@ python Core/main.py predict_full CD_T80 CD_T100
 # 3. evaluate the model walk-forward over all seasons
 python evaluate.py
 
-# 4. web dashboard
-python server.py                          # http://localhost:8080
+# 4. compute + render a round (two paths, one DB)
+python compute_round.py --season 2026 --round 23   # live round -> results DB
+python render_round.py --season 2026 --round 22    # cards from the DB
 
 # 5. tests + lint
 pytest
 ruff check Core/ *.py --exclude LegacyScripts
 ```
 
-> Note: the repo root and `Core/` must be on `sys.path` (flat imports).
-> The venv handles this via a `footyrecord_paths.pth` in site-packages —
-> if you recreate the venv, recreate that two-line file.
+> Core is a proper package (`Core.*` imports) — no sys.path tricks needed;
+> `python script.py` from the repo root just works.
 
 ## Architecture
 
@@ -43,7 +43,7 @@ engine_core.py      Graph + MatchupEngine (delta = tactical advantage per edge)
 elo_engine.py       delta-based Elo ratings (winner = delta sign, margin-scaled K)
 geometry.py         grid mapping + 180° rotation (single source of truth)
 visualize_*.py      matchup/story/ladder/tips graphics
-server.py           web dashboard (predictions, ladder, parameter sweep)
+server.py           web dashboard (DECOMMISSIONED 2026-08-11 — see git history)
 evaluate.py         walk-forward evaluation (accuracy, Brier, margin MAE/RMSE)
 ```
 

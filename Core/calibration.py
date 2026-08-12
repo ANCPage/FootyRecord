@@ -24,8 +24,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Tuple
 
-import config as _config
 import numpy as np
+
+import Core.config as _config
 
 MIN_FIT_MATCHES = 60
 WINDOW_SEASONS = 2  # production default: rolling last N seasons

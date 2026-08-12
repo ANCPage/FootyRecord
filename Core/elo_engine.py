@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Tuple
 
-import config
+import Core.config as config
 
 
 class EloEngine:

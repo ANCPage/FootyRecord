@@ -16,11 +16,11 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Core'))
 
-import calibration as cal
-import config
-import results_db
-from engine_data import DataIngestor
-from prediction import compute_matchup
+import Core.calibration as cal
+import Core.config as config
+import Core.results_db as results_db
+from Core.engine_data import DataIngestor
+from Core.prediction import compute_matchup
 
 DATA_DIR = config.DATA_DIR
 

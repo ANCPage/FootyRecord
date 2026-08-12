@@ -1,7 +1,7 @@
 from typing import Dict, Tuple
 
-from engine_core import Graph, physical_placement
-from models import TransitionEdge
+from Core.engine_core import Graph, physical_placement
+from Core.models import TransitionEdge
 
 
 class VectorRenderer:

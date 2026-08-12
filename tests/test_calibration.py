@@ -8,7 +8,8 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'Core'))
 import numpy as np
-from calibration import MIN_FIT_MATCHES, Calibration, fit_or_fallback, select_window
+
+from Core.calibration import MIN_FIT_MATCHES, Calibration, fit_or_fallback, select_window
 
 
 def _synthetic_rows(n=400, true_b1=1.5, true_b2=0.002, true_m1=1.5,

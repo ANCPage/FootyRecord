@@ -9,16 +9,16 @@ import bootstrap  # shared sys.path bootstrap (recycle #9)
 
 root_dir = bootstrap.ROOT
 
-import config
-import results_db
-from engine_core import MatchupEngine, home_favored
-from engine_data import DataIngestor
-from mappings import TEAM_DATA
-from models import TransitionEdge
-from visualize_ladder import LadderVisualizer
-from visualize_matchup import MatchupVisualizer
-from visualize_story import StoryVisualizer
-from visualize_tips import TipsVisualizer
+import Core.config as config
+import Core.results_db as results_db
+from Core.engine_core import MatchupEngine, home_favored
+from Core.engine_data import DataIngestor
+from Core.mappings import TEAM_DATA
+from Core.models import TransitionEdge
+from Core.visualize_ladder import LadderVisualizer
+from Core.visualize_matchup import MatchupVisualizer
+from Core.visualize_story import StoryVisualizer
+from Core.visualize_tips import TipsVisualizer
 
 
 class RoundProductionPipeline:
@@ -354,6 +354,16 @@ def main():
         correct = sum(1 for r in rows if r['correct'])
         total = sum(1 for r in rows if r['actual_margin'] is not None)
         conn = results_db.connect()
+        # Stale-panels guard: decisions come from the DB, but player/journey
+        # panels read the live state — warn if the state changed since the
+        # record was saved (run `evaluate.py --save` to re-align).
+        import state_store
+        sfp = state_store.meta_get(conn, 'fingerprint')
+        rfp = state_store.meta_get(conn, 'record_fingerprint')
+        if sfp and rfp and sfp != rfp:
+            print(f"WARNING: state rebuilt since the record was saved "
+                  f"({rfp[:8]} -> {sfp[:8]}) — run `evaluate.py --save` and "
+                  f"re-render for consistent panels")
         s_c, s_t = results_db.cumulative_record(conn, season, args.round)
         conn.close()
         summary = f"ROUND {args.round} TIPS: {correct}/{total} | SEASON: {s_c}/{s_t} ({100.0*s_c/s_t:.1f}%)"

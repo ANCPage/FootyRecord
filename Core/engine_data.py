@@ -5,11 +5,11 @@ import os
 from collections import defaultdict
 from typing import Any, Dict
 
-import config
-from elo_engine import EloEngine
-from engine_core import Graph
-from geometry import xy_to_grid
-from models import MatchInfo, TransitionEdge
+import Core.config as config
+from Core.elo_engine import EloEngine
+from Core.engine_core import Graph
+from Core.geometry import xy_to_grid
+from Core.models import MatchInfo, TransitionEdge
 
 logger = logging.getLogger(__name__)
 

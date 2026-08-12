@@ -1,7 +1,8 @@
 import os
 
-from config import FONTS_DIR
 from matplotlib.font_manager import FontProperties
+
+from Core.config import FONTS_DIR
 
 FASTER_ONE = os.path.join(FONTS_DIR, 'FasterOne.ttf')
 WALLPOET = os.path.join(FONTS_DIR, 'Wallpoet.ttf')

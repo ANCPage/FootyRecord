@@ -5,9 +5,10 @@ from collections import defaultdict
 
 import matplotlib.pyplot as plt
 import numpy as np
-from base_visualizer import BaseVisualizer
-from mappings import TEAM_DATA, get_short_name
-from theme import get_ordinal
+
+from Core.base_visualizer import BaseVisualizer
+from Core.mappings import TEAM_DATA, get_short_name
+from Core.theme import get_ordinal
 
 
 class LadderVisualizer(BaseVisualizer):

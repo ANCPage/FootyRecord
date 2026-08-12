@@ -5,9 +5,10 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import config
 import requests
-from geometry import xy_to_grid as get_grid_cell
+
+import Core.config as config
+from Core.geometry import xy_to_grid as get_grid_cell
 
 logger = logging.getLogger(__name__)
 

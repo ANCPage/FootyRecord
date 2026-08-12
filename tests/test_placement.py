@@ -6,7 +6,7 @@ most visible symptom: Norf's RBP->SCORE (a short kick at the left end) was
 drawn starting from the home LFP zone position, spanning the pitch — the
 'impossible LFP->FB ball movement'.
 """
-from engine_core import Graph, home_favored, physical_placement
+from Core.engine_core import Graph, home_favored, physical_placement
 
 
 def test_home_favored_elo_breaks_tie():

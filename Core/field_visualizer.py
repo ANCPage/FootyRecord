@@ -1,6 +1,7 @@
 import matplotlib.patches as patches
-from base_visualizer import BaseVisualizer
-from engine_core import Graph
+
+from Core.base_visualizer import BaseVisualizer
+from Core.engine_core import Graph
 
 
 class FieldVisualizer(BaseVisualizer):

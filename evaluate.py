@@ -11,10 +11,9 @@ Run:  python evaluate.py [season ...]
 import math
 import sys
 
-from calibration import fit_or_fallback, select_window
-from engine_data import DataIngestor
-
 import bootstrap  # noqa: F401  (side-effect: puts Core/ on sys.path)
+from Core.calibration import fit_or_fallback, select_window
+from Core.engine_data import DataIngestor
 
 
 def collect_rows(ing, seasons, decay=None, window=None):
@@ -168,6 +167,11 @@ def save_rows_to_db(out_rows, cals, ing, db_path=None):
         results_db.upsert_prediction(conn, g)
     for sn in snaps:
         results_db.upsert_calibration(conn, sn['season'], sn['round'], sn)
+    # record_fingerprint: the state fingerprint the record was saved against —
+    # render_round warns when they diverge (stale panels guard, 2026-08-11)
+    import state_store
+    state_store.meta_set(conn, 'record_fingerprint',
+                         state_store.meta_get(conn, 'fingerprint') or '')
     conn.commit()
     conn.close()
     return len(games)

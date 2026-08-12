@@ -13,7 +13,9 @@ import json
 import os
 import sqlite3
 
-from models import MatchInfo, TransitionEdge
+import Core.results_db  # noqa: F401  (DB_PATH lives here — one constant for both stores)
+from Core.models import MatchInfo, TransitionEdge
+from Core.results_db import DB_PATH
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS matches (
@@ -45,8 +47,6 @@ CREATE TABLE IF NOT EXISTS calibration (
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY, value TEXT);
 """
-
-DB_PATH = os.path.expanduser('~/footyrecord-results/footyrecord.db')
 
 
 def connect(db_path: str = None) -> sqlite3.Connection:

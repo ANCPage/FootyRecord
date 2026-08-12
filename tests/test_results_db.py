@@ -4,7 +4,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'Core'))
 
-import results_db
+import Core.results_db as results_db
 
 
 def _game(mid='CD_M20260140101', home='H', away='A', margin=12.0, correct=1,

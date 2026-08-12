@@ -8,8 +8,8 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'Core'))
 
-from engine_data import DataIngestor
-from prediction import compute_matchup
+from Core.engine_data import DataIngestor
+from Core.prediction import compute_matchup
 
 COLUMNS = ['matchId', 'round', 'season', 'homeTeamId', 'awayTeamId',
            'venueLength', 'venueWidth', 'chain_period', 'stat_periodSeconds',

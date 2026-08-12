@@ -75,10 +75,10 @@ table). Hyperparameter optimism measured: ~0.2 pts (lookahead check
 - `Core/engine_core.py` — delta math, `home_favored` (margin sign),
   `collapse_chain` (shared chain→edges)
 - `Core/prediction.py` — `compute_matchup()`: one shared matchup computation
-  used by server + image generator
+  used by the renderer + predict_game
 - `evaluate.py` — the honest walk-forward harness
-- `generate_round_images.py` — the 2026 round cards
-- `server.py` — local dashboard (sims use `compute_matchup`)
+- `generate_round_images.py` / `render_round.py` — the 2026 round cards
+  (server.py was decommissioned 2026-08-11)
 
 ## Compute / render separation (2026-08-11)
 

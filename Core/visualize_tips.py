@@ -5,9 +5,10 @@ from typing import Any, Dict, List
 
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
-from base_visualizer import BaseVisualizer
-from mappings import TEAM_DATA, get_short_name
-from theme import mute_color
+
+from Core.base_visualizer import BaseVisualizer
+from Core.mappings import TEAM_DATA, get_short_name
+from Core.theme import mute_color
 
 
 class TipsVisualizer(BaseVisualizer):

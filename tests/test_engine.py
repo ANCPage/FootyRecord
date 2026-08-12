@@ -1,6 +1,6 @@
 """Unit tests for the graph engine: edge scoring and delta math (audit #20)."""
-from engine_core import Graph, MatchupEngine, collapse_chain
-from models import TransitionEdge
+from Core.engine_core import Graph, MatchupEngine, collapse_chain
+from Core.models import TransitionEdge
 
 
 def test_home_edge_not_rotated():

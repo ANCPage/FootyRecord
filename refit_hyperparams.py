@@ -13,10 +13,9 @@ change is a human decision. Result table: refit_results.csv.
 """
 import time
 
-import config
-from engine_data import DataIngestor
-
 import bootstrap  # noqa: F401  (side-effect: puts Core/ on sys.path)
+import Core.config as config
+from Core.engine_data import DataIngestor
 from evaluate import aggregate, collect_rows, run_mode
 
 OUT = 'refit_results.csv'

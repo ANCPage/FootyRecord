@@ -4,11 +4,12 @@ matplotlib.use('Agg')
 from typing import Dict, Tuple
 
 import matplotlib.pyplot as plt
-from field_visualizer import FieldVisualizer
-from mappings import TEAM_DATA
-from models import TransitionEdge
-from theme import get_ordinal, mute_color
-from vector_renderer import VectorRenderer
+
+from Core.field_visualizer import FieldVisualizer
+from Core.mappings import TEAM_DATA
+from Core.models import TransitionEdge
+from Core.theme import get_ordinal, mute_color
+from Core.vector_renderer import VectorRenderer
 
 
 class StoryVisualizer(FieldVisualizer):

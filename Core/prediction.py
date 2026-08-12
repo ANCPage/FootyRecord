@@ -7,8 +7,8 @@ the round-image generator. Previously each call site re-implemented this block.
 from dataclasses import dataclass
 from typing import Dict, Optional
 
-from calibration import current as cal
-from engine_core import MatchupEngine, home_favored
+from Core.calibration import current as cal
+from Core.engine_core import MatchupEngine, home_favored
 
 
 @dataclass

@@ -10,12 +10,13 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 
-from config import config
-from engine_core import MatchupEngine
-from engine_data import DataIngestor
 from engine_scraper import update_all_data
-from mappings import TEAM_MAP
-from visualize_matchup import MatchupVisualizer
+
+from Core.config import config
+from Core.engine_core import MatchupEngine
+from Core.engine_data import DataIngestor
+from Core.mappings import TEAM_MAP
+from Core.visualize_matchup import MatchupVisualizer
 
 
 def main():

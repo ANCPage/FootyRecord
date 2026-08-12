@@ -4,9 +4,10 @@ matplotlib.use('Agg')
 from typing import Optional, Tuple
 
 import matplotlib.pyplot as plt
-from mappings import TEAM_DATA
 from matplotlib.font_manager import FontProperties
-from theme import BG_COLOR, SUB_TEXT_COLOR, TEXT_COLOR, get_fonts, is_dark_color, mute_color
+
+from Core.mappings import TEAM_DATA
+from Core.theme import BG_COLOR, SUB_TEXT_COLOR, TEXT_COLOR, get_fonts, is_dark_color, mute_color
 
 
 class BaseVisualizer:

@@ -1,37 +1,41 @@
+"""Predict a live upcoming game (API fixture) with the SHARED engine path.
+
+Unique value vs compute_round: fetches the fixture from the AFL API before
+the CSVs know about it. Everything else is shared — `compute_matchup()` for
+the prediction, the STORED player history for the "key drivers" panel (no
+chain reprocessing), and the results DB for the record (pending prediction
+that the walk-forward replaces once the round is played).
+
+Usage:
+    python predict_game.py <round> <game>
+"""
 import argparse
 from collections import defaultdict
 
-import config
 import requests
-from engine_core import MatchupEngine
-from engine_data import DataIngestor
-from geometry import rotate_node
-from mappings import TEAM_DATA
 
-import bootstrap  # noqa: F401  (side-effect: puts Core/ on sys.path)
+import Core.results_db as results_db
+from Core.engine_data import DataIngestor
+from Core.geometry import rotate_node
+from Core.mappings import TEAM_DATA
+from Core.prediction import compute_matchup
 
 
 def predict_game(round_num, game_num):
-    # Setup Engine
-    csv_path = 'CSV_DATA'
-    ingestor = DataIngestor(csv_path)
+    ingestor = DataIngestor('CSV_DATA')
     ingestor.load_all_data()
-    ingestor.profile_all_teams()
+    if not ingestor.team_positions:
+        ingestor.profile_all_teams()
 
-    # Authenticate
-    auth_url = 'https://api.afl.com.au/cfs/afl/WMCTok'
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    token = requests.post(auth_url, json={}, headers=headers, timeout=15).json().get('token')
-
-    # Get Match Context
+    # Authenticate + fetch the live fixture (the unique input)
+    token = requests.post('https://api.afl.com.au/cfs/afl/WMCTok', json={},
+                          headers={'User-Agent': 'Mozilla/5.0'}, timeout=15).json().get('token')
     mid = f'CD_M2026014{int(round_num):02d}{int(game_num):02d}'
-    url = f'https://api.afl.com.au/cfs/afl/matchRoster/full/{mid}'
-
-    resp = requests.get(url, headers={'x-media-mis-token': token})
+    resp = requests.get(f'https://api.afl.com.au/cfs/afl/matchRoster/full/{mid}',
+                        headers={'x-media-mis-token': token})
     if resp.status_code != 200:
         print(f"Could not find match {mid}")
         return
-
     data = resp.json().get('match')
     roster_data = resp.json().get('matchRoster')
 
@@ -39,30 +43,27 @@ def predict_game(round_num, game_num):
     h_n = TEAM_DATA.get(h_id, {'name': h_id})['name']
     a_n = TEAM_DATA.get(a_id, {'name': a_id})['name']
 
-    # Map Rosters
     player_names = {}
     player_teams = {}
-
     if roster_data:
         for team_type in ['homeTeam', 'awayTeam']:
             if team_type in roster_data:
-                team_info = roster_data[team_type]
-                tid = team_info['teamId']
-                for pos in team_info.get('positions', []):
+                tid = roster_data[team_type]['teamId']
+                for pos in roster_data[team_type].get('positions', []):
                     p = pos['player']
                     pid = p['playerId']
                     player_names[pid] = f"{p['playerName']['givenName']} {p['playerName']['surname']}"
                     player_teams[pid] = tid
     else:
         print("No active roster data available for this match yet.")
-        # Fallback to team historical mapping if no roster available
 
-    # Calculate Engine Prediction
-    m_a = ingestor.get_team_average_matrix(h_id)
-    m_b = ingestor.get_team_average_matrix(a_id)
-    delta = MatchupEngine.calculate_delta(m_a, m_b)
+    # Shared prediction (delta, net, margin, winner)
+    pred = compute_matchup(ingestor, h_id, a_id, 2026, round_num)
+    if pred is None:
+        print("Could not compute a prediction for this matchup.")
+        return
+    delta = pred.delta
 
-    # Identify the TOP Edges that are driving this prediction
     print(f"\n{'='*50}")
     print(f" TACTICAL MATCHUP: {h_n} vs {a_n}")
     print(f"{'='*50}")
@@ -71,78 +72,61 @@ def predict_game(round_num, game_num):
     top_edges_h = [(e, v) for e, v in sorted_edges if v > 0][:5]
     top_edges_a = [(e, v) for e, v in sorted_edges if v < 0][:5]
 
-    # Evaluate players who historically contribute to these specific edges
-    # We will build a player matrix
-    # Player ID -> Dict of Edge -> Historical decay points added
-
+    # Key drivers from the STORED player history (engine's decay-applied
+    # credits — one source of truth, no chain reprocessing)
     player_edge_value = defaultdict(lambda: defaultdict(float))
-
-    # We only look at the historical chains for these two teams to establish who their "experts" are
     for tid in [h_id, a_id]:
-        # Get the history for this team (25 games)
-        # Note: the match_info chronological sorting in profile_all_teams means
-        # we can just use the latest 25 matches from match_chains
+        for _m_id, player_map in ingestor.team_player_history.get(tid, [])[-25:]:
+            for pid, edges in player_map.items():
+                player_teams[pid] = tid
+                for edge, val in edges.items():
+                    player_edge_value[pid][edge] += val
 
-        matches = [m for m in ingestor.match_info.keys() if ingestor.match_info[m].home == tid or ingestor.match_info[m].away == tid]
-        matches = sorted(matches, key=lambda x: (ingestor.match_info[x].season, ingestor.match_info[x].round))[-25:]
-
-        for m_id in matches:
-            for chain in ingestor.match_chains[m_id]:
-                if chain['team'] != tid: continue
-                grids = chain['grids']
-                players = chain['players']
-                if not grids or not players: continue
-
-                # Shared chain -> edges collapse (recycle #8)
-                from engine_core import collapse_chain
-                edges, collapsed_players = collapse_chain(chain)
-                if edges is None or len(edges) < 2: continue
-
-                n = len(edges)
-                has_score = (chain['outcome'] == 'SCORE')
-
-                for i, edge in enumerate(edges):
-                    # Decay from config (single source of truth — was hardcoded 0.9)
-                    decay = (config.config.decay_factor ** (n - (i+1))) if has_score else 0.0
-                    if decay > 0:
-                        # Which players were involved in the start node of this edge?
-                        if i < len(collapsed_players):
-                            for pid in collapsed_players[i]:
-                                player_edge_value[pid][edge] += decay
-                                player_teams[pid] = tid # Ensure we know what team they play for
-
-    # Find the key players for the top edges
     def print_key_players(tid, target_edges, is_home):
         print(f"\n>>> {TEAM_DATA.get(tid, {'name': tid})['name']} Win Conditions:")
         for edge, delta_val in target_edges:
-            # We must account for the perspective rotation if this is the away team!
             actual_edge = (edge.source, edge.target)
             if not is_home:
-                # Away team's matrix is rotated in the delta calculation relative to home team
                 actual_edge = (rotate_node(edge.source), rotate_node(edge.target))
-
             print(f"  Vector: {actual_edge[0]} -> {actual_edge[1]} (Matchup Advantage: {abs(delta_val):.2f})")
-
-            # Find the top 2 players on this team who generate value on this specific edge
-            edge_contributors = []
-            for pid, edges in player_edge_value.items():
-                if player_teams.get(pid) == tid and actual_edge in edges:
-                    edge_contributors.append((pid, edges[actual_edge]))
-
-            edge_contributors.sort(key=lambda x: x[1], reverse=True)
-
-            p_str = []
-            for pid, val in edge_contributors[:2]:
-                name = player_names.get(pid, pid)
-                p_str.append(f"{name}")
-
-            if p_str:
-                print(f"    Key Drivers: {', '.join(p_str)}")
-            else:
-                print("    Key Drivers: (Systemic team effort)")
+            contributors = sorted(
+                ((pid, edges[actual_edge]) for pid, edges in player_edge_value.items()
+                 if player_teams.get(pid) == tid and actual_edge in edges),
+                key=lambda x: x[1], reverse=True)[:2]
+            names = [player_names.get(pid, pid) for pid, _ in contributors]
+            print(f"    Key Drivers: {', '.join(names)}" if names
+                  else "    Key Drivers: (Systemic team effort)")
 
     print_key_players(h_id, top_edges_h, True)
     print_key_players(a_id, top_edges_a, False)
+
+    # Record the pending prediction in the results DB (walk-forward replaces
+    # it once the round is played and the CSVs land)
+    import calibration as cal
+    game = {
+        'season': 2026, 'round': round_num, 'match_id': mid,
+        'home': h_id, 'away': a_id, 'net_delta': pred.net_delta,
+        'elo_diff': pred.elo_diff, 'margin': pred.margin_pred,
+        'winner': pred.winner_id, 'home_elo': pred.h_elo, 'away_elo': pred.a_elo,
+        'home_tier': pred.h_tier, 'away_tier': pred.a_tier,
+        'home_rank': pred.h_rank, 'away_rank': pred.a_rank,
+        'total': pred.home_score + pred.away_score,
+        'home_score': None, 'away_score': None,
+        'grade': cal.current.confidence_grade(pred.margin_pred),
+        'actual_margin': None, 'correct': 0,
+        'delta': results_db.serialize_delta(delta),
+    }
+    conn = results_db.connect()
+    results_db.upsert_prediction(conn, game)
+    results_db.upsert_calibration(conn, 2026, round_num, {
+        'decay': cal.current.decay_factor, 'margin_b1': cal.current.margin_b1,
+        'margin_b2': cal.current.margin_b2, 'total_mean': cal.current.total_mean,
+        'divisor': cal.current.margin_divisor, 'window': cal.current.window,
+        'fitted_at': 'live-api'})
+    conn.commit()
+    conn.close()
+    print(f"\nPrediction recorded: {h_n} vs {a_n} -> {TEAM_DATA.get(pred.winner_id, {'name': pred.winner_id})['name']} by {pred.margin_pred:.0f} pts")
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

@@ -11,8 +11,8 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'Core'))
 
 import compute_round
-import results_db
-from engine_data import DataIngestor
+import Core.results_db as results_db
+from Core.engine_data import DataIngestor
 
 COLUMNS = ['matchId', 'round', 'season', 'homeTeamId', 'awayTeamId',
            'venueLength', 'venueWidth', 'chain_period', 'stat_periodSeconds',

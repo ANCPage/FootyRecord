@@ -1,5 +1,5 @@
 """Unit tests for Core/geometry.py — grid mapping and rotation (audit #20)."""
-from geometry import rotate_node, xy_to_grid
+from Core.geometry import rotate_node, xy_to_grid
 
 
 def test_center_is_c2():

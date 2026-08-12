@@ -9,8 +9,8 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'Core'))
 
-from engine_core import MatchupEngine
-from engine_data import DataIngestor
+from Core.engine_core import MatchupEngine
+from Core.engine_data import DataIngestor
 
 COLUMNS = ['matchId', 'round', 'season', 'homeTeamId', 'awayTeamId',
            'venueLength', 'venueWidth', 'chain_period', 'stat_periodSeconds',
@@ -93,7 +93,7 @@ def test_cache_invalidated_on_version_change(tmp_path, monkeypatch):
     assert getattr(ing_warm, '_skip_profiling', False), 'cache was not used'
 
     # bump CACHE_VERSION -> the old pickle must be rejected
-    monkeypatch.setattr('engine_data.CACHE_VERSION', 999)
+    monkeypatch.setattr('Core.engine_data.CACHE_VERSION', 999)
     ing2 = DataIngestor(str(tmp_path), db_path=str(tmp_path / 'test.db'))
     ing2.load_all_data()
     assert not getattr(ing2, '_skip_profiling', False), 'stale cache accepted!'

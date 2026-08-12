@@ -5,11 +5,12 @@ from typing import Dict, List
 
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
-from engine_core import home_favored
-from field_visualizer import FieldVisualizer
-from mappings import TEAM_DATA
-from theme import get_ordinal
-from vector_renderer import VectorRenderer
+
+from Core.engine_core import home_favored
+from Core.field_visualizer import FieldVisualizer
+from Core.mappings import TEAM_DATA
+from Core.theme import get_ordinal
+from Core.vector_renderer import VectorRenderer
 
 
 class MatchupVisualizer(FieldVisualizer):

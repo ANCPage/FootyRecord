@@ -1,7 +1,7 @@
 # ruff: noqa: E402  (imports follow the path bootstrap below)
-from engine_core import MatchupEngine
-from engine_data import DataIngestor
-from mappings import TEAM_DATA
+from Core.engine_core import MatchupEngine
+from Core.engine_data import DataIngestor
+from Core.mappings import TEAM_DATA
 
 ZONE = {n: lbl for lbl, n in [
     ('LBP','A1'),('LHB','B1'),('LW','C1'),('LHF','D1'),('LFP','E1'),
@@ -40,7 +40,7 @@ for e, v in sorted(delta.items(), key=lambda x: -abs(x[1])):
         print(f"  {ZONE.get(e.source,e.source)}->{ZONE.get(e.target,e.target)}  score={v:+.3f}  {owner}")
 
 # Source-trace: where does the LFP->FB advantage come from?
-from models import TransitionEdge
+from Core.models import TransitionEdge
 
 print("\n=== SOURCE TRACE for LFP->FB (E1->A2) in the delta ===")
 # In calculate_delta: delta[E1->A2] = val_a(E1->A2) - val_b(rotate(E1->A2))
