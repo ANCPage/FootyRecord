@@ -8,7 +8,7 @@ import os
 import sys
 
 
-import engine_scraper as sc
+import Core.engine_scraper as sc
 
 
 def fake_match_payload(match_id='CD_M20260140101'):
