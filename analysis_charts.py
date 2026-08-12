@@ -147,19 +147,26 @@ ax2.tick_params(colors=TXT, labelsize=6.5)
 for s in ax2.spines.values():
     s.set_color(SUB)
 
-# --- Panel C: confidence per round — where it peaked and what it cost (audit T2) ---
+# --- Panel C: how sure (bar) vs how right (%) — the R22 story visible in-panel ---
 xpos = np.arange(len(rnds))
 bar_colors = [RED if r == 22 else AMBER for r in rnds]
 ax3.bar(xpos, conf, color=bar_colors, alpha=0.85, width=0.72)
-ax3.annotate('most confident round —\nworst result (4/9)', xy=(22, 23.6),
-             xytext=(15.5, 33), fontsize=8, color=RED,
+season_conf = sum(conf) / len(conf)
+ax3.axhline(season_conf, color=SUB, lw=1.1, ls='--', alpha=0.8)
+ax3.text(rnds[0] + 0.3, season_conf + 0.6, f'season-average confidence {season_conf:.1f} pts',
+         fontsize=6.5, color=SUB)
+for i, r in enumerate(rnds):
+    acc = 100 * sum(by_round[r]) / len(by_round[r])
+    ax3.text(i, 0.6, f'{acc:.0f}%', ha='center', fontsize=6, color=BG)
+ax3.annotate('most confident round — got 4/9 right (33%)',
+             xy=(22, 23.6), xytext=(14.5, 32.5), fontsize=8, color=RED,
              arrowprops=dict(arrowstyle='->', color=RED, lw=1))
 ax3.set_xticks(rnds[::2])
 ax3.set_xticklabels([f'R{r}' for r in rnds[::2]], fontsize=6.5, color=TXT)
 ax3.set_ylim(0, 40)
-ax3.set_ylabel('avg predicted |margin| (pts)', color=TXT, fontsize=7)
-ax3.set_title('3 · Confidence per round — and where it hurt', color=TXT,
-              fontsize=12, loc='left')
+ax3.set_ylabel('how sure (avg predicted margin, pts)', color=TXT, fontsize=7)
+ax3.set_title('3 · How sure the model was (bar) vs how right it was (%)',
+              color=TXT, fontsize=12, loc='left')
 ax3.set_facecolor(BG)
 ax3.tick_params(colors=TXT, labelsize=7)
 for s in ax3.spines.values():
