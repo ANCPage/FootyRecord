@@ -284,7 +284,11 @@ B1 ✅ net_delta stores the RAW net (not back-derived). VERIFIED: 0 mismatches
 B3 ✅ home_elo/away_elo/tier/rank filled from the pre-match histories (0 NULLs
     was 1204; h_elo - a_elo == elo_diff verified on all rows). Renderer no
     longer crashes: R22 smoke render = 0 errors, 9/9 games full cards,
-    summary matches the DB. Full R0-R22 regen running.
+    summary matches the DB. Full R0-R22 regen COMPLETE 2026-08-12: 23/23
+    rounds, 0 errors, every card's round + cumulative summary verified equal
+    to the DB record (R22 card: 133/189 70.4%); all G/STORY/PLAYERS/
+    expectation cards present desktop + mobile (R0=5 games, bye rounds 7-8,
+    R1/R5-R11+ 9 — natural round structure).
 
 REMAINING (report to Austin):
 A4/C2 [LOW] prob_home/MARGIN_TO_PROB_SCALE vestigial — decision: remove or keep.
