@@ -131,7 +131,7 @@ for s in ax2.spines.values():
 
 # --- Panel D: accuracy by confidence tier ---
 xpos4 = np.arange(len(tlabels))
-colors4 = [GREEN if a >= overall26 else (AMBER if a >= 55 else RED) for a in taccs]
+colors4 = [GREEN if a >= overall26 else (AMBER if a > 50 else RED) for a in taccs]
 ax4.bar(xpos4, taccs, color=colors4, alpha=0.85, width=0.62)
 for xi, (a, n) in enumerate(zip(taccs, tns)):
     ax4.text(xi, a + 1.5, f'{a:.0f}%', ha='center', fontsize=8, color=TXT)

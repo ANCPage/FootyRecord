@@ -25,7 +25,6 @@ class MatchupPrediction:
     a_elo: float
     elo_diff: float        # (h-a)/100 — margin-model feature scale
     winner_id: str
-    prob_home: float
     margin_pred: float
     home_score: int
     away_score: int
@@ -81,7 +80,6 @@ def compute_matchup(ingestor, home_id: str, away_id: str, season: int,
     # fitted margin can never flip the delta)
     edge = align_margin(cal.margin(net_delta, elo_diff), net_delta, elo_diff)
     winner_id = home_id if home_favored(net_delta, h_elo, a_elo) else away_id
-    prob_home = cal.prob_from_margin(edge)  # display-only transform
     margin_pred = round(edge)
     total = cal.total_mean
     home_score = max(10, round((total + margin_pred) / 2.0))
@@ -93,7 +91,7 @@ def compute_matchup(ingestor, home_id: str, away_id: str, season: int,
         m_home=m_h, m_away=m_a, delta=delta,
         net_delta=net_delta, edge=edge,
         h_elo=h_elo, a_elo=a_elo, elo_diff=elo_diff,
-        winner_id=winner_id, prob_home=prob_home,
+        winner_id=winner_id,
         margin_pred=margin_pred, home_score=home_score, away_score=away_score,
         h_tier=ingestor.get_team_tier(h_elo),
         a_tier=ingestor.get_team_tier(a_elo),

@@ -112,10 +112,8 @@ def test_select_window_expanding():
 def test_margin_and_display_prob_helpers():
     cal = Calibration(margin_b1=50.0, margin_b2=0.0)
     assert cal.margin(0.1, 1.0) == 5.0
-    # display-only transform: margin 0 -> 50/50; positive margin -> > 0.5
-    assert abs(cal.prob_from_margin(0.0) - 0.5) < 1e-9
-    assert cal.prob_from_margin(20.0) > 0.5
-    assert cal.prob_from_margin(-20.0) < 0.5
+    # the display-only prob transform was REMOVED 2026-08-12 (re-audit #4:
+    # vestigial — nothing displayed it since the server decommission)
 
 
 def test_evaluate_aggregate_tuple_layout():

@@ -12,9 +12,10 @@ expanding (all history). evaluate.py A/Bs both and reports which wins.
 The margin model has no intercept by design (no venue advantage, audit #1).
 
 The probability layer was REMOVED 2026-08-10 (cleanest-model decision): the
-margin is the single calibrated output; winner = margin sign; any percentage
-shown is a display transform of the margin (MARGIN_TO_PROB_SCALE), not a
-separately fitted model. Brier is gone — margin MAE is the honest error.
+margin is the single calibrated output; winner = margin sign. The display-only
+percentage helper (prob_from_margin / MARGIN_TO_PROB_SCALE) was REMOVED
+2026-08-12 (re-audit #4: vestigial — nothing displayed it since the server
+decommission). Brier is gone — margin MAE is the honest error.
 
 Shipped constants are the FALLBACK until enough history exists
 (MIN_FIT_MATCHES), e.g. the first rounds of 2021.
@@ -30,7 +31,6 @@ import Core.config as _config
 
 MIN_FIT_MATCHES = 60
 WINDOW_SEASONS = 2  # production default: rolling last N seasons
-MARGIN_TO_PROB_SCALE = 20.0  # display-only: sigmoid(margin/20) ~ probit fit of |margin| vs RMSE (~34)
 
 # Shipped constants (fit on 2024-25, 2026-08-09/10) — bootstrap fallback only.
 FALLBACK_MARGIN = (70.9755, 4.8817)       # b1(net), b2(elo/100)
@@ -56,11 +56,6 @@ class Calibration:
 
     def margin(self, net_delta: float, elo_diff100: float) -> float:
         return self.margin_b1 * net_delta + self.margin_b2 * elo_diff100
-
-    def prob_from_margin(self, margin: float) -> float:
-        """DISPLAY-ONLY probability transform (not a fitted model): P(home win)
-        ~ sigmoid(margin / MARGIN_TO_PROB_SCALE)."""
-        return 1.0 / (1.0 + np.exp(-margin / MARGIN_TO_PROB_SCALE))
 
     def tier(self, elo: float) -> str:
         """Distribution-relative tier (top-4 ELITE, next-4 CONTENDER, next-5

@@ -260,6 +260,13 @@ class DataIngestor:
                     a_pos[d][TransitionEdge(s2, e2)] += sign2
                 inv = list(collapsed_players[i - 1]) if i - 1 < len(collapsed_players) else []
                 for p in inv:
+                    # INTENT (re-audit 2026-08-12, C4): player credits track
+                    # ONLY the team's OWN players — opponent chains are never
+                    # credited here, while the edge matrices DO embed opponent
+                    # chains (rotated + negated). Deliberate: the "key drivers"
+                    # panel shows YOUR players driving YOUR edges; showing
+                    # opponents as negative credits would confuse it. The
+                    # player layer is a display decomposition, not the model.
                     if cteam == h_team:
                         h_player[d][p][(start, end)] += 1.0
                     else:

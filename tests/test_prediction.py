@@ -42,7 +42,6 @@ def test_compute_matchup_returns_full_prediction(tmp_path):
     assert pred.winner_id in ('H', 'A')
     assert pred.home == 'H' and pred.away == 'A'
     assert pred.net_delta == sum(pred.delta.values())
-    assert 0.0 < pred.prob_home < 1.0
     assert pred.home_score >= 10 and pred.away_score >= 10
     assert pred.h_elo > 1000 and pred.a_elo > 1000
     assert pred.h_tier in ('ELITE', 'CONTENDER', 'MID-TABLE', 'REBUILDING')
