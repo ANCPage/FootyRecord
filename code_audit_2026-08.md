@@ -278,11 +278,15 @@ C11 ✅ physical_placement no longer allocates a Graph per call.
 C18 ✅ visualize_tips dead expressions removed (bbox_inches left as-is — the
     approved look depends on it).
 
+SAVE-PATH UNIT — DONE 2026-08-12 (evaluate.py, re-saved + verified):
+B1 ✅ net_delta stores the RAW net (not back-derived). VERIFIED: 0 mismatches
+    (was 59), per-season record byte-identical (799/1204, 2026 133/189).
+B3 ✅ home_elo/away_elo/tier/rank filled from the pre-match histories (0 NULLs
+    was 1204; h_elo - a_elo == elo_diff verified on all rows). Renderer no
+    longer crashes: R22 smoke render = 0 errors, 9/9 games full cards,
+    summary matches the DB. Full R0-R22 regen running.
+
 REMAINING (report to Austin):
-B1 [MED-HIGH] save_rows_to_db net_delta back-derivation (59/1,204 rows wrong) —
-    needs the save-path unit (B1+B3) + evaluate.py --save re-run.
-B3 [HIGH] NULL elos in the record -> renderer silently skips matchup cards —
-    same unit: fill elos/tiers/ranks in the save path, then re-render.
 A4/C2 [LOW] prob_home/MARGIN_TO_PROB_SCALE vestigial — decision: remove or keep.
 A5 [LOW] tier-panel >=55 color rule vs legend wording (latent, no current misfire).
 C4 [LOW] player-credit asymmetry (document or align).

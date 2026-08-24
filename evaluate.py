@@ -136,8 +136,18 @@ def save_rows_to_db(out_rows, cals, ing, db_path=None):
     for r in out_rows:
         rounds.setdefault((r[0], r[1]), []).append(r)
     games, snaps = [], []
+    # Elo BEFORE each match, by match id (same source _build_fit_rows uses —
+    # guarantees the stored home_elo/away_elo difference equals elo_diff).
+    elo_at = {}
+    for team, hist in ing.team_elo_history.items():
+        for mid, elo_val in hist:
+            if not mid.startswith('POST_'):
+                elo_at.setdefault(mid, {})[team] = elo_val
     for (s, rnd), group in sorted(rounds.items()):
         cal = cals[(s, rnd)]
+        # Ranks from the Elo field BEFORE the round (re-audit 2026-08-12,
+        # concern #4: fills the NULL columns the renderer needs).
+        rankings = ing.get_league_rankings(s, rnd)
         for r in group:
             m, won, marg, m_id, home, away, elo, net = r[2], r[3], r[5], r[6], r[7], r[8], r[9], r[10]
             # winner = RAW delta sign (no fitted layer overrides the signal);
@@ -145,16 +155,26 @@ def save_rows_to_db(out_rows, cals, ing, db_path=None):
             winner = home if (net > 0 or (net == 0 and elo >= 0)) else away
             correct = 1 if won == (winner == home) else 0
             total = cal.total_mean
+            h_elo = elo_at.get(m_id, {}).get(home)
+            a_elo = elo_at.get(m_id, {}).get(away)
+            if h_elo is None or a_elo is None:
+                h_elo = a_elo = 0.0  # unreachable — rows came from these histories
+            h_tier = ing.calibration.tier(h_elo) if getattr(ing, 'calibration', None) else cal.tier(h_elo)
+            a_tier = ing.calibration.tier(a_elo) if getattr(ing, 'calibration', None) else cal.tier(a_elo)
             # The pre-match delta matrix that produced this pick (walk-forward
             # consistent by construction — stored at profile time).
             delta = ing.match_performance.get(m_id, {}).get('expected_delta')
             games.append({
                 'season': s, 'round': rnd, 'match_id': m_id, 'home': home,
-                'away': away, 'net_delta': (m - cal.margin_b2 * (elo / 100.0)) / cal.margin_b1
-              if cal.margin_b1 else 0.0,
+                'away': away,
+                # RAW net delta — NOT back-derived from the aligned margin
+                # (the old derivation corrupted 59/1,204 override games;
+                # re-audit 2026-08-12, B1).
+                'net_delta': net,
                 'elo_diff': elo, 'margin': m, 'winner': winner,
-                'home_elo': None, 'away_elo': None, 'home_tier': None,
-                'away_tier': None, 'home_rank': None, 'away_rank': None,
+                'home_elo': h_elo, 'away_elo': a_elo, 'home_tier': h_tier,
+                'away_tier': a_tier, 'home_rank': rankings.get(home, 99),
+                'away_rank': rankings.get(away, 99),
                 'total': total, 'home_score': round((total + m) / 2),
                 'away_score': round((total - m) / 2),
                 'grade': confidence_grade(m),
