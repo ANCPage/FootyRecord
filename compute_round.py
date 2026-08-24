@@ -52,6 +52,11 @@ def compute_round(ing, conn, season: int, round_num: int) -> int:
         if pred is None:
             continue
         played = info.home_score > 0 or info.away_score > 0
+        if played:
+            # Played games belong to the walk-forward record (evaluate.py
+            # --save) — never overwrite them with the LIVE fit in a mixed
+            # round (re-audit 2026-08-12, lookahead guard).
+            continue
         games.append(results_db.game_row_from_prediction(
             pred, info, season, round_num, cal.current, m_id, played=played))
     snapshot = results_db.build_calibration_snapshot(

@@ -11,6 +11,7 @@ Usage:
 """
 import argparse
 from collections import defaultdict
+from datetime import datetime
 
 import requests
 
@@ -21,7 +22,9 @@ from Core.mappings import TEAM_DATA
 from Core.prediction import compute_matchup
 
 
-def predict_game(round_num, game_num):
+def predict_game(round_num, game_num, season=None):
+    if season is None:
+        season = datetime.now().year  # no hardcoded year (re-audit 2026-08-12)
     ingestor = DataIngestor('CSV_DATA')
     ingestor.load_all_data()
     if not ingestor.team_positions:
@@ -30,9 +33,9 @@ def predict_game(round_num, game_num):
     # Authenticate + fetch the live fixture (the unique input)
     token = requests.post('https://api.afl.com.au/cfs/afl/WMCTok', json={},
                           headers={'User-Agent': 'Mozilla/5.0'}, timeout=15).json().get('token')
-    mid = f'CD_M2026014{int(round_num):02d}{int(game_num):02d}'
+    mid = f'CD_M{season}014{int(round_num):02d}{int(game_num):02d}'
     resp = requests.get(f'https://api.afl.com.au/cfs/afl/matchRoster/full/{mid}',
-                        headers={'x-media-mis-token': token})
+                        headers={'x-media-mis-token': token}, timeout=15)
     if resp.status_code != 200:
         print(f"Could not find match {mid}")
         return
@@ -58,7 +61,7 @@ def predict_game(round_num, game_num):
         print("No active roster data available for this match yet.")
 
     # Shared prediction (delta, net, margin, winner)
-    pred = compute_matchup(ingestor, h_id, a_id, 2026, round_num)
+    pred = compute_matchup(ingestor, h_id, a_id, season, round_num)
     if pred is None:
         print("Could not compute a prediction for this matchup.")
         return
@@ -107,11 +110,11 @@ def predict_game(round_num, game_num):
     import Core.calibration as cal
     game = results_db.game_row_from_prediction(
         pred, SimpleNamespace(home=h_id, away=a_id, home_score=0, away_score=0),
-        2026, round_num, cal.current, mid, played=False)
+        season, round_num, cal.current, mid, played=False)
     conn = results_db.connect()
     results_db.upsert_prediction(conn, game)
     results_db.upsert_calibration(
-        conn, 2026, round_num,
+        conn, season, round_num,
         results_db.build_calibration_snapshot(cal.current, 'live-api'))
     conn.commit()
     conn.close()
@@ -122,5 +125,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('round', type=int)
     parser.add_argument('game', type=int)
+    parser.add_argument('--season', type=int, default=None,
+                        help='season year (default: current year)')
     args = parser.parse_args()
-    predict_game(args.round, args.game)
+    predict_game(args.round, args.game, args.season)

@@ -49,13 +49,13 @@ seasons = sorted({i.season for i in ing.match_info.values()})
 
 def run_eval():
     rows = collect_rows(ing, seasons)
-    out, _ = run_mode(rows, 2, 'roll2')
-    return aggregate(out)[:4]
+    out, _, _ = run_mode(rows, 2, 'roll2')
+    return aggregate(out)
 
 
 def main():
     with open(OUT, 'w') as f:
-        f.write('param,value,acc,brier,mae,n,seconds\n')
+        f.write('param,value,acc,mae,rmse,n,seconds\n')
 
     sorted_matches = sorted(ing.match_info.keys(),
                             key=lambda x: (ing.match_info[x].season, ing.match_info[x].round))
@@ -87,14 +87,17 @@ def main():
             rows = collect_rows(ing, seasons)
         else:
             continue
-        out, _ = run_mode(rows, 2, 'roll2')
-        n, acc, brier, mae, _ = aggregate(out)
+        out, _, _ = run_mode(rows, 2, 'roll2')
+        # aggregate returns (n, acc, mae, rmse) — Brier left the harness
+        # with the cleanest-model commit; the 5-unpack crashed the tool
+        # (re-audit 2026-08-12).
+        n, acc, mae, rmse = aggregate(out)
         secs = int(time.time() - t0)
-        line = f"{param},{value},{acc:.4f},{brier:.4f},{mae:.1f},{n},{secs}\n"
+        line = f"{param},{value},{acc:.4f},{mae:.1f},{rmse:.1f},{n},{secs}\n"
         with open(OUT, 'a') as f:
             f.write(line)
-        results.append((param, value, acc, brier))
-        print(f"{param}={value}: acc {100*acc:.1f}%  Brier {brier:.4f}  MAE {mae:.1f}  ({secs}s)", flush=True)
+        results.append((param, value, acc, mae))
+        print(f"{param}={value}: acc {100*acc:.1f}%  MAE {mae:.1f}  RMSE {rmse:.1f}  ({secs}s)", flush=True)
 
     # Restore the shipped calibration (nothing on disk was modified).
     import Core.calibration as cal
@@ -102,7 +105,7 @@ def main():
 
     print("\nRecommended (best acc on the grid):")
     best = max(results, key=lambda r: r[2])
-    print(f"  {best[0]} = {best[1]}  (acc {100*best[2]:.1f}%, Brier {best[3]:.4f})")
+    print(f"  {best[0]} = {best[1]}  (acc {100*best[2]:.1f}%, MAE {best[3]:.1f})")
     print(f"full table: {OUT}")
 
 

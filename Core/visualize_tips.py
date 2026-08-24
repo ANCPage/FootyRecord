@@ -89,10 +89,6 @@ class TipsVisualizer(BaseVisualizer):
                 winner_name = TEAM_DATA.get(winner_id, {'name': winner_id})['name']
                 w_color = mute_color(TEAM_DATA.get(winner_id, {'primary': '#333333'})['primary'])
 
-                fig_w, fig_h = figsize
-                0.22 / fig_w
-                0.038 / fig_h
-
                 # Winner Card
                 rect = patches.FancyBboxPatch(
                     (col_x[2] - 0.11, curr_y - 0.018), 0.22, 0.036,

@@ -142,3 +142,151 @@ GitHub Actions workflow: `ruff check`, `black --check`, `pytest -x -q`, optional
 - 3 copies of the grid mapper; 4 copies of rotation logic; 1 dead dataclass import.
 - Prior flaw doc status: 8 of its listed issues are already fixed in current code; ~6 remain open (noted inline above).
 - **Fixed during this audit:** the away-edge double-rotation rendering bug (LFP→FB phantom). Files: `Core/vector_renderer.py`, `Core/visualize_matchup.py`, `Core/visualize_story.py`. Before/after renders: `audit_G6_Hawthorn_Norf_BEFORE.png` / `_AFTER.png`.
+
+=====================================================================
+RE-AUDIT 2026-08-12 — three angles (A: magic numbers · B: math/logic flaws · C: consistency)
+Status: FINDINGS ONLY — no code changed. Fixes pending Austin's picks.
+Method: full read of Core + scripts, empirical probes on the live DB
+        (~/footyrecord-results/footyrecord.db, 1,204 walk-forward rows), pytest run.
+=====================================================================
+
+A. MAGIC NUMBERS WORTH RECONSIDERING
+A1 [MED] analysis_charts.py:108 hardcodes `(133/189)` in the arc endpoint label —
+    silently drifts when the record changes. Derive from cum[-1] and len(rows26).
+A2 [MED] predict_game.py hardcodes 2026 in 4 places (match-id format, compute_matchup
+    season, both DB writes) + the id format assumes 2-digit round/game. Breaks any
+    non-2026 live prediction.
+A3 [LOW] engine_data.py:109 `if r_num > 24: continue` — literal 24; config.MAX_ROUNDS
+    (24) and GAMES_PER_ROUND (9) are DEAD constants nothing consumes. Unify.
+A4 [LOW] calibration.MARGIN_TO_PROB_SCALE=20.0 — "display-only" transform whose
+    provenance comment is confusing ("probit fit of |margin| vs RMSE (~34)"); the only
+    consumer (prob_home) is never displayed since the server died. Remove or re-derive.
+A5 [LOW] analysis_charts tier-panel color rule: `AMBER if a >= 55 else RED` with legend
+    "At chance level (≈50%)" — a tier at 51-54% renders RED (= "at chance") while being
+    above chance. Threshold + legend semantics disagree.
+A6 [keep] confidence_grade bands (4..70), MIN_FIT_MATCHES=60, WINDOW_SEASONS=2,
+    ELO_K=32, regression 0.75, mean 1500, clamps 0.5/3.0, bootstrap decay 0.3 /
+    divisor 0.3, _fit_decay grid — chosen/fitted/standard, documented. No action.
+
+B. MATHEMATICAL / LOGICAL FLAWS
+B1 [MED-HIGH] save_rows_to_db back-derives net_delta from the ALIGNED margin
+    ((m - b2*elo/100)/b1) instead of storing the raw net (available at row index 10).
+    VERIFIED: 59/1,204 rows corrupted (mean |err| 0.086, max 0.34 — up to ~24 margin
+    pts). No sign flips today, so winner re-derivation is safe, but the stored value
+    is wrong for 4.9% of the record and any net_delta SQL/display (story card) is a lie.
+    Fix: store net directly.
+B2 [MED] refit_hyperparams.py is BROKEN — `n, acc, brier, mae, _ = aggregate(out)`
+    unpacks a 4-tuple into 5 names (ValueError on the first variant; Brier was removed
+    from the harness 2026-08-10). CSV header also still says brier. The documented
+    refit procedure is dead — verified by repro.
+B3 [HIGH] NULL elos in the record crash the renderer -> matchup cards SILENTLY SKIPPED.
+    save_rows_to_db writes home_elo/away_elo/tier/rank = None (VERIFIED: 1204/1204 rows);
+    generate_round_images passes them into draw_full_matchup which computes
+    (elo_a - elo_b)/100.0 -> TypeError -> caught by the broad per-game except -> every
+    G/STORY/PLAYERS card skipped while TIPS/ladder/journeys still render. The cards on
+    disk PREDATE the current DB (mtime Aug 11 vs DB Aug 12) — the documented stale-card
+    regen (render_round.py for R0-R21) would produce NO matchup cards at all.
+    Fix: fill elos in the save path (cheap get_team_elo calls — the open concern #4) or
+    fall back to pred values in the renderer.
+B4 [LOW-MED] compute_round writes PLAYED games with live-calibration picks in mixed
+    rounds (any unplayed game in the round -> ALL games computed incl. played, with the
+    CURRENT fit) -> overwrites walk-forward rows with lookahead picks until the next
+    evaluate.py --save. Latent (0 unplayed rows in DB now).
+B5 [LOW] results_db.team_records counts unplayed games as losses — filter is
+    `correct IS NOT NULL` but unplayed rows have correct=0; should be
+    actual_margin IS NOT NULL. Latent.
+B6 [LOW] results_db.upsert_round's INSERT omits the delta column — live-round rows get
+    NULL delta (renderer falls back to live recompute: acceptable for unplayed games,
+    but the two writers are asymmetric and INSERT OR REPLACE erases an existing delta).
+B7 [LOW] run_mode out rows are now 11-tuples (net at index 10); docstrings in run_mode
+    and save_rows_to_db still describe the 9/10-tuple. Tuple-layout drift is exactly
+    what bit the harness before — update the docs + the aggregate layout test's comment.
+
+C. INCONSISTENT / SEPARATE-FROM-THE-REST LOGIC
+C1 [LOW] analysis_charts.py:24 is the ONLY sys.path hack left in the tree (project
+    convention: zero path manipulation, RRR pass 2) — added after the sweep, and
+    vestigial (Core.* imports work from repo root). Same file has dead code: `conf`
+    list (lines 86-89) and the `ALL` query (lines 49-51) are computed, never used.
+C2 [LOW] prob_home/prob_from_margin is vestigial — computed in compute_matchup, never
+    displayed (server decommissioned); kept alive only by tests.
+C3 [LOW-MED] state_store.load_state builds team_positions in match_positions DICT
+    order — relies on SQLite rowid order of an ORDER-BY-less SELECT. The dead
+    `sorted_ms` var (the one F841 ruff error in the main tree) shows the intended
+    chronological order was dropped. Works today; fragile. Delete the var + order the
+    iteration (or ORDER BY in the SELECT).
+C4 [LOW] Player credits don't mirror the matrix accumulation — opponent chains are
+    rotated+negated into the edge matrices but player credits track only the team's OWN
+    players (no rotation/negation). Intentional for the "key drivers" frame, but the
+    asymmetry between model layer and display layer is undocumented.
+C5 [LOW] visualize_tips.py:92-94 dead expressions (0.22/fig_w, 0.038/fig_h) + the
+    explicit bbox_inches='tight' save — the ONLY visualizer still tight-cropping after
+    the 2026-08-10 aspect-ratio fix.
+C6 [LOW] Same card set shows two different net_deltas: draw_full_matchup recomputes it
+    from the delta matrix (line 108) while the story card gets the DB row's back-derived
+    value (B1). Fixing B1 fixes this.
+C7 [LOW] load_state vs load_all_data asymmetry: scoreless matches get actual_winners
+    'DRAW' in the live path but NO key on load (guard `if hs and as_:`). No real 0-0
+    games; unplayed fixtures are filtered from TIPS_RESULTS anyway.
+C8 [LOW] prediction.py MatchupPrediction.edge docstring still says "fitted logit" —
+    stale since cleanest-model; the code comment below it says the right thing.
+C9 [LOW] Experiments/ holds ~131 ruff errors (sys.path hacks, import sorting) — legacy
+    sandbox outside the ruff gate; consider archiving (git history preserves).
+C10 [LOW] get_team_average_matrix dilutes the profile with scoreless matches (empty
+    matrices count toward len(history)). No real impact (played games always score).
+C11 [LOW] physical_placement allocates a fresh Graph("util") (16 nodes) per edge per
+    panel — renderer perf nit, not a bug.
+
+VERIFIED CORRECT (checked, no issue found)
+- Elo history ordering: m_id TEXT order == chronological order (ids zero-padded;
+  POST_ sorts last) — tier cutoffs / last-entry reads are safe. VERIFIED on the DB.
+- No-lookahead: expectations computed before the match is appended; fit rows exclude
+  same-round and future matches; select_window(season-1..season) semantics match
+  production. Draws included per policy B everywhere.
+- Margin model feature scale: fit divides elo_diff/100 and margin() receives /100 —
+  consistent; the parameter name elo_diff100 is misleading, the math is right.
+- calculate_delta antisymmetry, rotation involutive, squircle grid mapping continuity,
+  E2 normalization, decay recombination, collapse_chain, align_margin == home_favored
+  dead-even rule, confidence ladder shared by compute+render, draw handling (draws =
+  misses) consistent across eval/DB/cards.
+- Determinism: sorted iteration in calculate_delta holds (no set-order wobble).
+- Margin-band pick accuracy healthy: [-12,-4) 53%, [-4,4) 54%, [4,12) 68%, >=12 84%,
+  <=-12 70% (pick accuracy, home frame) — the confidence ladder tells an honest story.
+- Tests: 59 collected (skill says 61 — count drift, 2 fewer than recorded).
+
+---------------------------------------------------------------------
+EASY-WIN SWEEP — DONE 2026-08-12 (fixes committed; tests 59/59, ruff clean)
+A1 ✅ analysis_charts endpoint now derives (c/t) from the data; x uses rnds[-1]
+    (PNG verified byte-identical — the label already matched the record).
+A2 ✅ predict_game.py season parameterized (--season, default current year)
+    + timeout on the roster GET.
+A3 ✅ GAMES_PER_ROUND removed (dead); engine_data guard uses config.MAX_ROUNDS.
+A5 (no action — verified no tier in (50,55), rule never misfires in current data)
+B2 ✅ refit_hyperparams resurrected: 4-unpack, run_mode 3-unpack (second latent
+    breakage), brier columns -> mae/rmse. Smoke-ran 7 variants (~33s each,
+    decay 0.4 -> 66.6%, sane). Full run ~8 min.
+B4 ✅ compute_round skips PLAYED games in mixed rounds (lookahead guard).
+B5 ✅ team_records filter -> actual_margin IS NOT NULL.
+B6 ✅ upsert_round now writes the delta column (22 cols).
+B7 ✅ run_mode/save_rows_to_db/evaluate docstrings match the 11-tuple layout.
+C1 ✅ analysis_charts sys.path hack + dead code (conf list, ALL query) removed.
+C3 ✅ state_store team_positions built in explicit (season, round) order;
+    the F841 dead var gone (ruff fully clean on the main tree).
+C6 ✅ (fixed by B1? no — B1 pending) — draw_full_matchup still recomputes net
+    from the delta matrix; converges once the save path stores the raw net.
+C8 ✅ prediction.py edge docstring -> aligned margin.
+C11 ✅ physical_placement no longer allocates a Graph per call.
+C18 ✅ visualize_tips dead expressions removed (bbox_inches left as-is — the
+    approved look depends on it).
+
+REMAINING (report to Austin):
+B1 [MED-HIGH] save_rows_to_db net_delta back-derivation (59/1,204 rows wrong) —
+    needs the save-path unit (B1+B3) + evaluate.py --save re-run.
+B3 [HIGH] NULL elos in the record -> renderer silently skips matchup cards —
+    same unit: fill elos/tiers/ranks in the save path, then re-render.
+A4/C2 [LOW] prob_home/MARGIN_TO_PROB_SCALE vestigial — decision: remove or keep.
+A5 [LOW] tier-panel >=55 color rule vs legend wording (latent, no current misfire).
+C4 [LOW] player-credit asymmetry (document or align).
+C7 [LOW] load_state vs load_all_data actual_winners asymmetry (scoreless games).
+C9 [LOW] Experiments/ ruff debt (~131 errors) — archive or accept.
+C10 [LOW] scoreless-match profile dilution (zero real impact).
+C13 [LOW] tests count drift: 59 collected vs 61 recorded in the skill.

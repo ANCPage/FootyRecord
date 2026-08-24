@@ -4,7 +4,8 @@ Measures the model with DYNAMIC calibration: at every round, the decision
 coefficients are re-fitted on matches strictly before that round (no leakage),
 so every match is out-of-sample by construction. Two fit windows are A/B'd:
 rolling last 2 seasons vs expanding (all history). Reports per-season and
-overall winner accuracy, Brier, margin MAE/RMSE, and a calibration table.
+overall winner accuracy, margin MAE/RMSE, and a margin-band calibration table
+(Brier was removed 2026-08-10 — the margin is the single calibrated output).
 
 Run:  python evaluate.py [season ...]
 """
@@ -76,7 +77,9 @@ def run_mode(rows, window_seasons, label):
 
     Returns (out, fallback_hits, cals) — out rows are
     (season, round, margin_pred, home_won, margin_pred, actual_margin,
-    match_id, home, away, elo_diff); cals maps (season, round) -> Calibration.
+    match_id, home, away, elo_diff, net_delta) — 11-tuple, NET_DELTA AT
+    INDEX 10 (re-audit 2026-08-12: docstrings must match the layout);
+    cals maps (season, round) -> Calibration.
     """
     from collections import defaultdict
     groups = defaultdict(list)
@@ -118,8 +121,9 @@ def save_rows_to_db(out_rows, cals, ing, db_path=None):
     """Write walk-forward (no-lookahead) predictions to the results DB.
 
     The single source of truth: renderer and analysis read these rows.
-    out_rows: (season, margin_pred, home_won, margin_pred, actual_margin,
-    match_id, home, away, elo_diff); cals: (season, round) -> Calibration.
+    out_rows: (season, round, margin_pred, home_won, margin_pred,
+    actual_margin, match_id, home, away, elo_diff, net_delta) — 11-tuple
+    (net_delta at index 10); cals: (season, round) -> Calibration.
     """
     import Core.results_db as results_db
     from Core.calibration import confidence_grade

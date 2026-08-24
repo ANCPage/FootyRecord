@@ -20,7 +20,7 @@ class MatchupPrediction:
     m_away: dict
     delta: dict
     net_delta: float
-    edge: float            # fitted logit — the value home_favored thresholds at 0
+    edge: float            # predicted margin (aligned — sign = raw delta direction)
     h_elo: float
     a_elo: float
     elo_diff: float        # (h-a)/100 — margin-model feature scale

@@ -89,12 +89,13 @@ def upsert_round(conn, season, round_num, games, calibration):
     conn.executemany(
         "INSERT OR REPLACE INTO predictions (season, round, match_id, home, away,"
         " net_delta, elo_diff, margin, winner, home_elo, away_elo, home_tier, away_tier,"
-        " home_rank, away_rank, total, home_score, away_score, grade, actual_margin, correct)"
-        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        " home_rank, away_rank, total, home_score, away_score, grade, actual_margin, correct, delta)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         [(g['season'], g['round'], g['match_id'], g['home'], g['away'], g['net_delta'],
           g['elo_diff'], g['margin'], g['winner'], g['home_elo'], g['away_elo'],
           g['home_tier'], g['away_tier'], g['home_rank'], g['away_rank'], g['total'],
-          g['home_score'], g['away_score'], g['grade'], g['actual_margin'], g['correct'])
+          g['home_score'], g['away_score'], g['grade'], g['actual_margin'], g['correct'],
+          g.get('delta'))
          for g in games],
     )
     conn.execute(
@@ -175,7 +176,7 @@ def team_records(conn, season: int, through_round: int) -> dict:
     """Per-team (wins, losses) from prediction outcomes through the round."""
     rows = conn.execute(
         "SELECT home, away, winner FROM predictions"
-        " WHERE season = ? AND round <= ? AND correct IS NOT NULL",
+        " WHERE season = ? AND round <= ? AND actual_margin IS NOT NULL",
         (season, through_round)).fetchall()
     rec = {}
     for home, away, winner in rows:

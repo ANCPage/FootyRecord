@@ -10,7 +10,6 @@ Usage: python analysis_charts.py
 Output: ROUND_IMAGES_UPDATE/2026/ANALYSIS/
 """
 import os
-import sys
 from collections import defaultdict
 
 import matplotlib
@@ -21,7 +20,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Patch, Rectangle
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Core'))
 from Core.config import FONTS_DIR
 from Core.mappings import TEAM_MAP
 from Core.results_db import connect
@@ -46,9 +44,6 @@ conn = connect()
 rows26 = list(conn.execute(
     "SELECT round, home, away, margin, actual_margin, correct, match_id, grade"
     " FROM predictions WHERE season=2026 AND actual_margin IS NOT NULL"))
-ALL = list(conn.execute(
-    "SELECT round, home, away, margin, actual_margin, correct, home_elo, away_elo, grade, match_id"
-    " FROM predictions WHERE actual_margin IS NOT NULL"))
 conn.close()
 
 
@@ -83,10 +78,6 @@ roll = []
 for i, r in enumerate(rnds):
     w = [x for j, rr in enumerate(rnds) if i - 4 <= j <= i for x in by_round[rr]]
     roll.append(100 * sum(w) / len(w))
-conf = []
-for r in rnds:
-    gm = [x for x in rows26 if x[0] == r]
-    conf.append(sum(abs(x[3]) for x in gm) / len(gm))
 
 fig, (ax, ax2, ax4) = plt.subplots(
     3, 1, figsize=(7.5, 13.4),
@@ -104,8 +95,8 @@ ax.plot(rnds, roll, '-', color=GREEN, lw=1.5, alpha=0.85, label='Rolling 5-round
 ax.axhline(season_avg, color=SUB, lw=1.1, ls='--', alpha=0.75)
 ax.text(rnds[0] + 0.3, season_avg + 1.2, f'Season average {season_avg:.1f}%', fontsize=7.5, color=SUB)
 ax.axhline(50, color=SUB, lw=0.8, ls=':', alpha=0.6)
-ax.scatter([22], [cum[-1]], color=BLUE, s=50, zorder=5)
-ax.text(22, cum[-1] + 1.6, f'{cum[-1]:.1f}% (133/189)', fontsize=9.5,
+ax.scatter([rnds[-1]], [cum[-1]], color=BLUE, s=50, zorder=5)
+ax.text(rnds[-1], cum[-1] + 1.6, f'{cum[-1]:.1f}% ({c}/{t})', fontsize=9.5,
         color=BLUE, ha='center')
 ax.legend(fontsize=8, loc='upper left', framealpha=0.9)
 ax.set_xlim(-0.6, len(rnds) - 0.4)

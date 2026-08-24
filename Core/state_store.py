@@ -169,10 +169,13 @@ def load_state(conn) -> dict:
             match_positions[m_id] = (h, buckets)
     state['match_positions'] = match_positions
 
-    # team_positions (derived: team -> [(m_id, pos)], chronological)
-    sorted_ms = sorted(match_info.items(), key=lambda kv: (kv[1].season, kv[1].round))
+    # team_positions (derived: team -> [(m_id, pos)], chronological — the DB
+    # SELECT has no ORDER BY, so sort explicitly; dict insertion order is not
+    # a contract (re-audit 2026-08-12).
     team_positions = defaultdict(list)
-    for m_id, (h_pos, a_pos) in match_positions.items():
+    for m_id in sorted(match_positions,
+                       key=lambda m: (match_info[m].season, match_info[m].round)):
+        h_pos, a_pos = match_positions[m_id]
         team_positions[match_info[m_id].home].append((m_id, h_pos))
         team_positions[match_info[m_id].away].append((m_id, a_pos))
     state['team_positions'] = team_positions

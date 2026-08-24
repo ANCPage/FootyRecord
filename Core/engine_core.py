@@ -63,10 +63,9 @@ def physical_placement(start: str, end: str, is_away_edge: bool = False,
         zones rotate 180 deg onto the home-oriented field; the goal maps to the
         goal the edge OWNER attacks (own move -> AWAY_G, opponent -> SCORE).
     """
-    g = Graph("util")
     if frame == 'team':
-        phys_start = g.rotate_node(start)
-        phys_end = g.rotate_node(end)
+        phys_start = _rotate_node(start)
+        phys_end = _rotate_node(end)
     else:
         phys_start = start
         phys_end = end
