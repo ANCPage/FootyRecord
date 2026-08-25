@@ -79,6 +79,23 @@ def test_cache_round_trip(tmp_path):
     assert ing2.get_team_average_matrix('H') == m_before
 
 
+def test_light_load_skips_chains(tmp_path):
+    """Perf 2026-08-12: render/compute loads pass light=True — the chains
+    table (only needed for profiling) is skipped, everything else identical."""
+    write_fixture(str(tmp_path))
+    ing = DataIngestor(str(tmp_path), db_path=str(tmp_path / 'test.db'))
+    ing.load_all_data()
+    ing.profile_all_teams()
+
+    ing_light = DataIngestor(str(tmp_path), db_path=str(tmp_path / 'test.db'))
+    ing_light.load_all_data(light=True)
+    assert getattr(ing_light, '_skip_profiling', False), 'cache was not used'
+    assert ing_light.match_chains == {} or len(ing_light.match_chains) == 0
+    assert len(ing_light.match_info) == len(ing.match_info)
+    assert ing_light.get_team_average_matrix('H') == ing.get_team_average_matrix('H')
+    assert len(ing_light.team_elo_history) == len(ing.team_elo_history)
+
+
 def test_cache_invalidated_on_version_change(tmp_path, monkeypatch):
     write_fixture(str(tmp_path))
     ing = DataIngestor(str(tmp_path), db_path=str(tmp_path / 'test.db'))

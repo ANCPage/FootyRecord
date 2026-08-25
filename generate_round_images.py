@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 
 import matplotlib.pyplot as plt
@@ -15,18 +16,27 @@ from Core.visualize_matchup import MatchupVisualizer
 from Core.visualize_story import StoryVisualizer
 from Core.visualize_tips import TipsVisualizer
 
+# Roster cache (perf 2026-08-12): player names are stable once a round is
+# played; keyed by match_id, lives in ~/.cache (not /tmp — survives reboots).
+API_CACHE_DIR = os.path.expanduser('~/.cache/footyrecord/rosters')
+
 
 class RoundProductionPipeline:
     def __init__(self, comp_id: str, round_num: int, csv_dir: str = config.DATA_DIR,
-                 db_rows: dict = None, season_summary: str = None):
+                 db_rows: dict = None, season_summary: str = None,
+                 ingestor: DataIngestor = None):
         self.comp_id = comp_id
         self.round = round_num
         self.target_season = int(comp_id[:4])
         self.csv_dir = csv_dir
         self.db_rows = db_rows or {}       # match_id -> decision row (compute/render separation)
         self.season_summary = season_summary  # pre-computed from the results DB
-        self.ingestor = None
+        self.ingestor = ingestor           # pre-loaded (perf 2026-08-12: no double load)
         self.token = None
+
+    @staticmethod
+    def _cache_path(match_id: str) -> str:
+        return os.path.join(API_CACHE_DIR, f'{match_id}.json')
 
     @staticmethod
     def get_token():
@@ -39,7 +49,7 @@ class RoundProductionPipeline:
             return None
 
     @staticmethod
-    def fetch_match_data(match_id, token):
+    def _fetch_live(match_id, token):
         if not token:
             return None
         url = f'https://api.afl.com.au/cfs/afl/matchRoster/full/{match_id}'
@@ -61,6 +71,26 @@ class RoundProductionPipeline:
             pass
         return None
 
+    def fetch_match_data(self, match_id, token):
+        """Disk-cached roster fetch: played-round rosters are stable, so a
+        re-render hits no network (perf 2026-08-12)."""
+        path = self._cache_path(match_id)
+        if os.path.exists(path):
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        data = self._fetch_live(match_id, token)
+        if data is not None:
+            try:
+                os.makedirs(API_CACHE_DIR, exist_ok=True)
+                with open(path, 'w', encoding='utf-8') as f:
+                    json.dump(data, f)
+            except Exception:
+                pass
+        return data
+
     def run(self):
         # 1. Fetch token
         self.token = self.get_token()
@@ -76,11 +106,13 @@ class RoundProductionPipeline:
         os.makedirs(insta_post_dir, exist_ok=True)
         os.makedirs(insta_reels_dir, exist_ok=True)
 
-        # 3. Load data
-        print("Loading historical data...")
-        self.ingestor = DataIngestor(self.csv_dir)
-        self.ingestor.load_all_data()
-        self.ingestor.profile_all_teams()
+        # 3. Load data (pre-loaded ingestor is used as-is — perf 2026-08-12:
+        # the combined compute+render path loads state once, not twice)
+        if self.ingestor is None:
+            print("Loading historical data...")
+            self.ingestor = DataIngestor(self.csv_dir)
+            self.ingestor.load_all_data(light=True)  # render never needs chains
+        self.ingestor.profile_all_teams()  # no-op when loaded from state
 
         # 4. Initialize visualizers
         viz = MatchupVisualizer()
@@ -318,9 +350,11 @@ class RoundProductionPipeline:
         print(f"  Created team journey plots in {desktop_dir} and Mobile subfolders")
         plt.close('all')
 
-def render_round_from_db(season: int, round_num: int, comp_id: str = None) -> str:
+def render_round_from_db(season: int, round_num: int, comp_id: str = None,
+                         ingestor: DataIngestor = None) -> str:
     """Path B: render one round's cards from the results DB (shared by
-    render_round.py and generate_round_images --render-only; RRR #7)."""
+    render_round.py, generate_round_images --render-only and regen_season.py;
+    RRR #7). Pass a pre-loaded `ingestor` to skip the state reload."""
     comp_id = comp_id or f'{season}014'
     conn = results_db.connect()
     rows = results_db.load_round(conn, season, round_num)
@@ -347,7 +381,8 @@ def render_round_from_db(season: int, round_num: int, comp_id: str = None) -> st
     summary = f"ROUND {round_num} TIPS: {correct}/{total} | SEASON: {s_c}/{s_t} ({100.0*s_c/s_t:.1f}%)"
 
     pipeline = RoundProductionPipeline(comp_id=comp_id, round_num=round_num,
-                                       db_rows=db_rows, season_summary=summary)
+                                       db_rows=db_rows, season_summary=summary,
+                                       ingestor=ingestor)
     pipeline.run()
     print(f"  Summary: {summary}")
     return summary
@@ -363,18 +398,20 @@ def main():
     args = parser.parse_args()
 
     season = int(args.comp_id[:4])
+    ing0 = None
 
     # Path A: compute + save (or ensure computed for the combined path)
     if not args.render_only:
         import compute_round
-        ing0 = compute_round.load_ingestor()
+        ing0 = compute_round.load_ingestor()  # light load — compute never needs chains
         conn = results_db.connect()
         compute_round.compute_round(ing0, conn, season, args.round)
         conn.close()
 
-    # Path B: render from the results DB
+    # Path B: render from the results DB (reuses the loaded ingestor —
+    # perf 2026-08-12: one state load for the combined path)
     if not args.compute_only:
-        render_round_from_db(season, args.round, args.comp_id)
+        render_round_from_db(season, args.round, args.comp_id, ingestor=ing0)
 
 
 if __name__ == '__main__':

@@ -124,8 +124,14 @@ def save_state(conn, ing) -> None:
     conn.commit()
 
 
-def load_state(conn) -> dict:
-    """Hydrate the ingestor's working state from SQLite."""
+def load_state(conn, skip_chains: bool = False) -> dict:
+    """Hydrate the ingestor's working state from SQLite.
+
+    skip_chains=True (perf 2026-08-12): render/compute paths never touch
+    match_chains (it exists only for profiling) — skipping the ~1.9M-row
+    chains table cuts load time roughly 3x. The key is still present
+    (empty) so __dict__.update() consumers behave.
+    """
     from collections import defaultdict
 
     state = {}
@@ -144,17 +150,20 @@ def load_state(conn) -> dict:
     state['actual_winners'] = actual_winners
 
     # chains
-    match_chains = defaultdict(lambda: defaultdict(lambda: {
-        'team': '', 'outcome': '', 'grids': [], 'players': [], 'matchId': ''}))
-    for m_id, ci, seq, team, outcome, grid, player in c.execute(
-            "SELECT m_id, chain_idx, seq, team, outcome, grid, player FROM chains ORDER BY m_id, chain_idx, seq"):
-        ch = match_chains[m_id][ci]
-        ch['team'] = team
-        ch['outcome'] = outcome
-        ch['grids'].append(grid)
-        ch['players'].append(player)
-        ch['matchId'] = m_id
-    state['match_chains'] = {m: list(d.values()) for m, d in match_chains.items()}
+    if skip_chains:
+        state['match_chains'] = defaultdict(list)
+    else:
+        match_chains = defaultdict(lambda: defaultdict(lambda: {
+            'team': '', 'outcome': '', 'grids': [], 'players': [], 'matchId': ''}))
+        for m_id, ci, seq, team, outcome, grid, player in c.execute(
+                "SELECT m_id, chain_idx, seq, team, outcome, grid, player FROM chains ORDER BY m_id, chain_idx, seq"):
+            ch = match_chains[m_id][ci]
+            ch['team'] = team
+            ch['outcome'] = outcome
+            ch['grids'].append(grid)
+            ch['players'].append(player)
+            ch['matchId'] = m_id
+        state['match_chains'] = {m: list(d.values()) for m, d in match_chains.items()}
 
     # match_positions
     match_positions = {}

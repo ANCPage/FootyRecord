@@ -68,10 +68,15 @@ class DataIngestor:
                                for f in files))
         return hashlib.sha1(raw.encode()).hexdigest()[:12]
 
-    def load_all_data(self):
+    def load_all_data(self, light: bool = False):
         """Load state from the one-store SQLite DB (fingerprint-gated), or
         ingest the CSVs + profile + save (one-store overhaul, 2026-08-11:
-        the pickle cache is gone)."""
+        the pickle cache is gone).
+
+        light=True (perf 2026-08-12): skip the chains table on the LOAD
+        path — compute/render never need match_chains (profiling does, and
+        profiling only runs on the ingest path, which always builds chains).
+        """
         import Core.state_store as state_store
         files = glob.glob(os.path.join(self.csv_dir, 'flattened_stats_202*.csv'))
         files = [f for f in files if 'simple' not in f]
@@ -83,7 +88,7 @@ class DataIngestor:
         saved_csv_fp = state_store.meta_get(conn, 'csv_fingerprint') or ''
         if saved_fp == fp and saved_csv_fp == csv_fp:
             logger.info('Loading state from one-store DB (fingerprint match)...')
-            state = state_store.load_state(conn)
+            state = state_store.load_state(conn, skip_chains=light)
             conn.close()
             self.__dict__.update(state)
             self.elo_engine = EloEngine()
