@@ -24,7 +24,7 @@ API_CACHE_DIR = os.path.expanduser('~/.cache/footyrecord/rosters')
 class RoundProductionPipeline:
     def __init__(self, comp_id: str, round_num: int, csv_dir: str = config.DATA_DIR,
                  db_rows: dict = None, season_summary: str = None,
-                 ingestor: DataIngestor = None):
+                 ingestor: DataIngestor = None, formats: list = None):
         self.comp_id = comp_id
         self.round = round_num
         self.target_season = int(comp_id[:4])
@@ -32,6 +32,9 @@ class RoundProductionPipeline:
         self.db_rows = db_rows or {}       # match_id -> decision row (compute/render separation)
         self.season_summary = season_summary  # pre-computed from the results DB
         self.ingestor = ingestor           # pre-loaded (perf 2026-08-12: no double load)
+        # Formats to render (perf 2026-08-12): default is MOBILE-ONLY
+        # (post + reel) — Austin's call; desktop via --formats desktop,post,reel
+        self.formats = formats or ['post', 'reel']
         self.token = None
 
     @staticmethod
@@ -95,16 +98,23 @@ class RoundProductionPipeline:
         # 1. Fetch token
         self.token = self.get_token()
 
-        # 2. Setup directories
+        # 2. Setup directories (formats filter — perf 2026-08-12: default is
+        # mobile-only post+reel; pass formats=['desktop','post','reel'] for all)
         base_images_dir = os.path.join(config.OUTPUT_DIR, str(self.target_season), f'R{self.round}')
         desktop_dir = os.path.join(base_images_dir, 'Desktop')
         mobile_dir = os.path.join(base_images_dir, 'Mobile')
         insta_post_dir = os.path.join(mobile_dir, 'InstaPost')
         insta_reels_dir = os.path.join(mobile_dir, 'InstaReels')
-
-        os.makedirs(desktop_dir, exist_ok=True)
-        os.makedirs(insta_post_dir, exist_ok=True)
-        os.makedirs(insta_reels_dir, exist_ok=True)
+        fmt_dirs = {}
+        for fmt in self.formats:
+            if fmt == 'desktop':
+                fmt_dirs['desktop'] = desktop_dir
+            elif fmt == 'post':
+                fmt_dirs['post'] = insta_post_dir
+            elif fmt == 'reel':
+                fmt_dirs['reel'] = insta_reels_dir
+        for d in fmt_dirs.values():
+            os.makedirs(d, exist_ok=True)
 
         # 3. Load data (pre-loaded ingestor is used as-is — perf 2026-08-12:
         # the combined compute+render path loads state once, not twice)
@@ -245,16 +255,7 @@ class RoundProductionPipeline:
             old_cwd = os.getcwd()
             try:
                 prefix = f'G{g_idx}_{h_n}_vs_{a_n}'.replace(' ', '')
-
-                # Desktop
-                game_desktop_dir = os.path.join(desktop_dir, prefix)
-                os.makedirs(game_desktop_dir, exist_ok=True)
-                os.chdir(game_desktop_dir)
-                viz.draw_full_matchup(h_id, a_id, m_a, m_b, delta, save_prefix=prefix, is_mobile=False, elo_a=h_elo, elo_b=a_elo, rank_a=h_rank, rank_b=a_rank, tier_a=h_tier, tier_b=a_tier)
                 if has_actual:
-                    viz.draw_expectation_vs_actual(h_id, a_id, delta, actual_delta, save_prefix=prefix, is_mobile=False, elo_a=h_elo, elo_b=a_elo, rank_a=h_rank, rank_b=a_rank, tier_a=h_tier, tier_b=a_tier, actual_margin=info.home_score - info.away_score)
-                    story_viz.draw_variance_map(h_id, a_id, variance_matrix, delta, actual_delta, driver_annotations, net_delta, sum(actual_delta.values()), f"STORY_{prefix}.png", is_mobile=False, elo_a=h_elo, elo_b=a_elo, rank_a=h_rank, rank_b=a_rank, tier_a=h_tier, tier_b=a_tier)
-
                     player_actuals = {}
                     player_expecteds = {}
                     hist_p_a = self.ingestor.get_team_player_matrix(h_id, up_to_season=self.target_season, up_to_round=self.round)
@@ -263,18 +264,22 @@ class RoundProductionPipeline:
                         for pid, edges in act_mat.items():
                             player_actuals[pid] = sum(edges.values())
                             player_expecteds[pid] = sum(hist_mat.get(pid, {}).values())
-                    story_viz.draw_player_performance(h_id, a_id, player_actuals, player_expecteds, player_names, f"PLAYERS_{prefix}.png", is_mobile=False)
 
-                # Mobile
-                for m_dir, m_format in [(insta_post_dir, 'post'), (insta_reels_dir, 'reel')]:
-                    game_mobile_dir = os.path.join(m_dir, prefix)
-                    os.makedirs(game_mobile_dir, exist_ok=True)
-                    os.chdir(game_mobile_dir)
-                    viz.draw_full_matchup(h_id, a_id, m_a, m_b, delta, save_prefix=prefix, is_mobile=True, mobile_format=m_format, elo_a=h_elo, elo_b=a_elo, rank_a=h_rank, rank_b=a_rank, tier_a=h_tier, tier_b=a_tier)
+                # Render into each selected format dir (default: mobile post+reel)
+                for fmt in self.formats:
+                    if fmt == 'desktop':
+                        game_fmt_dir = os.path.join(desktop_dir, prefix)
+                        is_mobile, m_format = False, None
+                    else:
+                        game_fmt_dir = os.path.join(mobile_dir, 'InstaPost' if fmt == 'post' else 'InstaReels', prefix)
+                        is_mobile, m_format = True, fmt
+                    os.makedirs(game_fmt_dir, exist_ok=True)
+                    os.chdir(game_fmt_dir)
+                    viz.draw_full_matchup(h_id, a_id, m_a, m_b, delta, save_prefix=prefix, is_mobile=is_mobile, mobile_format=m_format, elo_a=h_elo, elo_b=a_elo, rank_a=h_rank, rank_b=a_rank, tier_a=h_tier, tier_b=a_tier)
                     if has_actual:
-                        viz.draw_expectation_vs_actual(h_id, a_id, delta, actual_delta, save_prefix=prefix, is_mobile=True, mobile_format=m_format, elo_a=h_elo, elo_b=a_elo, rank_a=h_rank, rank_b=a_rank, tier_a=h_tier, tier_b=a_tier, actual_margin=info.home_score - info.away_score)
-                        story_viz.draw_variance_map(h_id, a_id, variance_matrix, delta, actual_delta, driver_annotations, net_delta, sum(actual_delta.values()), f"STORY_{prefix}.png", is_mobile=True, mobile_format=m_format, elo_a=h_elo, elo_b=a_elo, rank_a=h_rank, rank_b=a_rank, tier_a=h_tier, tier_b=a_tier)
-                        story_viz.draw_player_performance(h_id, a_id, player_actuals, player_expecteds, player_names, f"PLAYERS_{prefix}.png", is_mobile=True, mobile_format=m_format)
+                        viz.draw_expectation_vs_actual(h_id, a_id, delta, actual_delta, save_prefix=prefix, is_mobile=is_mobile, mobile_format=m_format, elo_a=h_elo, elo_b=a_elo, rank_a=h_rank, rank_b=a_rank, tier_a=h_tier, tier_b=a_tier, actual_margin=info.home_score - info.away_score)
+                        story_viz.draw_variance_map(h_id, a_id, variance_matrix, delta, actual_delta, driver_annotations, net_delta, sum(actual_delta.values()), f"STORY_{prefix}.png", is_mobile=is_mobile, mobile_format=m_format, elo_a=h_elo, elo_b=a_elo, rank_a=h_rank, rank_b=a_rank, tier_a=h_tier, tier_b=a_tier)
+                        story_viz.draw_player_performance(h_id, a_id, player_actuals, player_expecteds, player_names, f"PLAYERS_{prefix}.png", is_mobile=is_mobile, mobile_format=m_format)
             except Exception as e:
                 import traceback
                 traceback.print_exc()
@@ -286,18 +291,22 @@ class RoundProductionPipeline:
         # Generate seasonal visualizations
         print("\nGenerating Seasonal Visualizations...")
 
-        ladder_viz.draw_cumulative_ladder(self.ingestor, self.target_season, self.round, os.path.join(desktop_dir, 'ladder.png'), is_mobile=False)
-        ladder_viz.draw_cumulative_ladder(self.ingestor, self.target_season, self.round, os.path.join(insta_post_dir, 'ladder.png'), is_mobile=True, mobile_format='post')
-        ladder_viz.draw_cumulative_ladder(self.ingestor, self.target_season, self.round, os.path.join(insta_reels_dir, 'ladder.png'), is_mobile=True, mobile_format='reel')
+        for fmt, d in fmt_dirs.items():
+            ladder_viz.draw_cumulative_ladder(self.ingestor, self.target_season, self.round,
+                                              os.path.join(d, 'ladder.png'),
+                                              is_mobile=fmt != 'desktop',
+                                              mobile_format=None if fmt == 'desktop' else fmt)
         print("  Created season ladder images")
 
         print("\nFINAL TIPS LIST:")
         for tip in round_tips:
             print(f"  {tip['home_name']} vs {tip['away_name']} -> {tip['winner_id']}")
 
-        tips_viz.draw_round_tips(self.round, self.target_season, round_tips, os.path.join(desktop_dir, 'TIPS.png'), is_mobile=False)
-        tips_viz.draw_round_tips(self.round, self.target_season, round_tips, os.path.join(insta_post_dir, 'TIPS.png'), is_mobile=True, mobile_format='post')
-        tips_viz.draw_round_tips(self.round, self.target_season, round_tips, os.path.join(insta_reels_dir, 'TIPS.png'), is_mobile=True, mobile_format='reel')
+        for fmt, d in fmt_dirs.items():
+            tips_viz.draw_round_tips(self.round, self.target_season, round_tips,
+                                     os.path.join(d, 'TIPS.png'),
+                                     is_mobile=fmt != 'desktop',
+                                     mobile_format=None if fmt == 'desktop' else fmt)
 
         evaluated_tips = [t for t in round_tips if t.get('actual_winner') is not None]
         if evaluated_tips:
@@ -333,9 +342,12 @@ class RoundProductionPipeline:
                 summary = f"ROUND {self.round} TIPS: {correct}/{total} | SEASON: {season_correct}/{season_total} ({(season_correct/season_total)*100:.1f}%)"
 
             print(f"  {summary}")
-            tips_viz.draw_round_tips(self.round, self.target_season, evaluated_tips, os.path.join(desktop_dir, 'TIPS_RESULTS.png'), is_mobile=False, show_results=True, season_summary=summary)
-            tips_viz.draw_round_tips(self.round, self.target_season, evaluated_tips, os.path.join(insta_post_dir, 'TIPS_RESULTS.png'), is_mobile=True, mobile_format='post', show_results=True, season_summary=summary)
-            tips_viz.draw_round_tips(self.round, self.target_season, evaluated_tips, os.path.join(insta_reels_dir, 'TIPS_RESULTS.png'), is_mobile=True, mobile_format='reel', show_results=True, season_summary=summary)
+            for fmt, d in fmt_dirs.items():
+                tips_viz.draw_round_tips(self.round, self.target_season, evaluated_tips,
+                                         os.path.join(d, 'TIPS_RESULTS.png'),
+                                         is_mobile=fmt != 'desktop',
+                                         mobile_format=None if fmt == 'desktop' else fmt,
+                                         show_results=True, season_summary=summary)
 
         print("  Created round tips images")
 
@@ -344,17 +356,21 @@ class RoundProductionPipeline:
             t_elo = self.ingestor.get_team_elo(team_id, self.target_season, self.round + 1)
             t_rank = rankings.get(team_id)
             t_tier = self.ingestor.get_team_tier(t_elo)
-            ladder_viz.draw_team_journey(team_id, self.ingestor, self.target_season, self.round, os.path.join(desktop_dir, f'JOURNEY_{team_name_clean}.png'), is_mobile=False, elo=t_elo, rank=t_rank, tier=t_tier)
-            ladder_viz.draw_team_journey(team_id, self.ingestor, self.target_season, self.round, os.path.join(insta_post_dir, f'JOURNEY_{team_name_clean}.png'), is_mobile=True, mobile_format='post', elo=t_elo, rank=t_rank, tier=t_tier)
-            ladder_viz.draw_team_journey(team_id, self.ingestor, self.target_season, self.round, os.path.join(insta_reels_dir, f'JOURNEY_{team_name_clean}.png'), is_mobile=True, mobile_format='reel', elo=t_elo, rank=t_rank, tier=t_tier)
-        print(f"  Created team journey plots in {desktop_dir} and Mobile subfolders")
+            for fmt, d in fmt_dirs.items():
+                ladder_viz.draw_team_journey(team_id, self.ingestor, self.target_season, self.round,
+                                             os.path.join(d, f'JOURNEY_{team_name_clean}.png'),
+                                             is_mobile=fmt != 'desktop',
+                                             mobile_format=None if fmt == 'desktop' else fmt,
+                                             elo=t_elo, rank=t_rank, tier=t_tier)
+        print(f"  Created team journey plots in {list(fmt_dirs.values())}")
         plt.close('all')
 
 def render_round_from_db(season: int, round_num: int, comp_id: str = None,
-                         ingestor: DataIngestor = None) -> str:
+                         ingestor: DataIngestor = None, formats: list = None) -> str:
     """Path B: render one round's cards from the results DB (shared by
     render_round.py, generate_round_images --render-only and regen_season.py;
-    RRR #7). Pass a pre-loaded `ingestor` to skip the state reload."""
+    RRR #7). Pass a pre-loaded `ingestor` to skip the state reload; `formats`
+    filters the output (default mobile post+reel — perf 2026-08-12)."""
     comp_id = comp_id or f'{season}014'
     conn = results_db.connect()
     rows = results_db.load_round(conn, season, round_num)
@@ -382,7 +398,7 @@ def render_round_from_db(season: int, round_num: int, comp_id: str = None,
 
     pipeline = RoundProductionPipeline(comp_id=comp_id, round_num=round_num,
                                        db_rows=db_rows, season_summary=summary,
-                                       ingestor=ingestor)
+                                       ingestor=ingestor, formats=formats)
     pipeline.run()
     print(f"  Summary: {summary}")
     return summary
@@ -392,6 +408,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--round', type=int, default=2)
     parser.add_argument('--comp_id', type=str, default="2026014")
+    parser.add_argument('--formats', type=str, default='post,reel',
+                        help='comma list of desktop,post,reel (default: mobile only)')
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--compute-only', action='store_true')
     mode.add_argument('--render-only', action='store_true')
@@ -399,6 +417,7 @@ def main():
 
     season = int(args.comp_id[:4])
     ing0 = None
+    fmts = args.formats.split(',')
 
     # Path A: compute + save (or ensure computed for the combined path)
     if not args.render_only:
@@ -411,7 +430,7 @@ def main():
     # Path B: render from the results DB (reuses the loaded ingestor —
     # perf 2026-08-12: one state load for the combined path)
     if not args.compute_only:
-        render_round_from_db(season, args.round, args.comp_id, ingestor=ing0)
+        render_round_from_db(season, args.round, args.comp_id, ingestor=ing0, formats=fmts)
 
 
 if __name__ == '__main__':

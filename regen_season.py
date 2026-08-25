@@ -20,13 +20,14 @@ import time
 
 SEASON = 2026
 ING = None  # module global — set in the parent, inherited by fork workers
+FMTS = ['post', 'reel']  # formats to render (default mobile only)
 
 
 def _render_round(rnd: int):
     from generate_round_images import render_round_from_db
     t0 = time.time()
     try:
-        summary = render_round_from_db(SEASON, rnd, ingestor=ING)
+        summary = render_round_from_db(SEASON, rnd, ingestor=ING, formats=FMTS)
         ok = summary is not None
     except Exception:  # keep the pool alive; report per-round
         import traceback
@@ -37,17 +38,20 @@ def _render_round(rnd: int):
 
 
 def main():
-    global SEASON, ING
+    global SEASON, ING, FMTS
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--season', type=int, default=2026)
     parser.add_argument('--r0', type=int, default=0)
     parser.add_argument('--r1', type=int, default=None, help='default: last round in the DB')
     parser.add_argument('--workers', type=int, default=3)
+    parser.add_argument('--formats', type=str, default='post,reel',
+                        help='comma list of desktop,post,reel (default: mobile only)')
     parser.add_argument('--resume', action='store_true',
-                        help='skip rounds whose Desktop/TIPS_RESULTS.png already exists')
+                        help='skip rounds whose first-format TIPS_RESULTS.png already exists')
     args = parser.parse_args()
     SEASON = args.season
+    FMTS = args.formats.split(',')
 
     from Core.engine_data import DataIngestor
     ING = DataIngestor('CSV_DATA')
@@ -59,13 +63,16 @@ def main():
     r1 = args.r1 if args.r1 is not None else max_round
     rounds = list(range(args.r0, r1 + 1))
     if args.resume:
+        # first-format output dir as the completion marker (default: post)
+        marker_dir = 'Desktop' if 'desktop' in FMTS else (
+            'Mobile/InstaPost' if 'post' in FMTS else 'Mobile/InstaReels')
         before = len(rounds)
         rounds = [r for r in rounds
                   if not os.path.exists(
-                      f'ROUND_IMAGES_UPDATE/{SEASON}/R{r}/Desktop/TIPS_RESULTS.png')]
+                      f'ROUND_IMAGES_UPDATE/{SEASON}/R{r}/{marker_dir}/TIPS_RESULTS.png')]
         print(f"resume: {before} rounds -> {len(rounds)} to render")
     print(f"rendering {SEASON} R{args.r0}..R{r1} with {args.workers} workers "
-          f"(state loaded once, light mode)")
+          f"(state loaded once, light mode, formats={FMTS})")
 
     t0 = time.time()
     mp.set_start_method('fork', force=True)
