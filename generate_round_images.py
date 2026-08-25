@@ -199,11 +199,25 @@ class RoundProductionPipeline:
             })
 
             player_names = {}
-            for t_type in ['homeTeam', 'awayTeam']:
-                if t_type in r_data:
-                    for pos in r_data[t_type].get('positions', []):
-                        p = pos['player']
-                        player_names[p['playerId']] = f"{p['playerName']['givenName'][0]}. {p['playerName']['surname']}"
+            # Roster shape (live API + disk cache, 2026): teamPlayers[].players[].player.player
+            for tp in r_data.get('teamPlayers', []):
+                for entry in tp.get('players', []):
+                    outer = entry.get('player', {})
+                    p = outer.get('player', outer) if isinstance(outer, dict) else outer
+                    pid = p.get('playerId')
+                    pn = p.get('playerName')
+                    if pid and pn:
+                        given = (pn.get('givenName') or '?')[:1]
+                        player_names[pid] = f"{given}. {pn.get('surname', '?')}"
+            # Legacy shape: homeTeam/awayTeam.positions[].player (defensive)
+            for t_type in ('homeTeam', 'awayTeam'):
+                for pos in r_data.get(t_type, {}).get('positions', []):
+                    p = pos.get('player', {})
+                    pid = p.get('playerId')
+                    pn = p.get('playerName')
+                    if pid and pn:
+                        given = (pn.get('givenName') or '?')[:1]
+                        player_names[pid] = f"{given}. {pn.get('surname', '?')}"
 
             has_actual = mid in self.ingestor.actual_match_matrices
             if has_actual:

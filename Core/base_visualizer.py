@@ -18,8 +18,10 @@ class BaseVisualizer:
         self.prop_title, self.prop_sub, self.prop_body = get_fonts()
 
     def get_font_and_size(self, font: FontProperties, size: float) -> Tuple[FontProperties, float]:
-        """Wallpoet size fallback: if the font is Wallpoet (prop_sub) and size is < 12, fall back to Roboto (prop_body)."""
-        if font == self.prop_sub and size < 12:
+        """Wallpoet size fallback: if the font is Wallpoet (prop_sub) and size is < 14,
+        fall back to Roboto (prop_body). Wallpoet's stencil glyphs (S renders like a
+        '9', digits collide) are illegible below 14px on the 900px mobile canvases."""
+        if font == self.prop_sub and size < 14:
             return self.prop_body, size
         return font, size
 

@@ -32,10 +32,18 @@ class StoryVisualizer(FieldVisualizer):
         if is_mobile:
             figsize = (9, 16) if mobile_format == 'reel' else (9, 12)
             fig = plt.figure(figsize=figsize, facecolor=self.bg_color)
-            ax = fig.add_axes([0.05, 0.3, 0.9, 0.4])
-            title_y = 0.89
-            text_y_attack = 0.78
-            text_y_footer = 0.15
+            # Field band sized to the data aspect (190x150) with equal aspect:
+            # round oval, fills the card's middle band (fix 2026-08-25).
+            if mobile_format == 'reel':
+                ax = fig.add_axes([0.10, 0.12, 0.80, 0.70])
+                title_y = 0.90
+                text_y_attack = 0.845
+                text_y_footer = 0.06
+            else:
+                ax = fig.add_axes([0.10, 0.15, 0.80, 0.655])
+                title_y = 0.92
+                text_y_attack = 0.845
+                text_y_footer = 0.085
             font_scale = 0.95
         else:
             fig = plt.figure(figsize=(16, 10), facecolor=self.bg_color)
@@ -51,6 +59,8 @@ class StoryVisualizer(FieldVisualizer):
 
             c_a, c_b = self.get_team_colors(team_a, team_b)
             self.draw_pitch(ax)
+            if is_mobile:
+                ax.set_aspect('equal')  # round oval, not stretched (fix 2026-08-25)
 
             home_vars = [(e, v) for e, v in variance_matrix.items() if v > 0]
             away_vars = [(e, v) for e, v in variance_matrix.items() if v < 0]
@@ -169,6 +179,12 @@ class StoryVisualizer(FieldVisualizer):
                 if not moved:
                     break
 
+            # Keep annotation boxes inside the canvas — text is not clipped by the
+            # axes, so unclamped labels ran past the figure edge (fix 2026-08-25).
+            for label in labels_to_draw:
+                label['x'] = max(-72.0, min(72.0, label['x']))
+                label['y'] = max(-58.0, min(58.0, label['y']))
+
             for label in labels_to_draw:
                 if abs(label['x'] - label['orig_x']) > 2 or abs(label['y'] - label['orig_y']) > 2:
                     ax.plot([label['orig_x'], label['x']], [label['orig_y'], label['y']], color=label['color'], linewidth=1, alpha=0.5, linestyle=':', zorder=3)
@@ -182,19 +198,22 @@ class StoryVisualizer(FieldVisualizer):
                 ax.set_title("Top Variance Vectors (Actual vs 25-Game Baseline)", color=self.sub_text_color, fontsize=14, pad=10, fontproperties=self.prop_sub)
             else:
                 fig.text(0.5, title_y, f'TACTICAL STORY:\n{n_a.upper()} VS {n_b.upper()}', color=self.text_color, fontsize=17, ha='center', va='center', fontproperties=self.prop_title)
-                fig.text(0.5, title_y - 0.05, "Top Variance Vectors (Actual vs Baseline)", color=self.sub_text_color, fontsize=12, ha='center', va='center', fontproperties=self.prop_sub)
+                sub_font, sub_size = self.get_font_and_size(self.prop_sub, 12)
+                fig.text(0.5, title_y - 0.05, "Top Variance Vectors (Actual vs Baseline)", color=self.sub_text_color, fontsize=sub_size, ha='center', va='center', fontproperties=sub_font)
 
             ax.set_xlim(-95, 95); ax.set_ylim(-75, 75); ax.axis('off')
 
             footer_text = f"EXPECTED MATCHUP SCORE: {expected_net:+.2f}  |  ACTUAL MATCHUP SCORE: {actual_net:+.2f}"
-            plt.figtext(0.5, text_y_footer, footer_text, ha='center', fontsize=14 * font_scale, color=self.bg_color, bbox=dict(facecolor=self.text_color, alpha=1.0, pad=8), fontproperties=self.prop_sub)
+            foot_font, foot_size = self.get_font_and_size(self.prop_sub, 14 * font_scale)
+            plt.figtext(0.5, text_y_footer, footer_text, ha='center', fontsize=foot_size, color=self.bg_color, bbox=dict(facecolor=self.text_color, alpha=1.0, pad=8), fontproperties=foot_font)
 
             rank_b_str = f'RANK: {get_ordinal(rank_b)}' if rank_b else ''
             tier_b_str = f' [{tier_b}]' if tier_b else ''
-            fig.text(0.15 if not is_mobile else 0.2, text_y_attack, f'{n_b.upper()} ATTACK\n{rank_b_str}{tier_b_str}', color=mute_color(c_b), fontsize=11 * font_scale, ha='center', va='center', fontproperties=self.prop_sub)
+            att_font, att_size = self.get_font_and_size(self.prop_sub, 11 * font_scale)
+            fig.text(0.15 if not is_mobile else 0.2, text_y_attack, f'{n_b.upper()} ATTACK\n{rank_b_str}{tier_b_str}', color=mute_color(c_b), fontsize=att_size, ha='center', va='center', fontproperties=att_font)
             rank_a_str = f'RANK: {get_ordinal(rank_a)}' if rank_a else ''
             tier_a_str = f' [{tier_a}]' if tier_a else ''
-            fig.text(0.85 if not is_mobile else 0.8, text_y_attack, f'{n_a.upper()} ATTACK\n{rank_a_str}{tier_a_str}', color=mute_color(c_a), fontsize=11 * font_scale, ha='center', va='center', fontproperties=self.prop_sub)
+            fig.text(0.85 if not is_mobile else 0.8, text_y_attack, f'{n_a.upper()} ATTACK\n{rank_a_str}{tier_a_str}', color=mute_color(c_a), fontsize=att_size, ha='center', va='center', fontproperties=att_font)
 
             if is_mobile:
                 self.save_and_close(fig, save_path, dpi=100, bbox_inches=None)
@@ -208,11 +227,13 @@ class StoryVisualizer(FieldVisualizer):
                                   player_expecteds: Dict[str, float], player_names: Dict[str, str],
                                   save_path: str, is_mobile: bool = False, mobile_format: str = 'reel'):
         if is_mobile:
-            figsize = (10, 18) if mobile_format == 'reel' else (10, 14)
+            # Same canvas as every other mobile card (9x12 / 9x16) — the old
+            # (10,14)/(10,18) rendered a different aspect in the feed (fix 2026-08-25).
+            figsize = (9, 16) if mobile_format == 'reel' else (9, 12)
             fig, (ax1, ax2) = plt.subplots(2, 1, figsize=figsize, facecolor=self.bg_color)
-            title_fontsize = 20
+            title_fontsize = 18
             label_fontsize = 12
-            header_fontsize = 16
+            header_fontsize = 20
             sub_fontsize = 14
         else:
             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 11), facecolor=self.bg_color)
@@ -237,7 +258,9 @@ class StoryVisualizer(FieldVisualizer):
                 bar_color = mute_color('#228B22') if is_top else mute_color('#8B0000')
 
                 bars = ax.barh(names, vals, color=bar_color, alpha=0.9)
-                ax.set_title(title, color=self.text_color, fontsize=title_fontsize, pad=15, fontproperties=self.prop_sub)
+                # Roboto for panel titles — Wallpoet's S renders as a '9' at this size
+                # (fix 2026-08-25; see base_visualizer.get_font_and_size).
+                ax.set_title(title, color=self.text_color, fontsize=title_fontsize + 1, pad=12, fontproperties=self.prop_body)
                 ax.set_facecolor(self.bg_color)
                 ax.invert_yaxis()
                 ax.grid(axis='x', linestyle=':', color=self.sub_text_color, alpha=0.4)
@@ -282,14 +305,28 @@ class StoryVisualizer(FieldVisualizer):
             plot_ax(ax2, bottom_10, "SUPPRESSED (UNDERPERFORMERS)", False)
 
             main_title = f"PLAYER IMPACT: {n_a.upper()} VS {n_b.upper()}"
-            if is_mobile and len(main_title) > 35:
-                main_title = f"PLAYER IMPACT:\n{n_a.upper()} VS {n_b.upper()}"
-
-            fig.suptitle(main_title, color=self.text_color, fontsize=header_fontsize, y=0.97, fontproperties=self.prop_title)
-            fig.text(0.5, 0.93 if not is_mobile else 0.94, "Actual Tactical Output vs 25-Game Baseline", color=self.sub_text_color, fontsize=sub_fontsize, ha='center', fontproperties=self.prop_sub)
-
-            plt.tight_layout(rect=[0.05, 0.05, 0.95, 0.92])
-            self.save_and_close(fig, save_path, dpi=100, bbox_inches='tight')
+            if is_mobile:
+                # Clean Roboto header (fix 2026-08-25): FasterOne's striated glyphs
+                # read as "shattered" on long two-line titles; Wallpoet's S mangles
+                # at small sizes. Desktop keeps the branded suptitle.
+                fig.text(0.5, 0.972, "PLAYER IMPACT", color=self.text_color, fontsize=24,
+                         ha='center', va='center', fontproperties=self.prop_body)
+                fig.text(0.5, 0.938, f"{n_a.upper()} VS {n_b.upper()}", color=self.text_color,
+                         fontsize=15, ha='center', va='center', fontproperties=self.prop_body)
+                fig.text(0.5, 0.905, "Actual Tactical Output vs 25-Game Baseline",
+                         color=self.sub_text_color, fontsize=13, ha='center', va='center',
+                         fontproperties=self.prop_body)
+                # Fill the 9:12 / 9:16 canvas — no dead band (fix 2026-08-25).
+                plt.tight_layout(rect=[0.02, 0.03, 0.98, 0.885])
+                self.save_and_close(fig, save_path, dpi=100, bbox_inches=None)
+            else:
+                if len(main_title) > 35:
+                    main_title = f"PLAYER IMPACT:\n{n_a.upper()} VS {n_b.upper()}"
+                fig.suptitle(main_title, color=self.text_color, fontsize=header_fontsize, y=0.97, fontproperties=self.prop_title)
+                sub_font2, sub_size2 = self.get_font_and_size(self.prop_sub, sub_fontsize)
+                fig.text(0.5, 0.93, "Actual Tactical Output vs 25-Game Baseline", color=self.sub_text_color, fontsize=sub_size2, ha='center', fontproperties=sub_font2)
+                plt.tight_layout(rect=[0.05, 0.05, 0.95, 0.92])
+                self.save_and_close(fig, save_path, dpi=100, bbox_inches='tight')
         except:
             plt.close(fig)
             raise
