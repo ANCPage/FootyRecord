@@ -110,3 +110,15 @@ def test_ensure_token_retries_then_fails(monkeypatch):
     # auth goes through the SESSION, not module-level requests
     monkeypatch.setattr(scraper._session, 'post', fake_post)
     assert scraper._ensure_token() is False
+
+
+def test_main_parser_builds():
+    """Regression (2026-08-12): the packaging conversion broke `main.py update`
+    — `from Core.config import config` binds the Settings INSTANCE, so the old
+    `config.config.window_size` died with AttributeError at parser build time
+    (the re-scrape recipe crashed before reaching the scraper). build_parser()
+    must construct without raising; the update branch reads config.data_dir."""
+    from Core.main import build_parser
+    p = build_parser()
+    ns = p.parse_args(['update', '--target_round', '24'])
+    assert ns.command == 'update' and ns.target_round == 24

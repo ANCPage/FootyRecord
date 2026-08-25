@@ -13,24 +13,27 @@ from Core.mappings import TEAM_MAP
 from Core.visualize_matchup import MatchupVisualizer
 
 
-def main():
+def build_parser():
     parser = argparse.ArgumentParser(description='AFL2 Strategic Prediction Engine')
     parser.add_argument('command', choices=['predict', 'predict_full', 'evaluate', 'profile', 'update'], help='Command to run')
     parser.add_argument('--teams', nargs=2, help='Two team IDs for predict command')
-    parser.add_argument('--window', type=int, default=config.config.window_size, help=f'Sliding window size (default {config.config.window_size})')
+    parser.add_argument('--window', type=int, default=config.window_size, help=f'Sliding window size (default {config.window_size})')
     parser.add_argument('--target_round', type=int, default=None, help='Specific round to update (for update command)')
     parser.add_argument('--force', action='store_true', help='Force rebuild of the dataset (for update command)')
+    return parser
 
-    args = parser.parse_args()
+
+def main():
+    args = build_parser().parse_args()
 
     # Mutate global config object
     config.window_size = args.window
 
     if args.command == 'update':
-        update_all_data(config.config.data_dir, year=2026, force_rebuild=args.force, target_round=args.target_round)
+        update_all_data(config.data_dir, year=2026, force_rebuild=args.force, target_round=args.target_round)
         return
 
-    ingestor = DataIngestor(config.config.data_dir)
+    ingestor = DataIngestor(config.data_dir)
     ingestor.load_all_data()
     ingestor.profile_all_teams()
 
