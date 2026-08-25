@@ -15,7 +15,9 @@ logger = logging.getLogger(__name__)
 
 # Bump when profiling semantics change (normalization, decay, grid logic, ...)
 # so stale profile caches are rejected (audit E5).
-CACHE_VERSION = 7  # v7: match_performance carries expected_delta dict (walk-forward visuals)
+CACHE_VERSION = 8  # v8: per-team POST_ elo-history tails (v7's 2-team tail left
+                    # 16/18 teams without a final rating; load path rebuilds the
+                    # round index from the tails — get_team_elo was dead post-load)
 
 # Distance buckets for per-position storage (Option B): chain edges are
 # bucketed by distance-from-end 0..POSITIONS-1; longer chains lump the tail
@@ -92,6 +94,11 @@ class DataIngestor:
             conn.close()
             self.__dict__.update(state)
             self.elo_engine = EloEngine()
+            # The engine's per-round index is not persisted — rebuild it from
+            # the stored history (2026-08-25: without this, get_team_elo
+            # returned 1500 for every team after any load -> ladder tiers
+            # all MID-TABLE, journeys Rating 1500, live elo_diff = 0)
+            self.elo_engine.rebuild_index(self.team_elo_history, self.match_info)
             self._skip_profiling = True
             import Core.calibration as cal
             cal.current = getattr(self, 'calibration', cal.Calibration.fallback())

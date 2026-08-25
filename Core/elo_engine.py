@@ -123,16 +123,47 @@ class EloEngine:
                     self.team_elo_by_round[team] = {}
                 self.team_elo_by_round[team][(info.season, info.round)] = ratings[team]
 
-        # Append final post-match ELO ratings
-        if sorted_matches:
-            last_mid = sorted_matches[-1]
-            last_info = match_info[last_mid]
-            for team in [last_info.home, last_info.away]:
-                post_mid = f"POST_{last_mid}"
-                if team not in team_elo_history: team_elo_history[team] = []
-                team_elo_history[team].append((post_mid, ratings[team]))
+        # Append final post-match ELO ratings — ONE POST_ tail per team (its
+        # own last match). The state-store load path reconstructs the round
+        # index from these tails (2026-08-25: get_team_elo returned 1500 for
+        # everyone after a load because the old code only wrote POST_ for the
+        # dataset's FINAL match — 16/18 teams had no post-rating in history).
+        for team, hist in team_elo_history.items():
+            if not hist:
+                continue
+            team_elo_history[team].append((f"POST_{hist[-1][0]}", ratings[team]))
 
         return team_elo_history
+
+    def rebuild_index(self, team_elo_history, match_info) -> "EloEngine":
+        """Reconstruct team_elo_by_round + season_start_elos from a STORED
+        history (post-load: the engine is fresh and the index is not
+        persisted — 2026-08-25 bug fix, get_team_elo was returning 1500
+        for every team after any state load).
+
+        Requires the per-team POST_ tails (compute_elo_history writes one
+        POST_ entry per team), so every match's post-rating is exactly the
+        next entry's pre-rating.
+        """
+        self.team_elo_by_round = {}
+        self.season_start_elos = {}
+        for team, hist in team_elo_history.items():
+            if not hist:
+                continue
+            team_rounds = self.team_elo_by_round.setdefault(team, {})
+            team_seasons = self.season_start_elos.setdefault(team, {})
+            for i, (m_id, elo_before) in enumerate(hist):
+                if m_id.startswith('POST_'):
+                    continue
+                info = match_info.get(m_id)
+                if info is None:
+                    continue
+                if info.season not in team_seasons:
+                    # first match of the season = start rating (post-regression)
+                    team_seasons[info.season] = elo_before
+                if i + 1 < len(hist):
+                    team_rounds[(info.season, info.round)] = hist[i + 1][1]
+        return self
 
     def get_team_elo(self, team_id: str, season: int, round_num: int) -> float:
         """

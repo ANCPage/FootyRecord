@@ -96,6 +96,30 @@ def test_light_load_skips_chains(tmp_path):
     assert len(ing_light.team_elo_history) == len(ing.team_elo_history)
 
 
+def test_elo_index_rebuilt_after_load(tmp_path):
+    """Regression (2026-08-25): load_all_data replaces elo_engine with a fresh
+    instance whose per-round index is empty — get_team_elo returned 1500 for
+    every team after any load (ladder tiers all MID-TABLE, journeys Rating
+    1500). The load path must rebuild the index from the stored history."""
+    write_fixture(str(tmp_path))
+    ing = DataIngestor(str(tmp_path), db_path=str(tmp_path / 'test.db'))
+    ing.load_all_data()
+    ing.profile_all_teams()
+    live = {t: [ing.get_team_elo(t, 2026, r) for r in (1, 2, 3)] for t in ('H', 'A')}
+
+    ing2 = DataIngestor(str(tmp_path), db_path=str(tmp_path / 'test.db'))
+    ing2.load_all_data()
+    rebuilt = {t: [ing2.get_team_elo(t, 2026, r) for r in (1, 2, 3)] for t in ('H', 'A')}
+    assert rebuilt == live, f'index drifted after load: {live} vs {rebuilt}'
+    assert live['H'][0] == 1500.0  # baseline before round 1
+    # the index itself is populated (the fixture is draws, so ratings stay
+    # 1500 — the regression is about the index existing after load, not drift)
+    assert ing2.elo_engine.team_elo_by_round and ing2.elo_engine.season_start_elos
+    # every team's history ends with its own POST_ tail (v8)
+    for team in ('H', 'A'):
+        assert ing2.team_elo_history[team][-1][0].startswith('POST_')
+
+
 def test_cache_invalidated_on_version_change(tmp_path, monkeypatch):
     write_fixture(str(tmp_path))
     ing = DataIngestor(str(tmp_path), db_path=str(tmp_path / 'test.db'))
