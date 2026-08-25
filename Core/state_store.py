@@ -106,6 +106,12 @@ def save_state(conn, ing) -> None:
                   (m_id, 'H', edge_dict_to_json(h_mat)))
         c.execute("INSERT OR REPLACE INTO actual_matrices VALUES (?,?,?)",
                   (m_id, 'A', edge_dict_to_json(a_mat)))
+    # Purge stale POST_ tails (2026-08-25): the POST_ id encodes the team's
+    # last match AT THE TIME OF THAT REBUILD — old-era rows (different ids)
+    # survive INSERT OR REPLACE and corrupt rebuild_index's pairing on load
+    # (Sydney/Port showed one-match-stale ratings after the v8 rebuild).
+    # elo_history is derived data: the in-memory state owns every row.
+    c.execute("DELETE FROM elo_history WHERE m_id LIKE 'POST_%'")
     c.executemany("INSERT OR REPLACE INTO elo_history VALUES (?,?,?)",
                   [(team, m_id, elo) for team, hist in ing.team_elo_history.items()
                    for m_id, elo in hist])

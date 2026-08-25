@@ -298,3 +298,24 @@ C7 [LOW] load_state vs load_all_data actual_winners asymmetry (scoreless games).
 C9 [LOW] Experiments/ ruff debt (~131 errors) — archive or accept.
 C10 [LOW] scoreless-match profile dilution (zero real impact).
 C13 [LOW] tests count drift: 59 collected vs 61 recorded in the skill.
+
+---------------------------------------------------------------------
+RE-AUDIT FOLLOW-UP — 2026-08-25 (season-complete data pull found two more)
+1. ✅ FIXED (commit `74a6c60`): `Core/main.py update` was broken since the
+   packaging conversion — `from Core.config import config` binds the Settings
+   INSTANCE, so `config.config.window_size` crashed at parser build (the
+   re-scrape recipe died before reaching the scraper). build_parser()
+   extracted; regression test added.
+2. ✅ FIXED (commit `6836241`): **get_team_elo returned 1500 for every team
+   after ANY state load** — found via the R24 ladder showing every team as
+   MID-TABLE. load_all_data swaps in a fresh EloEngine() whose per-round
+   index (team_elo_by_round/season_start_elos) is never persisted or
+   rebuilt. Impact since the one-store migration: ladder tiers all
+   MID-TABLE, journey "Rating: 1500", ladder ranks arbitrary, live
+   prediction elo_diff = 0. The walk-forward record was unaffected (reads
+   team_elo_history directly). Fix: per-team POST_ elo-history tails +
+   EloEngine.rebuild_index() on load; CACHE_VERSION 7→8. Lesson: any
+   post-load consumer of the elo_engine's per-round index must rebuild it
+   from the stored history — the index is derived data, not persisted.
+3. Data now through R24 (season COMPLETE): 1,222 games, 66.5% overall,
+   2026 = 147/207 (71.0%) — best season; R23 8/9, R24 6/9.
