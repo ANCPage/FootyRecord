@@ -197,9 +197,9 @@ class StoryVisualizer(FieldVisualizer):
                 fig.suptitle(f'TACTICAL STORY: {n_a.upper()} VS {n_b.upper()}', color=self.text_color, fontsize=18, y=0.98, fontproperties=self.prop_title)
                 ax.set_title("Top Variance Vectors (Actual vs 25-Game Baseline)", color=self.sub_text_color, fontsize=14, pad=10, fontproperties=self.prop_sub)
             else:
-                fig.text(0.5, title_y, f'TACTICAL STORY:\n{n_a.upper()} VS {n_b.upper()}', color=self.text_color, fontsize=17, ha='center', va='center', fontproperties=self.prop_title)
+                fig.text(0.5, title_y, f'TACTICAL STORY:\n{n_a.upper()} VS {n_b.upper()}', color=self.text_color, fontsize=20, ha='center', va='center', fontproperties=self.prop_title)
                 sub_font, sub_size = self.get_font_and_size(self.prop_sub, 12)
-                fig.text(0.5, title_y - 0.05, "Top Variance Vectors (Actual vs Baseline)", color=self.sub_text_color, fontsize=sub_size, ha='center', va='center', fontproperties=sub_font)
+                fig.text(0.5, title_y - 0.045, "Top Variance Vectors (Actual vs Baseline)", color=self.sub_text_color, fontsize=sub_size, ha='center', va='center', fontproperties=sub_font)
 
             ax.set_xlim(-95, 95); ax.set_ylim(-75, 75); ax.axis('off')
 

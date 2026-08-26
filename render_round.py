@@ -16,7 +16,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--season', type=int, default=2026)
     parser.add_argument('--round', type=int, required=True)
-    parser.add_argument('--formats', type=str, default='post,reel',
+    parser.add_argument('--formats', type=str, default='post',
                         help='comma list of desktop,post,reel (default: mobile only)')
     args = parser.parse_args()
     render_round_from_db(args.season, args.round, formats=args.formats.split(','))

@@ -34,7 +34,7 @@ class RoundProductionPipeline:
         self.ingestor = ingestor           # pre-loaded (perf 2026-08-12: no double load)
         # Formats to render (perf 2026-08-12): default is MOBILE-ONLY
         # (post + reel) — Austin's call; desktop via --formats desktop,post,reel
-        self.formats = formats or ['post', 'reel']
+        self.formats = formats or ['post']  # post-only (2026-08-26); reel/desktop opt-in
         self.token = None
 
     @staticmethod
@@ -422,7 +422,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--round', type=int, default=2)
     parser.add_argument('--comp_id', type=str, default="2026014")
-    parser.add_argument('--formats', type=str, default='post,reel',
+    parser.add_argument('--formats', type=str, default='post',
                         help='comma list of desktop,post,reel (default: mobile only)')
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--compute-only', action='store_true')

@@ -20,7 +20,7 @@ import time
 
 SEASON = 2026
 ING = None  # module global — set in the parent, inherited by fork workers
-FMTS = ['post', 'reel']  # formats to render (default mobile only)
+FMTS = ['post']  # post-only default (2026-08-26); reel/desktop opt-in
 
 
 def _render_round(rnd: int):
@@ -45,7 +45,7 @@ def main():
     parser.add_argument('--r0', type=int, default=0)
     parser.add_argument('--r1', type=int, default=None, help='default: last round in the DB')
     parser.add_argument('--workers', type=int, default=3)
-    parser.add_argument('--formats', type=str, default='post,reel',
+    parser.add_argument('--formats', type=str, default='post',
                         help='comma list of desktop,post,reel (default: mobile only)')
     parser.add_argument('--resume', action='store_true',
                         help='skip rounds whose first-format TIPS_RESULTS.png already exists')

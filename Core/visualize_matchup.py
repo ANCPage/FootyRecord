@@ -25,9 +25,15 @@ class MatchupVisualizer(FieldVisualizer):
             prop_body=self.prop_body
         )
 
-    def _draw_field_on_ax(self, ax, title: str, matrix: Dict, target_edges: List, is_delta: bool, c_a: str, c_b: str, apply_blur: bool = False, frame: str = 'home'):
+    def _draw_field_on_ax(self, ax, title: str, matrix: Dict, target_edges: List, is_delta: bool, c_a: str, c_b: str, apply_blur: bool = False, frame: str = 'home', active_zones: bool = False):
         self.draw_pitch(ax)
-        self.draw_zones(ax)
+        if active_zones:
+            involved = set()
+            for e in (target_edges or matrix.keys()):
+                involved.add(e.source); involved.add(e.target)
+            self.draw_zones(ax, active_only=True, active_nodes={z for z in involved if z in self.zone_labels})
+        else:
+            self.draw_zones(ax)
 
         edges_to_plot = target_edges if target_edges else matrix.keys()
         for edge in edges_to_plot:
@@ -49,17 +55,19 @@ class MatchupVisualizer(FieldVisualizer):
                 frame=frame,
             )
 
-        ax.set_title(title, color=self.text_color, fontsize=12, fontproperties=self.prop_sub)
+        if title:
+            t_font, t_size = self.get_font_and_size(self.prop_sub, 11)
+            ax.set_title(title, color=self.text_color, fontsize=t_size, fontproperties=t_font)
         ax.set_xlim(-95, 95)
         ax.set_ylim(-75, 75)
         ax.set_aspect('equal')  # keep the 170x130 oval round at any figure size
         ax.axis('off')
 
-    def _draw_table(self, ax, delta_matrix: Dict, team_a: str, team_b: str):
+    def _draw_table(self, ax, delta_matrix: Dict, team_a: str, team_b: str, limit: int = 20):
         ax.axis('off')
         n_a = TEAM_DATA.get(team_a, {'name': team_a})['name']
         n_b = TEAM_DATA.get(team_b, {'name': team_b})['name']
-        sorted_items = sorted(delta_matrix.items(), key=lambda x: abs(x[1]), reverse=True)[:20]
+        sorted_items = sorted(delta_matrix.items(), key=lambda x: abs(x[1]), reverse=True)[:limit]
 
         def safe_label(n):
             return self.zone_labels.get(n, n)
@@ -84,7 +92,8 @@ class MatchupVisualizer(FieldVisualizer):
                 cell.get_text().set_fontsize(8)
             cell.set_edgecolor(self.sub_text_color)
 
-        ax.set_title('TOP 20 TACTICAL BATTLES', color=self.text_color, fontsize=14, pad=40, fontproperties=self.prop_sub)
+        t_font, t_size = self.get_font_and_size(self.prop_sub, 14)
+        ax.set_title(f'TOP {limit} TACTICAL BATTLES', color=self.text_color, fontsize=t_size, pad=40, fontproperties=t_font)
 
     def _add_color_key(self, fig, n_a, c_a, n_b, c_b, elo_a, elo_b, rank_a=None, rank_b=None, tier_a=None, tier_b=None, y_pos=0.05):
         fig.text(0.35, y_pos, n_a.upper(), color=self.text_color, fontsize=12, ha='right', va='center', fontproperties=self.prop_sub)
@@ -135,24 +144,29 @@ class MatchupVisualizer(FieldVisualizer):
                     plt.close(fig)
                     raise
             else:
-                figsize = (9, 16) if mobile_format == 'reel' else (9, 12)
+                # OPTION A mobile layout (2026-08-26): masthead, one round field,
+                # battles table, winner banner. Post-only 9x12.
+                figsize = (9, 12) if mobile_format == 'reel' else (9, 12)
                 fig_m = plt.figure(figsize=figsize, facecolor=self.bg_color)
-                gs_m = fig_m.add_gridspec(4, 1, height_ratios=[1, 1, 1, 1.6])
                 try:
-                    ax1_m = fig_m.add_subplot(gs_m[0, 0])
-                    ax2_m = fig_m.add_subplot(gs_m[1, 0])
-                    ax3_m = fig_m.add_subplot(gs_m[2, 0])
-                    ax_tm = fig_m.add_subplot(gs_m[3, 0])
+                    fig_m.text(0.5, 0.945, 'MATCHUP', ha='center', fontsize=36, color=self.text_color, fontproperties=self.prop_title)
+                    fig_m.text(0.5, 0.905, f'{n_a.upper()}  VS  {n_b.upper()}', ha='center', fontsize=16, color=self.sub_text_color)
+                    rank_a_str = f"RANK {rank_a} [{tier_a}]" if rank_a else ''
+                    rank_b_str = f"RANK {rank_b} [{tier_b}]" if rank_b else ''
+                    fig_m.text(0.5, 0.877, f'{n_a} — {rank_a_str}   ·   {n_b} — {rank_b_str}', ha='center', fontsize=11, color=self.sub_text_color)
 
-                    self._draw_field_on_ax(ax1_m, f'{n_a.upper()} PROFILE', matrix_a, edges, False, c_a, c_a, apply_blur=blur)
-                    self._draw_field_on_ax(ax2_m, f'{n_b.upper()} PROFILE', matrix_b, edges, False, c_b, c_b, apply_blur=blur, frame='team')
-                    self._draw_field_on_ax(ax3_m, 'ABSOLUTE MATCHUP OWNERSHIP', delta_matrix, edges, True, c_a, c_b, apply_blur=blur)
-                    self._draw_table(ax_tm, delta_matrix, team_a, team_b)
+                    # one ownership field: top 6 edges, involved zones only, round oval
+                    top_edges = [e for e, s in sorted(delta_matrix.items(), key=lambda x: abs(x[1]), reverse=True)[:6]]
+                    ax3_m = fig_m.add_axes([0.08, 0.43, 0.84, 0.41])
+                    self._draw_field_on_ax(ax3_m, '', delta_matrix, top_edges, True, c_a, c_b, apply_blur=False, active_zones=True)
 
-                    fig_m.suptitle(f'MATCHUP: {n_a.upper()} VS {n_b.upper()}', color=self.text_color, fontsize=16, y=0.985, fontproperties=self.prop_title)
-                    self._add_color_key(fig_m, n_a, c_a, n_b, c_b, elo_a, elo_b, rank_a, rank_b, tier_a, tier_b, y_pos=0.06)
-                    plt.figtext(0.5, 0.02, f'WINNER: {winner_name.upper()} (MARGIN {margin:+.0f})', ha='center', fontsize=16, color=self.bg_color, bbox={'facecolor':self.text_color, 'alpha':1.0, 'pad':8}, fontproperties=self.prop_sub)
-                    plt.tight_layout(rect=[0.05, 0.12, 0.95, 0.95])
+                    ax_tm = fig_m.add_axes([0.06, 0.10, 0.88, 0.29])
+                    self._draw_table(ax_tm, delta_matrix, team_a, team_b, limit=12)
+
+                    # winner banner (A style): FasterOne headline + Roboto sub
+                    fig_m.add_artist(patches.Rectangle((0.03, 0.045), 0.94, 0.062, facecolor=self.text_color, edgecolor='none', zorder=5))
+                    fig_m.text(0.5, 0.082, f'{winner_name.upper()} WINNER', ha='center', va='center', fontsize=22, color=self.bg_color, zorder=6, fontproperties=self.prop_title)
+                    fig_m.text(0.5, 0.056, f'MARGIN {margin:+.0f} PTS  ·  NET DELTA {net_delta:+.2f}', ha='center', va='center', fontsize=10, color=self.bg_color, zorder=6)
 
                     self.save_and_close(fig_m, f'{save_prefix}{suffix}.png', dpi=100)
                 except:
@@ -196,21 +210,23 @@ class MatchupVisualizer(FieldVisualizer):
                     plt.close(fig)
                     raise
             else:
-                figsize = (9, 16) if mobile_format == 'reel' else (9, 12)
+                # OPTION A mobile layout (2026-08-26): masthead, two stacked fields,
+                # predicted vs actual margin banner.
+                figsize = (9, 12) if mobile_format == 'reel' else (9, 12)
                 fig_m = plt.figure(figsize=figsize, facecolor=self.bg_color)
                 try:
-                    gs_m = fig_m.add_gridspec(2, 1)
-                    ax1_m = fig_m.add_subplot(gs_m[0, 0])
-                    ax2_m = fig_m.add_subplot(gs_m[1, 0])
+                    fig_m.text(0.5, 0.945, 'EXPECTATION', ha='center', fontsize=34, color=self.text_color, fontproperties=self.prop_title)
+                    fig_m.text(0.5, 0.905, f'{n_a.upper()}  VS  {n_b.upper()}', ha='center', fontsize=16, color=self.sub_text_color)
 
-                    self._draw_field_on_ax(ax1_m, 'EXPECTED TACTICAL DELTA', expected_delta, e_exp, True, c_a, c_b, apply_blur=blur)
-                    self._draw_field_on_ax(ax2_m, 'ACTUAL TACTICAL DELTA', actual_delta, e_act, True, c_a, c_b, apply_blur=blur)
+                    ax1_m = fig_m.add_axes([0.10, 0.53, 0.80, 0.34])
+                    self._draw_field_on_ax(ax1_m, 'EXPECTED TACTICAL DELTA', expected_delta, e_exp[:8], True, c_a, c_b, apply_blur=blur, active_zones=True)
+                    ax2_m = fig_m.add_axes([0.10, 0.14, 0.80, 0.34])
+                    self._draw_field_on_ax(ax2_m, 'ACTUAL TACTICAL DELTA', actual_delta, e_act[:8], True, c_a, c_b, apply_blur=blur, active_zones=True)
 
-                    fig_m.suptitle(f'EXPECTATION VS ACTUAL:\n{n_a.upper()} VS {n_b.upper()}', color=self.text_color, fontsize=16, y=0.98, fontproperties=self.prop_title)
-                    self._add_color_key(fig_m, n_a, c_a, n_b, c_b, elo_a, elo_b, rank_a, rank_b, tier_a, tier_b, y_pos=0.06)
-
-                    plt.figtext(0.5, 0.01, f'ACTUAL MARGIN: {actual_margin:+.0f}', ha='center', fontsize=16, color=self.bg_color, bbox={'facecolor':self.text_color, 'alpha':1.0, 'pad':8}, fontproperties=self.prop_sub)
-                    plt.tight_layout(rect=[0.02, 0.10, 0.98, 0.94])
+                    # A-style banner: predicted vs actual margin
+                    fig_m.add_artist(patches.Rectangle((0.03, 0.045), 0.94, 0.062, facecolor=self.text_color, edgecolor='none', zorder=5))
+                    fig_m.text(0.5, 0.082, f'PREDICTED MARGIN {expected_margin:+.0f}', ha='center', va='center', fontsize=18, color=self.bg_color, zorder=6, fontproperties=self.prop_title)
+                    fig_m.text(0.5, 0.056, f'ACTUAL MARGIN {actual_margin:+.0f}', ha='center', va='center', fontsize=11, color=self.bg_color, zorder=6)
 
                     self.save_and_close(fig_m, f'{save_prefix}_expectation_vs_actual{suffix}.png', dpi=100)
                 except:

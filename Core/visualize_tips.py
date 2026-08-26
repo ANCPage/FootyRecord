@@ -42,8 +42,8 @@ class TipsVisualizer(BaseVisualizer):
             ax.set_facecolor(self.bg_color)
             ax.axis('off')
 
-            title_fs = 20 if not is_mobile else 18
-            sub_fs = 14 if not is_mobile else 12
+            title_fs = 20 if not is_mobile else 30
+            sub_fs = 14 if not is_mobile else 13
             row_fs = 12 if not is_mobile else 11
 
             sub_font, sub_fs = self.get_font_and_size(self.prop_sub, sub_fs)
