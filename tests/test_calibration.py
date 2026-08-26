@@ -69,10 +69,12 @@ def test_tier_cutoffs_and_tier():
     assert len(cutoffs) == 3
     elite_min, contender_min, mid_min = cutoffs
     s = sorted(elos, reverse=True)
-    assert elite_min == s[3] and contender_min == s[7] and mid_min == s[12]
+    # midpoints between tiers — no team sits ON a boundary (2026-08-26)
+    assert elite_min == (s[3] + s[4]) / 2 and contender_min == (s[7] + s[8]) / 2 and mid_min == (s[12] + s[13]) / 2
     cal = Calibration(tier_cutoffs=cutoffs)
     assert cal.tier(s[0]) == 'ELITE'
-    assert cal.tier(s[4]) == 'CONTENDER'
+    assert cal.tier(s[3]) == 'ELITE'      # last ELITE is above the midpoint line
+    assert cal.tier(s[4]) == 'CONTENDER'  # first CONTENDER is below it
     assert cal.tier(s[8]) == 'MID-TABLE'
     assert cal.tier(s[17]) == 'REBUILDING'
     # small field -> absolute fallback

@@ -110,12 +110,16 @@ def fit_or_fallback(rows: List[FitRow], window_label: str) -> Calibration:
 
 def compute_tier_cutoffs(team_elos: List[float]) -> Tuple:
     """Top-4 ELITE / next-4 CONTENDER / next-5 MID-TABLE cutoffs from the live
-    Elo distribution (18 AFL teams). Empty tuple (absolute-threshold fallback)
-    when the field is too small to split meaningfully."""
-    if len(team_elos) < 8:
-        return ()
+    Elo distribution (18 AFL teams). Each cutoff sits at the MIDPOINT between
+    the last team of a tier and the first team of the next, so no team ever
+    lands on a boundary (2026-08-26: the old percentile cutoffs EQUALLED the
+    boundary team's own rating — tiers flipped on floating-point epsilons,
+    e.g. Collingwood displayed 1595.7 but sat 1e-12 below the CONTENDER line).
+    Empty tuple (absolute-threshold fallback) when the field is too small."""
     s = sorted(team_elos, reverse=True)
-    return (s[3], s[7], s[12])
+    if len(s) < 14:
+        return ()
+    return ((s[3] + s[4]) / 2.0, (s[7] + s[8]) / 2.0, (s[12] + s[13]) / 2.0)
 
 
 def align_margin(margin: float, net_delta: float, elo_diff_hundreds: float) -> float:

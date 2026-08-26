@@ -9,6 +9,7 @@ overall winner accuracy, margin MAE/RMSE, and a margin-band calibration table
 
 Run:  python evaluate.py [season ...]
 """
+import json
 import math
 import sys
 
@@ -196,6 +197,11 @@ def save_rows_to_db(out_rows, cals, ing, db_path=None):
     import Core.state_store as state_store
     state_store.meta_set(conn, 'record_fingerprint',
                          state_store.meta_get(conn, 'fingerprint') or '')
+    # Keep the persisted tier cutoffs truthful: the load path rebuilds them
+    # from the live Elo field (midpoints, 2026-08-26), but evaluate --save
+    # never rewrote the calibration row — it stayed at ingest-time values.
+    conn.execute("UPDATE calibration SET tier_cutoffs=? WHERE id=1",
+                 (json.dumps(list(ing.calibration.tier_cutoffs)),))
     conn.commit()
     conn.close()
     return len(games)

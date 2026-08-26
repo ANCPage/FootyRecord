@@ -99,8 +99,19 @@ class DataIngestor:
             # returned 1500 for every team after any load -> ladder tiers
             # all MID-TABLE, journeys Rating 1500, live elo_diff = 0)
             self.elo_engine.rebuild_index(self.team_elo_history, self.match_info)
-            self._skip_profiling = True
+            # Tier cutoffs are DERIVED from the live Elo field — rebuild on
+            # load, don't trust the stored values (2026-08-26: stale stored
+            # cutoffs equalled the boundary team's own rating, so tiers
+            # flipped on floating-point epsilons; midpoint cutoffs keep every
+            # team clearly inside its tier)
             import Core.calibration as cal
+            latest = {}
+            for team, hist in getattr(self, 'team_elo_history', {}).items():
+                if hist:
+                    latest[team] = hist[-1][1]
+            if latest:
+                self.calibration.tier_cutoffs = cal.compute_tier_cutoffs(list(latest.values()))
+            self._skip_profiling = True
             cal.current = getattr(self, 'calibration', cal.Calibration.fallback())
             return
 
