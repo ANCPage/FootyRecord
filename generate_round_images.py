@@ -362,6 +362,9 @@ class RoundProductionPipeline:
                                          is_mobile=fmt != 'desktop',
                                          mobile_format=None if fmt == 'desktop' else fmt,
                                          show_results=True, season_summary=summary)
+                # cumulative accuracy card (2026-08-26, Austin)
+                ladder_viz.draw_accuracy_chart(self.target_season, self.round,
+                                               os.path.join(d, 'ACCURACY.png'))
 
         print("  Created round tips images")
 

@@ -179,6 +179,75 @@ class LadderVisualizer(BaseVisualizer):
             plt.close(fig)
             raise
 
+    def draw_accuracy_chart(self, season: int, up_to_round: int, save_path: str):
+        """Cumulative model-accuracy card (2026-08-26, Austin): per-round bars +
+        the running accuracy line through the season. A-style mobile 9x12."""
+        import matplotlib.patches as mpatches
+
+        import Core.results_db as results_db
+        conn = results_db.connect()
+        try:
+            rows = conn.execute(
+                "SELECT round, SUM(correct), COUNT(*) FROM predictions "
+                "WHERE season=? AND actual_margin IS NOT NULL AND round<=? "
+                "GROUP BY round ORDER BY round", (season, up_to_round)).fetchall()
+        finally:
+            conn.close()
+        if not rows:
+            return
+        rounds = [r[0] for r in rows]
+        per_rnd = [100.0 * r[1] / r[2] for r in rows]
+        cum_c, cum_t = [], []
+        cc = ct = 0
+        for r in rows:
+            cc += r[1]; ct += r[2]
+            cum_c.append(cc); cum_t.append(ct)
+        cum_pct = [100.0 * c / t for c, t in zip(cum_c, cum_t)]
+        best = max(rows, key=lambda r: (r[1] / r[2], r[2]))
+        worst = min(rows, key=lambda r: (r[1] / r[2], -r[2]))
+
+        fig = plt.figure(figsize=(9, 12), facecolor=self.bg_color)
+        try:
+            fig.text(0.5, 0.955, 'ACCURACY', ha='center', fontsize=32, color=self.text_color, fontproperties=self.prop_title)
+            fig.text(0.5, 0.918, f'SEASON {season}  ·  CUMULATIVE TIPS CORRECT', ha='center', fontsize=11, color=self.sub_text_color)
+
+            ax = fig.add_axes([0.11, 0.15, 0.82, 0.73])
+            ax.set_facecolor(self.bg_color)
+            colors = ['#4A7A59' if v >= 50.0 else '#A8463D' for v in per_rnd]
+            ax.bar(rounds, per_rnd, color=colors, alpha=0.45, width=0.6, label='ROUND ACCURACY')
+            ax.plot(rounds, cum_pct, color=self.text_color, linewidth=3, marker='o', markersize=6, zorder=5, label='CUMULATIVE ACCURACY')
+            ax.axhline(50, color=self.sub_text_color, linewidth=1.2, linestyle='--', alpha=0.8)
+            ax.text(rounds[-1] + 0.2, 50, 'COIN FLIP', color=self.sub_text_color, fontsize=8, va='center', fontproperties=self.prop_body)
+
+            step = 2
+            sel_r = rounds[::step]
+            ax.set_xticks(sel_r)
+            ax.set_xticklabels([f'R{r}' for r in sel_r], fontsize=9)
+            for label in ax.get_xticklabels():
+                label.set_fontproperties(self.prop_body)
+            for label in ax.get_yticklabels():
+                label.set_fontproperties(self.prop_body)
+                label.set_fontsize(9)
+            ax.set_ylim(0, 100)
+            ax.set_ylabel('ACCURACY %', color=self.text_color, fontsize=10, fontproperties=self.prop_sub)
+            ax.grid(True, linestyle='--', alpha=0.3, color=self.sub_text_color)
+            for spine in ax.spines.values():
+                spine.set_color(self.text_color)
+            ax.tick_params(colors=self.text_color)
+
+            h1, l1 = ax.get_legend_handles_labels()
+            ax.legend(h1, l1, facecolor=self.bg_color, edgecolor=self.text_color, loc='lower right', fontsize=9)
+
+            # A-style banner: final accuracy + best/worst round
+            fig.add_artist(mpatches.Rectangle((0.03, 0.035), 0.94, 0.06, facecolor=self.text_color, edgecolor='none', zorder=5))
+            fig.text(0.5, 0.071, f'{cum_c[-1]}/{cum_t[-1]} ({cum_pct[-1]:.1f}%) CORRECT', ha='center', va='center', fontsize=19, color=self.bg_color, zorder=6, fontproperties=self.prop_title)
+            fig.text(0.5, 0.047, f'BEST R{best[0]} {best[1]}/{best[2]}  ·  WORST R{worst[0]} {worst[1]}/{worst[2]}', ha='center', va='center', fontsize=10, color=self.bg_color, zorder=6)
+
+            self.save_and_close(fig, save_path, dpi=100, bbox_inches=None)
+        except:
+            plt.close(fig)
+            raise
+
     def draw_team_journey(self, team_id: str, ingestor, season: int, up_to_round: int, save_path: str, is_mobile: bool = False, mobile_format: str = 'reel', elo: float = 1500.0, rank: int = None, tier: str = None):
         t_data = TEAM_DATA.get(team_id, {'name': team_id, 'primary': '#333333', 'secondary': '#666666'})
 
