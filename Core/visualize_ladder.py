@@ -16,32 +16,41 @@ class LadderVisualizer(BaseVisualizer):
         super().__init__()
 
     def draw_cumulative_ladder(self, ingestor, season: int, up_to_round: int, save_path: str, is_mobile: bool = False, mobile_format: str = 'reel'):
-        if is_mobile:
-            # Mobile = ranked TABLE (2026-08-26). 18 lines on a 9:12 card is
-            # spaghetti whatever the metric (Elo lines cross constantly; the old
-            # cumulative lines fought the Elo labels). The ladder is a ranking —
-            # a clean table with rating bars tells it in one glance. Season arcs
-            # live on the journey cards + the analysis chart.
-            self._draw_ladder_table(ingestor, season, up_to_round, save_path)
-            return
-        # Desktop: Elo rating trajectories (one metric — lines, ranks, tiers).
-        # 2026-08-26: the LINES are now Elo rating trajectories (was cumulative
-        # tactical score). The old card plotted cumulative raw output but ranked
-        # and tiered by Elo — two orderings on one visual, so lines, ranks and
-        # tiers visibly disagreed (Adelaide's line above Collingwood's while
-        # labelled MID-TABLE below a CONTENDER, etc). One metric, one story.
+        # 2026-08-26 (final): LINES are cumulative tactical score, and the
+        # RANKS + TIERS come from the SAME cumulative scores — one metric, one
+        # story. (Attempt 1: Elo labels on cumulative lines — disagreed.
+        # Attempt 2: Elo trajectories — consistent but spaghetti. Attempt 3:
+        # table — Austin: "it should be lines".) The Elo momentum rating stays
+        # on journey cards + matchup cards; this card IS the season output.
+        team_scores = defaultdict(lambda: defaultdict(float))
+        max_round = 0
+
         matches = [m_id for m_id, info in ingestor.match_info.items() if info.season == season and info.round <= up_to_round]
-        max_round = max((ingestor.match_info[m_id].round for m_id in matches), default=0)
-        rounds_range = list(range(max_round + 1))
-        by_round = getattr(ingestor.elo_engine, 'team_elo_by_round', {}) or {}
-        team_scores = defaultdict(list)
-        for team_id, r_elo in by_round.items():
-            last = 1500.0
-            vals = []
+        for m_id in matches:
+            info = ingestor.match_info[m_id]
+            perf = ingestor.match_performance.get(m_id)
+            if not perf:
+                continue
+
+            r = info.round
+            if r > max_round:
+                max_round = r
+
+            h_team = info.home
+            a_team = info.away
+
+            actual = perf.get('actual', 0.0)
+            team_scores[h_team][r] += actual
+            team_scores[a_team][r] -= actual
+
+        cumulative = defaultdict(lambda: [0.0] * (max_round + 1))
+        rounds_range = sorted(list(set(range(max_round + 1))))
+
+        for team_id, rounds in team_scores.items():
+            current = 0.0
             for r in rounds_range:
-                last = r_elo.get((season, r), last)
-                vals.append(last)
-            team_scores[team_id] = vals
+                current += rounds.get(r, 0.0)
+                cumulative[team_id][r] = current
 
         if is_mobile:
             figsize = (9, 12)  # post-only (2026-08-26)
@@ -53,7 +62,7 @@ class LadderVisualizer(BaseVisualizer):
             ax.set_facecolor(self.bg_color)
 
             rounds_x = rounds_range
-            final_scores = sorted(team_scores.items(), key=lambda x: x[1][max_round], reverse=True)
+            final_scores = sorted(cumulative.items(), key=lambda x: x[1][max_round], reverse=True)
 
             y_vals = {team_id: scores[max_round] for team_id, scores in final_scores}
             sorted_items = sorted(y_vals.items(), key=lambda x: x[1], reverse=True)
@@ -101,6 +110,16 @@ class LadderVisualizer(BaseVisualizer):
                     y_smooth[i] = p0 * f1 + p1 * f2 + p2 * f3 + p3 * f4
                 return x_smooth, y_smooth
 
+            # Ranks + tiers from the CUMULATIVE scores (same metric as the lines
+            # — 2026-08-26 final fix: Elo labels on a cumulative chart disagreed)
+            import Core.calibration as cal
+            final_vals = [scores[max_round] for _, scores in final_scores]
+            el, cn, md = cal.compute_tier_cutoffs(final_vals)
+            rank_by_team = {team_id: i + 1 for i, (team_id, _) in enumerate(final_scores)}
+
+            def band(v):
+                return 'ELITE' if v >= el else 'CONTENDER' if v >= cn else 'MID-TABLE' if v >= md else 'REBUILDING'
+
             for team_id, scores in final_scores:
                 t_data = TEAM_DATA.get(team_id, {'name': team_id, 'primary': '#888888'})
 
@@ -109,11 +128,7 @@ class LadderVisualizer(BaseVisualizer):
                 ax.scatter(rounds_x, scores, color=t_data['primary'], s=25 if not is_mobile else 9, zorder=5)
 
                 label = get_short_name(t_data['name'])
-                elo_val = ingestor.get_team_elo(team_id, season, up_to_round + 1)
-                rank_val = ingestor.get_league_rankings(season, up_to_round + 1).get(team_id)
-                tier_val = ingestor.get_team_tier(elo_val)
-                rank_str = f'#{rank_val}' if rank_val else ''
-                full_label = f'{label} {rank_str} [{tier_val}]'
+                full_label = f'{label} #{rank_by_team[team_id]} [{band(scores[max_round])}]'
 
                 y_pos = label_y_positions[team_id]
                 lbl_fs = 9 if not is_mobile else 8
@@ -125,17 +140,17 @@ class LadderVisualizer(BaseVisualizer):
             ax.set_xlim(rounds_x[0] - 0.2, max_round + 1.8)
 
             title_fs = 13 if is_mobile else 17
-            ax.set_title(f"SEASON {season} TACTICAL\nPOWER LADDER" if is_mobile else f"SEASON {season} TACTICAL POWER LADDER",
+            ax.set_title(f"SEASON {season} CUMULATIVE\nTACTICAL POWER LADDER" if is_mobile else f"SEASON {season} CUMULATIVE TACTICAL POWER LADDER",
                          color=self.text_color, fontsize=title_fs, pad=35, fontproperties=self.prop_title)
 
-            fig.text(0.5, 0.92 if not is_mobile else 0.91, "RATING = ELO MOMENTUM (BASELINE 1500)",
+            fig.text(0.5, 0.92 if not is_mobile else 0.91, "LINES = CUMULATIVE TACTICAL OUTPUT | RANKS + TIERS = SAME SCORES",
                      ha='center', fontsize=9 if not is_mobile else 7, color=self.sub_text_color, fontproperties=self.prop_body, style='italic')
 
             ax.set_xlabel("ROUND", color=self.text_color, fontsize=12 if not is_mobile else 10, fontproperties=self.prop_sub)
-            ax.set_ylabel("ELO RATING", color=self.text_color, fontsize=12 if not is_mobile else 10, fontproperties=self.prop_sub)
+            ax.set_ylabel("CUMULATIVE TACTICAL SCORE", color=self.text_color, fontsize=12 if not is_mobile else 10, fontproperties=self.prop_sub)
 
             ax.grid(True, linestyle='--', alpha=0.3, color=self.sub_text_color)
-            ax.axhline(1500, color=self.text_color, linewidth=1.5, alpha=0.6)
+            ax.axhline(0, color=self.text_color, linewidth=1.5, alpha=0.6)
 
             plt.xticks(rounds_x, [f"R{r}" for r in rounds_x], fontsize=10 if not is_mobile else 8)
             for label in ax.get_xticklabels():
@@ -152,48 +167,6 @@ class LadderVisualizer(BaseVisualizer):
 
             plt.tight_layout()
             self.save_and_close(fig, save_path, dpi=120 if not is_mobile else 100, bbox_inches=None)  # fixed aspect — no tight-crop (was collapsing heights)
-        except:
-            plt.close(fig)
-            raise
-
-    def _draw_ladder_table(self, ingestor, season: int, up_to_round: int, save_path: str):
-        """Option-A ranked table for mobile: rank, team, rating bar, rating, tier.
-        One metric (Elo), zero line-chart spaghetti — the ladder is a ranking."""
-        import matplotlib.patches as mpatches
-        fig = plt.figure(figsize=(9, 12), facecolor=self.bg_color)
-        try:
-            fig.text(0.5, 0.955, 'TACTICAL POWER LADDER', ha='center', fontsize=28, color=self.text_color, fontproperties=self.prop_title)
-            fig.text(0.5, 0.918, f'SEASON {season}  ·  RATING = ELO MOMENTUM (BASELINE 1500)', ha='center', fontsize=11, color=self.sub_text_color)
-
-            by_round = getattr(ingestor.elo_engine, 'team_elo_by_round', {}) or {}
-            rows = []
-            for team_id, r_elo in by_round.items():
-                r = 1500.0
-                for rr in range(up_to_round + 1):
-                    r = r_elo.get((season, rr), r)
-                rows.append((team_id, r))
-            rows.sort(key=lambda x: -x[1])
-
-            lo = min(r for _, r in rows) - 20
-            hi = max(r for _, r in rows) + 20
-            span = hi - lo
-
-            y0 = 0.885
-            rh = 0.045
-            for i, (team_id, rating) in enumerate(rows):
-                y = y0 - i * rh
-                t_data = TEAM_DATA.get(team_id, {'name': team_id, 'primary': '#888888', 'secondary': '#888888'})
-                tier = ingestor.get_team_tier(rating)
-                if i % 2 == 1:
-                    fig.add_artist(mpatches.Rectangle((0.04, y - rh * 0.38), 0.92, rh * 0.76, facecolor='#E9E4D8', edgecolor='none', zorder=1))
-                fig.text(0.065, y, f'{i + 1}', ha='center', va='center', fontsize=13, color=self.text_color, zorder=3)
-                fig.text(0.135, y, t_data['name'].upper(), ha='left', va='center', fontsize=11.5, color=self.text_color, zorder=3)
-                frac = max(0.03, (rating - lo) / span)
-                fig.add_artist(mpatches.Rectangle((0.52, y - 0.012), 0.26 * frac, 0.024, facecolor=t_data['primary'], edgecolor='none', alpha=0.85, zorder=2))
-                fig.text(0.82, y, f'{rating:.0f}', ha='right', va='center', fontsize=12, color=self.sub_text_color, zorder=3)
-                fig.text(0.87, y, tier, ha='left', va='center', fontsize=9.5, color=self.sub_text_color, zorder=3)
-
-            self.save_and_close(fig, save_path, dpi=100, bbox_inches=None)
         except:
             plt.close(fig)
             raise
