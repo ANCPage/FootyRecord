@@ -198,12 +198,23 @@ class LadderVisualizer(BaseVisualizer):
         cum_expected = np.cumsum(expected_scores)
 
         if is_mobile:
-            figsize = (9, 16) if mobile_format == 'reel' else (9, 12)
+            # Mobile-first (2026-08-26): masthead + ONE big plot filling the card —
+            # the old desktop chart rendered as a tiny strip with 80% empty card.
+            figsize = (9, 12)
+            fig = plt.figure(figsize=figsize, facecolor=self.bg_color)
         else:
             figsize = (14, 8)
-        fig, ax1 = plt.subplots(figsize=figsize, facecolor=self.bg_color)
+            fig, ax1 = plt.subplots(figsize=figsize, facecolor=self.bg_color)
         try:
-            ax1.set_facecolor(self.bg_color)
+            if is_mobile:
+                rank_str = f'RANK {rank}' if rank else ''
+                tier_str = f'[{tier}]' if tier else ''
+                fig.text(0.5, 0.95, t_data['name'].upper(), ha='center', fontsize=30, color=self.text_color, fontproperties=self.prop_title)
+                fig.text(0.5, 0.92, f'{season} TACTICAL JOURNEY  ·  {rank_str} {tier_str}', ha='center', fontsize=11, color=self.sub_text_color)
+                ax1 = fig.add_axes([0.10, 0.13, 0.82, 0.74])
+                ax1.set_facecolor(self.bg_color)
+            else:
+                ax1.set_facecolor(self.bg_color)
 
             colors = ['#4A7A59' if v > 0 else '#A8463D' for v in actual_scores]
             ax1.bar(rounds, actual_scores, color=colors, alpha=0.4, label='ROUND ACTUAL SCORE', width=0.6)
@@ -242,29 +253,36 @@ class LadderVisualizer(BaseVisualizer):
             ax2.plot(rounds, cum_actual, color=t_data['primary'], marker='o', markersize=10 if not is_mobile else 6, linestyle='None', zorder=5, label='CUMULATIVE ACTUAL')
 
             for i, v in enumerate(actual_scores):
-                score_fs = 9 if not is_mobile else 7
+                if is_mobile and i % 2:
+                    continue  # every 2nd round only — 24 labels were a smudge
+                score_fs = 9 if not is_mobile else 8
                 score_font, score_size = self.get_font_and_size(self.prop_sub, score_fs)
                 ax1.text(rounds[i], v + (0.5 if v > 0 else -1.5), f"{v:+.1f}",
                          ha='center', va='bottom' if v > 0 else 'top',
                          color=colors[i], fontsize=score_size, fontproperties=score_font)
 
             title_fs = 13 if is_mobile else 16
-            rank_str = f'RANK: {get_ordinal(rank)}' if rank else ''
-            tier_str = f' [{tier}]' if tier else ''
-            ax1.set_title(f"{t_data['name'].upper()} {rank_str}{tier_str}:\n{season} TACTICAL JOURNEY" if is_mobile else f"{t_data['name'].upper()} {rank_str}{tier_str}: {season} TACTICAL JOURNEY",
-                         color=self.text_color, fontsize=title_fs, pad=30, fontproperties=self.prop_title)
+            if not is_mobile:
+                rank_str = f'RANK: {get_ordinal(rank)}' if rank else ''
+                tier_str = f' [{tier}]' if tier else ''
+                ax1.set_title(f"{t_data['name'].upper()} {rank_str}{tier_str}: {season} TACTICAL JOURNEY",
+                             color=self.text_color, fontsize=title_fs, pad=30, fontproperties=self.prop_title)
 
             ax1.set_xlabel("ROUND", color=self.text_color, fontsize=12 if not is_mobile else 10, fontproperties=self.prop_sub)
             ax1.set_ylabel("ROUND TACTICAL SCORE", color=self.text_color, fontsize=12 if not is_mobile else 10, fontproperties=self.prop_sub)
             ax2.set_ylabel("CUMULATIVE PERFORMANCE", color=self.text_color, fontsize=12 if not is_mobile else 10, fontproperties=self.prop_sub)
 
             if is_mobile:
-                plt.xticks(rounds, [f"R{r}\n{get_short_name(opp)}" for r, opp in zip(rounds, opponents)], rotation=45, ha='right', rotation_mode='anchor')
+                # thin x labels to every 2nd round (24 two-line labels were illegible)
+                sel_r = rounds[::2]
+                sel_o = [get_short_name(o) for o in opponents[::2]]
+                ax1.set_xticks(sel_r)
+                ax1.set_xticklabels([f"R{r}\n{o}" for r, o in zip(sel_r, sel_o)], fontsize=8.5)
             else:
                 plt.xticks(rounds, [f"R{r}\n{get_short_name(opp)}" for r, opp in zip(rounds, opponents)])
             for label in ax1.get_xticklabels():
                 label.set_fontproperties(self.prop_body)
-                label.set_fontsize(10 if not is_mobile else 7)
+                label.set_fontsize(10 if not is_mobile else 8.5)
             for ax in [ax1, ax2]:
                 for label in ax.get_yticklabels():
                     label.set_fontproperties(self.prop_body)
@@ -275,7 +293,9 @@ class LadderVisualizer(BaseVisualizer):
 
             h1, l1 = ax1.get_legend_handles_labels()
             h2, l2 = ax2.get_legend_handles_labels()
-            legend = ax1.legend(h1 + h2, l1 + l2, facecolor=self.bg_color, edgecolor=self.text_color, loc='upper left', fontsize=10 if not is_mobile else 8)
+            legend = ax1.legend(h1 + h2, l1 + l2, facecolor=self.bg_color, edgecolor=self.text_color,
+                                loc='upper right' if is_mobile else 'upper left',
+                                fontsize=10 if not is_mobile else 8.5)
             for text in legend.get_texts():
                 leg_fs = 10 if not is_mobile else 8
                 leg_font, leg_size = self.get_font_and_size(self.prop_sub, leg_fs)
@@ -288,7 +308,8 @@ class LadderVisualizer(BaseVisualizer):
                     spine.set_color(self.text_color)
                 ax.tick_params(colors=self.text_color)
 
-            plt.tight_layout()
+            if not is_mobile:
+                plt.tight_layout()  # mobile uses the fixed add_axes layout
             self.save_and_close(fig, save_path, dpi=120 if not is_mobile else 100, bbox_inches=None)  # fixed aspect — no tight-crop (was collapsing heights)
         except:
             plt.close(fig)
