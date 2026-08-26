@@ -114,7 +114,15 @@ class LadderVisualizer(BaseVisualizer):
             # — 2026-08-26 final fix: Elo labels on a cumulative chart disagreed)
             import Core.calibration as cal
             final_vals = [scores[max_round] for _, scores in final_scores]
-            el, cn, md = cal.compute_tier_cutoffs(final_vals)
+            s = sorted(final_vals, reverse=True)
+            if len(s) >= 14:
+                el, cn, md = cal.compute_tier_cutoffs(final_vals)
+            else:
+                # small field (early rounds like R0 = 10 teams): computable
+                # midpoints only, wide bands below — tiers are provisional
+                el = (s[3] + s[4]) / 2.0 if len(s) >= 5 else s[0] + 1.0
+                cn = (s[7] + s[8]) / 2.0 if len(s) >= 9 else el
+                md = cn
             rank_by_team = {team_id: i + 1 for i, (team_id, _) in enumerate(final_scores)}
 
             def band(v):
