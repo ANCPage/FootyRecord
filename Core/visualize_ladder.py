@@ -16,38 +16,26 @@ class LadderVisualizer(BaseVisualizer):
         super().__init__()
 
     def draw_cumulative_ladder(self, ingestor, season: int, up_to_round: int, save_path: str, is_mobile: bool = False, mobile_format: str = 'reel'):
-        team_scores = defaultdict(lambda: defaultdict(float))
-        max_round = 0
-
+        # 2026-08-26: the LINES are now Elo rating trajectories (was cumulative
+        # tactical score). The old card plotted cumulative raw output but ranked
+        # and tiered by Elo — two orderings on one visual, so lines, ranks and
+        # tiers visibly disagreed (Adelaide's line above Collingwood's while
+        # labelled MID-TABLE below a CONTENDER, etc). One metric, one story.
         matches = [m_id for m_id, info in ingestor.match_info.items() if info.season == season and info.round <= up_to_round]
-        for m_id in matches:
-            info = ingestor.match_info[m_id]
-            perf = ingestor.match_performance.get(m_id)
-            if not perf:
-                continue
-
-            r = info.round
-            if r > max_round:
-                max_round = r
-
-            h_team = info.home
-            a_team = info.away
-
-            actual = perf.get('actual', 0.0)
-            team_scores[h_team][r] += actual
-            team_scores[a_team][r] -= actual
-
-        cumulative = defaultdict(lambda: [0.0] * (max_round + 1))
-        rounds_range = sorted(list(set(range(max_round + 1))))
-
-        for team_id, rounds in team_scores.items():
-            current = 0.0
+        max_round = max((ingestor.match_info[m_id].round for m_id in matches), default=0)
+        rounds_range = list(range(max_round + 1))
+        by_round = getattr(ingestor.elo_engine, 'team_elo_by_round', {}) or {}
+        team_scores = defaultdict(list)
+        for team_id, r_elo in by_round.items():
+            last = 1500.0
+            vals = []
             for r in rounds_range:
-                current += rounds.get(r, 0.0)
-                cumulative[team_id][r] = current
+                last = r_elo.get((season, r), last)
+                vals.append(last)
+            team_scores[team_id] = vals
 
         if is_mobile:
-            figsize = (9, 16) if mobile_format == 'reel' else (9, 12)
+            figsize = (9, 12)  # post-only (2026-08-26)
         else:
             figsize = (16, 10)
 
@@ -56,7 +44,7 @@ class LadderVisualizer(BaseVisualizer):
             ax.set_facecolor(self.bg_color)
 
             rounds_x = rounds_range
-            final_scores = sorted(cumulative.items(), key=lambda x: x[1][max_round], reverse=True)
+            final_scores = sorted(team_scores.items(), key=lambda x: x[1][max_round], reverse=True)
 
             y_vals = {team_id: scores[max_round] for team_id, scores in final_scores}
             sorted_items = sorted(y_vals.items(), key=lambda x: x[1], reverse=True)
@@ -128,17 +116,17 @@ class LadderVisualizer(BaseVisualizer):
             ax.set_xlim(rounds_x[0] - 0.2, max_round + 1.8)
 
             title_fs = 13 if is_mobile else 17
-            ax.set_title(f"SEASON {season} CUMULATIVE\nTACTICAL POWER LADDER" if is_mobile else f"SEASON {season} CUMULATIVE TACTICAL POWER LADDER",
+            ax.set_title(f"SEASON {season} TACTICAL\nPOWER LADDER" if is_mobile else f"SEASON {season} TACTICAL POWER LADDER",
                          color=self.text_color, fontsize=title_fs, pad=35, fontproperties=self.prop_title)
 
-            fig.text(0.5, 0.92 if not is_mobile else 0.91, "Score = Raw Tactical Output | Rating = Momentum (Baseline: 1500)",
+            fig.text(0.5, 0.92 if not is_mobile else 0.91, "RATING = ELO MOMENTUM (BASELINE 1500)",
                      ha='center', fontsize=9 if not is_mobile else 7, color=self.sub_text_color, fontproperties=self.prop_body, style='italic')
 
             ax.set_xlabel("ROUND", color=self.text_color, fontsize=12 if not is_mobile else 10, fontproperties=self.prop_sub)
-            ax.set_ylabel("CUMULATIVE TACTICAL SCORE", color=self.text_color, fontsize=12 if not is_mobile else 10, fontproperties=self.prop_sub)
+            ax.set_ylabel("ELO RATING", color=self.text_color, fontsize=12 if not is_mobile else 10, fontproperties=self.prop_sub)
 
             ax.grid(True, linestyle='--', alpha=0.3, color=self.sub_text_color)
-            ax.axhline(0, color=self.text_color, linewidth=1.5, alpha=0.6)
+            ax.axhline(1500, color=self.text_color, linewidth=1.5, alpha=0.6)
 
             plt.xticks(rounds_x, [f"R{r}" for r in rounds_x], fontsize=10 if not is_mobile else 8)
             for label in ax.get_xticklabels():
