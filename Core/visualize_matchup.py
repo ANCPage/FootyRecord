@@ -149,24 +149,25 @@ class MatchupVisualizer(FieldVisualizer):
                 figsize = (9, 12) if mobile_format == 'reel' else (9, 12)
                 fig_m = plt.figure(figsize=figsize, facecolor=self.bg_color)
                 try:
-                    fig_m.text(0.5, 0.945, 'MATCHUP', ha='center', fontsize=36, color=self.text_color, fontproperties=self.prop_title)
-                    fig_m.text(0.5, 0.905, f'{n_a.upper()}  VS  {n_b.upper()}', ha='center', fontsize=16, color=self.sub_text_color)
+                    fig_m.text(0.5, 0.955, 'MATCHUP', ha='center', fontsize=34, color=self.text_color, fontproperties=self.prop_title)
+                    fig_m.text(0.5, 0.915, f'{n_a.upper()}  VS  {n_b.upper()}', ha='center', fontsize=15, color=self.sub_text_color)
                     rank_a_str = f"RANK {rank_a} [{tier_a}]" if rank_a else ''
                     rank_b_str = f"RANK {rank_b} [{tier_b}]" if rank_b else ''
-                    fig_m.text(0.5, 0.877, f'{n_a} — {rank_a_str}   ·   {n_b} — {rank_b_str}', ha='center', fontsize=11, color=self.sub_text_color)
+                    fig_m.text(0.5, 0.888, f'{n_a} — {rank_a_str}   ·   {n_b} — {rank_b_str}', ha='center', fontsize=10.5, color=self.sub_text_color)
 
-                    # one ownership field: top 6 edges, involved zones only, round oval
+                    # one ownership field: axes sized to the 190:150 data ratio so the
+                    # round oval FILLS the panel (equal aspect, no letterbox gutters)
                     top_edges = [e for e, s in sorted(delta_matrix.items(), key=lambda x: abs(x[1]), reverse=True)[:6]]
-                    ax3_m = fig_m.add_axes([0.08, 0.43, 0.84, 0.41])
+                    ax3_m = fig_m.add_axes([0.16, 0.35, 0.68, 0.52])
                     self._draw_field_on_ax(ax3_m, '', delta_matrix, top_edges, True, c_a, c_b, apply_blur=False, active_zones=True)
 
-                    ax_tm = fig_m.add_axes([0.06, 0.10, 0.88, 0.29])
-                    self._draw_table(ax_tm, delta_matrix, team_a, team_b, limit=12)
+                    ax_tm = fig_m.add_axes([0.06, 0.10, 0.88, 0.24])
+                    self._draw_table(ax_tm, delta_matrix, team_a, team_b, limit=10)
 
                     # winner banner (A style): FasterOne headline + Roboto sub
-                    fig_m.add_artist(patches.Rectangle((0.03, 0.045), 0.94, 0.062, facecolor=self.text_color, edgecolor='none', zorder=5))
-                    fig_m.text(0.5, 0.082, f'{winner_name.upper()} WINNER', ha='center', va='center', fontsize=22, color=self.bg_color, zorder=6, fontproperties=self.prop_title)
-                    fig_m.text(0.5, 0.056, f'MARGIN {margin:+.0f} PTS  ·  NET DELTA {net_delta:+.2f}', ha='center', va='center', fontsize=10, color=self.bg_color, zorder=6)
+                    fig_m.add_artist(patches.Rectangle((0.03, 0.035), 0.94, 0.06, facecolor=self.text_color, edgecolor='none', zorder=5))
+                    fig_m.text(0.5, 0.071, f'{winner_name.upper()} WINNER', ha='center', va='center', fontsize=20, color=self.bg_color, zorder=6, fontproperties=self.prop_title)
+                    fig_m.text(0.5, 0.047, f'MARGIN {margin:+.0f} PTS  ·  NET DELTA {net_delta:+.2f}', ha='center', va='center', fontsize=10, color=self.bg_color, zorder=6)
 
                     self.save_and_close(fig_m, f'{save_prefix}{suffix}.png', dpi=100)
                 except:
@@ -215,18 +216,24 @@ class MatchupVisualizer(FieldVisualizer):
                 figsize = (9, 12) if mobile_format == 'reel' else (9, 12)
                 fig_m = plt.figure(figsize=figsize, facecolor=self.bg_color)
                 try:
-                    fig_m.text(0.5, 0.945, 'EXPECTATION', ha='center', fontsize=34, color=self.text_color, fontproperties=self.prop_title)
-                    fig_m.text(0.5, 0.905, f'{n_a.upper()}  VS  {n_b.upper()}', ha='center', fontsize=16, color=self.sub_text_color)
+                    fig_m.text(0.5, 0.955, 'EXPECTATION', ha='center', fontsize=32, color=self.text_color, fontproperties=self.prop_title)
+                    fig_m.text(0.5, 0.918, f'{n_a.upper()}  VS  {n_b.upper()}', ha='center', fontsize=15, color=self.sub_text_color)
 
-                    ax1_m = fig_m.add_axes([0.10, 0.53, 0.80, 0.34])
-                    self._draw_field_on_ax(ax1_m, 'EXPECTED TACTICAL DELTA', expected_delta, e_exp[:8], True, c_a, c_b, apply_blur=blur, active_zones=True)
-                    ax2_m = fig_m.add_axes([0.10, 0.14, 0.80, 0.34])
-                    self._draw_field_on_ax(ax2_m, 'ACTUAL TACTICAL DELTA', actual_delta, e_act[:8], True, c_a, c_b, apply_blur=blur, active_zones=True)
+                    # two stacked round fields, boxes sized to the 190:150 data ratio
+                    # so each oval FILLS its panel under equal aspect (no gutters, no
+                    # dead bands — fixes the side-by-side layout's empty lower half)
+                    lbl_font, lbl_size = self.get_font_and_size(self.prop_sub, 12)
+                    fig_m.text(0.5, 0.895, 'EXPECTED', ha='center', fontsize=lbl_size, color=self.sub_text_color, fontproperties=lbl_font)
+                    ax1_m = fig_m.add_axes([0.24, 0.52, 0.52, 0.355])
+                    self._draw_field_on_ax(ax1_m, '', expected_delta, e_exp[:8], True, c_a, c_b, apply_blur=blur, active_zones=True)
+                    fig_m.text(0.5, 0.505, 'ACTUAL', ha='center', fontsize=lbl_size, color=self.sub_text_color, fontproperties=lbl_font)
+                    ax2_m = fig_m.add_axes([0.24, 0.135, 0.52, 0.355])
+                    self._draw_field_on_ax(ax2_m, '', actual_delta, e_act[:8], True, c_a, c_b, apply_blur=blur, active_zones=True)
 
                     # A-style banner: predicted vs actual margin
-                    fig_m.add_artist(patches.Rectangle((0.03, 0.045), 0.94, 0.062, facecolor=self.text_color, edgecolor='none', zorder=5))
-                    fig_m.text(0.5, 0.082, f'PREDICTED MARGIN {expected_margin:+.0f}', ha='center', va='center', fontsize=18, color=self.bg_color, zorder=6, fontproperties=self.prop_title)
-                    fig_m.text(0.5, 0.056, f'ACTUAL MARGIN {actual_margin:+.0f}', ha='center', va='center', fontsize=11, color=self.bg_color, zorder=6)
+                    fig_m.add_artist(patches.Rectangle((0.03, 0.035), 0.94, 0.06, facecolor=self.text_color, edgecolor='none', zorder=5))
+                    fig_m.text(0.5, 0.071, f'PREDICTED MARGIN {expected_margin:+.0f}', ha='center', va='center', fontsize=18, color=self.bg_color, zorder=6, fontproperties=self.prop_title)
+                    fig_m.text(0.5, 0.047, f'ACTUAL MARGIN {actual_margin:+.0f}', ha='center', va='center', fontsize=10.5, color=self.bg_color, zorder=6)
 
                     self.save_and_close(fig_m, f'{save_prefix}_expectation_vs_actual{suffix}.png', dpi=100)
                 except:
