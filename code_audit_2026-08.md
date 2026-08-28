@@ -319,3 +319,93 @@ RE-AUDIT FOLLOW-UP — 2026-08-25 (season-complete data pull found two more)
    from the stored history — the index is derived data, not persisted.
 3. Data now through R24 (season COMPLETE): 1,222 games, 66.5% overall,
    2026 = 147/207 (71.0%) — best season; R23 8/9, R24 6/9.
+
+# ARCHITECTURE REVIEW — 2026-08-26 (deep pass, "could this be better architected?")
+
+Scope: full repo (5,814 LOC: Core ~3,100 / scripts ~1,700 / tests ~660), import graph,
+data flow, known incident history. Status: no bugs found in this pass — this is a
+structure review. Grounding: import graph read, key modules read, DB schema probed.
+
+## What's genuinely good (verified)
+- engine_core + geometry are a clean PURE core: no I/O, no globals, testable math
+  (Graph, collapse_chain, delta, placement). The right foundation.
+- One-store migration: engine state in SQLite, CACHE_VERSION + config-fingerprint gate,
+  POST_ purge rule — determinism is defended in practice.
+- Root scripts are thin-ish entry points; walk-forward discipline is embedded.
+- SQLite kept off the SMB share (documented failure mode) — DB on local disk.
+- 62 tests incl. placement math + integration; ruff clean repo-wide.
+
+## Findings (numbered; pick by number)
+
+1. 🔴 **engine_data is a God module (480 LOC, 7 Core imports).** Loader + profiler +
+   calibration fitter + player-matrix builder + rankings/tiers in one class. It is
+   imported by almost everything and imports almost everything — the coupling hub.
+   Every engine change lands here; the get_team_elo/POST_ bug class grew from its
+   load path. Fix: split into loader / profiler / repository (see target below).
+
+2. 🔴 **Season-summary logic ("147/207") exists in THREE places.** generate_round_images
+   computes it twice (lines 334-356 and 414) and evaluate.py aggregates again. The
+   audit history shows these drifted before (played-round guard, correct-count
+   semantics). The record count is the project's single most important number and it
+   has no single source of truth. Fix: one `season_summary()` service + a byte-identity
+   test that the DB, the card, and the CLI agree.
+
+3. 🟠 **No data-access layer.** Raw SQL scattered across scripts (scoring_graph,
+   summaries, sweeps). results_db/state_store are thin helpers; queries duplicate.
+   Fix: repository functions (record_rows, season_summary, rankings) — one import site.
+
+4. 🟠 **Module-level mutable state: `cal.current`** (3 writes in engine_data). A hidden
+   global set after load; the get_team_elo bug class and the "config.config.x" dead
+   reference both came from module/instance confusion. Fix: pass calibration explicitly
+   (it already is in most call sites — kill the global).
+
+5. 🟠 **generate_round_images is a God-orchestrator (454 LOC).** Loads data, re-evaluates
+   every game for the summary, builds driver annotations, player matrices, format dirs,
+   and drives 4 visualizers. Fix: extract per-game evaluation + season summary into the
+   evaluate service; the script becomes a thin driver.
+
+6. 🟠 **Layer inversions:** state_store imports results_db (storage knows about results),
+   models imports theme (data classes know the visual theme). Small, but they blur the
+   layering that would make #1-#2 safe. Fix: cut both edges (theme data → visualizer;
+   state_store uses its own JSON helpers).
+
+7. 🟡 **No validated config schema.** config.py is flat constants; the fingerprint gate
+   hashes them (good), but nothing validates types/ranges, and the module-vs-instance
+   confusion bit us once. Fix: frozen dataclass + validation + fingerprint from the
+   serialized object.
+
+8. 🟡 **No pipeline runner.** Stages (scrape → ingest → profile → evaluate → save →
+   render) are scripts with ad-hoc coordination; regen_season has --resume but failures
+   leave STALE artifacts silently (today: R0 ladder crash left an old table-ladder.png
+   that the count check almost missed). Fix: stage manifest (input hashes → outputs),
+   per-round status table, stale-artifact guard.
+
+9. 🟡 **chains table is unindexed** (only rowid). The 1.9M-row scans (scoring_graph 8s,
+   profiling) would drop with an index on (m_id) and (outcome). predictions also has no
+   index on (season, round). Fix: two CREATE INDEX statements.
+
+10. 🟡 **Visualizer grab-bags.** visualize_ladder.py holds ladder + journey + accuracy
+    (405 LOC); visualize_story.py holds story + players. Card types scattered by
+    history, not structure. Fix: one file per card type only if the layering work
+    happens first (lowest priority — presentation is the most stable part).
+
+11. 🟡 **Engine module naming** (engine_data/engine_core/engine_scraper all "engine*";
+    results_db vs state_store; predict_game vs prediction) — confusable boundaries.
+    Fix: rename only as part of #1's split.
+
+12. 🟢 **Hardcoded paths** (DB path in scoring_graph; ROOT in several scripts) — should
+    come from config (#7).
+
+## Target architecture (the direction, not a rewrite)
+At 5.8k LOC this is the cheapest moment to fix structure — the size is an asset.
+Layering: `pure math` (engine_core/geometry/calibration-math) → `data` (loader,
+profiler, state_repository, record_repository) → `services` (evaluate, predict,
+summary) → `presentation` (visualizers) → `cli` (thin entry points). Key rule: each
+layer imports only below itself. The walk-forward runner + season_summary become a
+single service with a byte-identity test. Config becomes a validated frozen object.
+
+## Keep as-is (no action)
+- Scripts as thin entry points (the pattern, not the content, is right)
+- Visual design system (Option A) — presentation churn is done
+- SQLite on local disk, renders/pickles on the share — correct split
+- The pure-math core — keep untouched (highest-tested asset)

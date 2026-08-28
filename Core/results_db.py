@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS predictions (
     actual_margin REAL, correct INTEGER, delta TEXT,
     PRIMARY KEY (season, round, match_id)
 );
+CREATE INDEX IF NOT EXISTS idx_predictions_season_round ON predictions(season, round);
 CREATE TABLE IF NOT EXISTS calibration_log (
     season INTEGER, round INTEGER,
     decay REAL, margin_b1 REAL, margin_b2 REAL, total_mean REAL,
@@ -170,6 +171,25 @@ def cumulative_record(conn, season: int, through_round: int) -> tuple:
         " WHERE season = ? AND round <= ?",
         (season, through_round)).fetchone()
     return (int(row[0]), int(row[1]))
+
+
+def round_summary(conn, season: int, round_num: int) -> tuple:
+    """(correct, total) for ONE round. Total counts PLAYED games only
+    (unplayed rows have actual_margin NULL and correct=0) — this is the
+    single source of truth for the tips-card summary (2026-08-26)."""
+    row = conn.execute(
+        "SELECT COALESCE(SUM(correct), 0), COUNT(*) FROM predictions"
+        " WHERE season = ? AND round = ? AND actual_margin IS NOT NULL",
+        (season, round_num)).fetchone()
+    return (int(row[0]), int(row[1]))
+
+
+def format_summary(round_num: int, correct: int, total: int, s_c: int, s_t: int) -> str:
+    """The ONE summary string used by the tips card and the render log
+    (2026-08-26: was formatted in three places, with drift between them).
+    s_t == 0 (nothing played yet) must not divide by zero."""
+    pct = f"{100.0 * s_c / s_t:.1f}%" if s_t else "n/a"
+    return f"ROUND {round_num} TIPS: {correct}/{total} | SEASON: {s_c}/{s_t} ({pct})"
 
 
 def team_records(conn, season: int, through_round: int) -> dict:

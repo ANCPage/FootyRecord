@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS chains (
     m_id TEXT, chain_idx INTEGER, seq INTEGER,
     team TEXT, outcome TEXT, grid TEXT, player TEXT,
     PRIMARY KEY (m_id, chain_idx, seq));
+CREATE INDEX IF NOT EXISTS idx_chains_mid ON chains(m_id);
+CREATE INDEX IF NOT EXISTS idx_chains_outcome ON chains(outcome);
 CREATE TABLE IF NOT EXISTS match_positions (
     m_id TEXT, team TEXT, pos TEXT,
     PRIMARY KEY (m_id, team));

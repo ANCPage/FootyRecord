@@ -7,7 +7,7 @@ import requests
 
 import Core.config as config
 import Core.results_db as results_db
-from Core.engine_core import MatchupEngine, home_favored
+from Core.engine_core import MatchupEngine
 from Core.engine_data import DataIngestor
 from Core.mappings import TEAM_DATA
 from Core.models import TransitionEdge
@@ -331,29 +331,16 @@ class RoundProductionPipeline:
                 # Summary comes from the results DB (compute/render separation)
                 summary = self.season_summary
             else:
-                season_correct = correct
-                season_total = total
-                for mid, actual_w in self.ingestor.actual_winners.items():
-                    if not mid.startswith(f'CD_M{self.target_season}'):
-                        continue
-                    m_info = self.ingestor.match_info[mid]
-                    if m_info.round >= self.round:
-                        continue
-                    m_a, _ = self.ingestor.get_team_average_matrix(m_info.home, up_to_season=self.target_season, up_to_round=m_info.round, return_history_info=True)
-                    m_b, _ = self.ingestor.get_team_average_matrix(m_info.away, up_to_season=self.target_season, up_to_round=m_info.round, return_history_info=True)
-                    if not m_a or not m_b:
-                        continue
-                    d = MatchupEngine.calculate_delta(m_a, m_b)
-                    n_d = sum(d.values())
-                    h_elo_eval = self.ingestor.get_team_elo(m_info.home, self.target_season, m_info.round)
-                    a_elo_eval = self.ingestor.get_team_elo(m_info.away, self.target_season, m_info.round)
-                    # Same decision rule as the displayed picks (audit #1): the
-                    # season summary must count what the model actually picked.
-                    pred_w = m_info.home if home_favored(n_d, h_elo_eval, a_elo_eval) else m_info.away
-                    if pred_w == actual_w:
-                        season_correct += 1
-                    season_total += 1
-                summary = f"ROUND {self.round} TIPS: {correct}/{total} | SEASON: {season_correct}/{season_total} ({(season_correct/season_total)*100:.1f}%)"
+                # 2026-08-26: the old fallback RE-EVALUATED every prior game
+                # with get_team_average_matrix (a second implementation of the
+                # decision rule — drift risk + slow). Single source of truth
+                # is the DB record.
+                conn = results_db.connect()
+                try:
+                    s_c, s_t = results_db.cumulative_record(conn, self.target_season, self.round)
+                    summary = results_db.format_summary(self.round, correct, total, s_c, s_t)
+                finally:
+                    conn.close()
 
             print(f"  {summary}")
             for fmt, d in fmt_dirs.items():
@@ -382,6 +369,17 @@ class RoundProductionPipeline:
         print(f"  Created team journey plots in {list(fmt_dirs.values())}")
         plt.close('all')
 
+def _stale_round_dir(season: int, round_num: int) -> str:
+    """Delete a round's output dir so stale cards can't survive a failed
+    re-render (2026-08-26: a failed round kept its old TIPS_RESULTS.png,
+    which --resume then treated as 'done' forever)."""
+    round_dir = os.path.join('ROUND_IMAGES_UPDATE', str(season), f'R{round_num}')
+    if os.path.isdir(round_dir):
+        import shutil
+        shutil.rmtree(round_dir, ignore_errors=True)
+    return round_dir
+
+
 def render_round_from_db(season: int, round_num: int, comp_id: str = None,
                          ingestor: DataIngestor = None, formats: list = None) -> str:
     """Path B: render one round's cards from the results DB (shared by
@@ -389,16 +387,16 @@ def render_round_from_db(season: int, round_num: int, comp_id: str = None,
     RRR #7). Pass a pre-loaded `ingestor` to skip the state reload; `formats`
     filters the output (default mobile post+reel — perf 2026-08-12)."""
     comp_id = comp_id or f'{season}014'
+    # Stale-artifact guard (2026-08-26): wipe BEFORE rendering.
+    _stale_round_dir(season, round_num)
     conn = results_db.connect()
     rows = results_db.load_round(conn, season, round_num)
-    conn.close()
     if not rows:
         print(f"No results in DB for {season} R{round_num} — run compute first")
+        conn.close()
         return None
     db_rows = {r['match_id']: r for r in rows}
-    correct = sum(1 for r in rows if r['correct'])
-    total = sum(1 for r in rows if r['actual_margin'] is not None)
-    conn = results_db.connect()
+    correct, total = results_db.round_summary(conn, season, round_num)
     # Stale-panels guard: decisions come from the DB, but player/journey
     # panels read the live state — warn if the state changed since the
     # record was saved (run `evaluate.py --save` to re-align).
@@ -411,7 +409,7 @@ def render_round_from_db(season: int, round_num: int, comp_id: str = None,
               f"re-render for consistent panels")
     s_c, s_t = results_db.cumulative_record(conn, season, round_num)
     conn.close()
-    summary = f"ROUND {round_num} TIPS: {correct}/{total} | SEASON: {s_c}/{s_t} ({100.0*s_c/s_t:.1f}%)"
+    summary = results_db.format_summary(round_num, correct, total, s_c, s_t)
 
     pipeline = RoundProductionPipeline(comp_id=comp_id, round_num=round_num,
                                        db_rows=db_rows, season_summary=summary,
