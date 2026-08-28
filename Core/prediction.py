@@ -7,8 +7,7 @@ the round-image generator. Previously each call site re-implemented this block.
 from dataclasses import dataclass
 from typing import Dict, Optional
 
-from Core.calibration import align_margin
-from Core.calibration import current as cal
+from Core.calibration import Calibration, align_margin
 from Core.engine_core import MatchupEngine, home_favored
 
 
@@ -76,6 +75,10 @@ def compute_matchup(ingestor, home_id: str, away_id: str, season: int,
         a_elo = ingestor.get_team_elo(away_id, season, round_num)
 
     elo_diff = (h_elo - a_elo) / 100.0
+    # Calibration comes from the ingestor that loaded the state (Phase 1,
+    # 2026-08-26 — was a module global; a stale/unset global silently fell
+    # back to shipped coefficients on the decision path).
+    cal = getattr(ingestor, 'calibration', None) or Calibration.fallback()
     # size from the fit, direction from the raw signal (2026-08-11: the
     # fitted margin can never flip the delta)
     edge = align_margin(cal.margin(net_delta, elo_diff), net_delta, elo_diff)

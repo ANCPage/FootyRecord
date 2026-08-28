@@ -167,6 +167,9 @@ def select_window(rows: List[FitRow], cur_season: int,
     return [r for r in rows if r[0] >= lo]
 
 
-# Active coefficients for decision paths. The ingestor sets this on load
-# (from cache or a fresh fit); stays at the shipped fallback otherwise.
-current: Calibration = Calibration.fallback()
+# NOTE (Phase 1, 2026-08-26): the module-level `current` global was REMOVED.
+# Calibration now travels with the ingestor (`ing.calibration`) — every
+# decision path takes it explicitly. Hidden mutable module state was the bug
+# class behind the `config.config.window_size` family of errors: two places
+# disagreed about which calibration was active and nothing complained.
+# tests/test_no_global_calibration.py guards against reintroduction.

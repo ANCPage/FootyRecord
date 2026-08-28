@@ -107,15 +107,14 @@ def predict_game(round_num, game_num, season=None):
     # it once the round is played and the CSVs land)
     from types import SimpleNamespace
 
-    import Core.calibration as cal
     game = results_db.game_row_from_prediction(
         pred, SimpleNamespace(home=h_id, away=a_id, home_score=0, away_score=0),
-        season, round_num, cal.current, mid, played=False)
+        season, round_num, ingestor.calibration, mid, played=False)
     conn = results_db.connect()
     results_db.upsert_prediction(conn, game)
     results_db.upsert_calibration(
         conn, season, round_num,
-        results_db.build_calibration_snapshot(cal.current, 'live-api'))
+        results_db.build_calibration_snapshot(ingestor.calibration, 'live-api'))
     conn.commit()
     conn.close()
     print(f"\nPrediction recorded: {h_n} vs {a_n} -> {TEAM_DATA.get(pred.winner_id, {'name': pred.winner_id})['name']} by {pred.margin_pred:.0f} pts")

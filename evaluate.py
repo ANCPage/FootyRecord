@@ -33,13 +33,14 @@ def collect_rows(ing, seasons, decay=None, window=None):
             rows.append((s, r, net, elo, marg > 0.0, marg, tot, act, m_id, home, away))
         return rows
 
-    import Core.calibration as cal
     import Core.config as cfg
     from Core.engine_core import MatchupEngine
-    saved_decay = cal.current.decay_factor
+    # Calibration travels with the ingestor (no module global — Phase 1).
+    # The decay override is temporary and restored in the finally block.
+    saved_decay = ing.calibration.decay_factor
     saved_window = cfg.config.window_size
     if decay is not None:
-        cal.current.decay_factor = decay
+        ing.calibration.decay_factor = decay
     if window is not None:
         cfg.config.window_size = window
     try:
@@ -69,7 +70,7 @@ def collect_rows(ing, seasons, decay=None, window=None):
                          m_id, info.home, info.away))
         return rows
     finally:
-        cal.current.decay_factor = saved_decay
+        ing.calibration.decay_factor = saved_decay
         cfg.config.window_size = saved_window
 
 
@@ -253,8 +254,7 @@ def evaluate(seasons=None, save=False):
             print(f"  {lo:>4}-{hi:>4}      {len(m):>5}{sum(1 for r in m if r[3])/len(m):>16.3f}")
 
     # Transparency: the fit at the final round (what production would ship)
-    from Core.calibration import current
-    c = current
+    c = ing.calibration   # Phase 1: was the module global
     print(f"\n active calibration (cache, latest fit): margin b1={c.margin_b1:.2f} b2={c.margin_b2:.2f} | "
           f"total {c.total_mean:.1f} | decay {c.decay_factor} | n={c.n_matches} [{c.window}]")
 

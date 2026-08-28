@@ -66,8 +66,8 @@ def main():
         t0 = time.time()
         # Reset everything else to the SHIPPED state before each variant —
         # a confounded scan (leftover decay=1.0) produced garbage columns once.
-        import Core.calibration as cal
-        cal.current = ing.calibration  # restores the fitted decay too
+        # (Calibration itself needs no reset: collect_rows restores
+        # ing.calibration.decay_factor in its finally block — Phase 1.)
         config.config.elo_k = shipped['elo_k']
         ing.elo_engine.regression_factor = shipped['regression']
         if param == 'decay_factor':
@@ -99,9 +99,8 @@ def main():
         results.append((param, value, acc, mae))
         print(f"{param}={value}: acc {100*acc:.1f}%  MAE {mae:.1f}  RMSE {rmse:.1f}  ({secs}s)", flush=True)
 
-    # Restore the shipped calibration (nothing on disk was modified).
-    import Core.calibration as cal
-    cal.current = ing.calibration
+    # Nothing on disk was modified; ing.calibration is already back to the
+    # shipped fit (collect_rows restores it per variant — Phase 1).
 
     print("\nRecommended (best acc on the grid):")
     best = max(results, key=lambda r: r[2])

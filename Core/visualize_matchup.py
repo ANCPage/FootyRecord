@@ -13,6 +13,12 @@ from Core.theme import get_ordinal
 from Core.vector_renderer import VectorRenderer
 
 
+def _fallback_cal():
+    """Shipped coefficients when no calibration is threaded in (Phase 1)."""
+    from Core.calibration import Calibration
+    return Calibration.fallback()
+
+
 class MatchupVisualizer(FieldVisualizer):
     def __init__(self):
         super().__init__()
@@ -110,12 +116,13 @@ class MatchupVisualizer(FieldVisualizer):
         tier_b_str = f" [{tier_b}]" if tier_b else ""
         fig.text(0.65, y_pos - 0.02, f"{rank_b_str}{tier_b_str} (Rating: {int(elo_b)})", color=self.sub_text_color, fontsize=8, ha='left', va='center', fontproperties=self.prop_body)
 
-    def draw_full_matchup(self, team_a: str, team_b: str, matrix_a: Dict, matrix_b: Dict, delta_matrix: Dict, save_prefix: str = 'matchup_analysis', is_mobile: bool = False, mobile_format: str = 'reel', elo_a: float = 1500.0, elo_b: float = 1500.0, rank_a=None, rank_b=None, tier_a=None, tier_b=None):
+    def draw_full_matchup(self, team_a: str, team_b: str, matrix_a: Dict, matrix_b: Dict, delta_matrix: Dict, save_prefix: str = 'matchup_analysis', is_mobile: bool = False, mobile_format: str = 'reel', elo_a: float = 1500.0, elo_b: float = 1500.0, rank_a=None, rank_b=None, tier_a=None, tier_b=None, calibration=None):
         n_a = TEAM_DATA.get(team_a, {'name': team_a})['name']
         n_b = TEAM_DATA.get(team_b, {'name': team_b})['name']
         c_a, c_b = self.get_team_colors(team_a, team_b)
         net_delta = sum(delta_matrix.values())
-        from Core.calibration import current as cal
+        # Phase 1: calibration passed in by the caller (was a module global)
+        cal = calibration or _fallback_cal()
         margin = cal.margin(net_delta, (elo_a - elo_b) / 100.0)  # the one calibrated output
         winner_name = n_a if home_favored(net_delta, elo_a, elo_b) else n_b
         target_edges = [e for e, s in sorted(delta_matrix.items(), key=lambda x: abs(x[1]), reverse=True)[:20]]
@@ -174,14 +181,14 @@ class MatchupVisualizer(FieldVisualizer):
                     plt.close(fig_m)
                     raise
 
-    def draw_expectation_vs_actual(self, team_a: str, team_b: str, expected_delta: Dict, actual_delta: Dict, save_prefix: str = 'matchup_analysis', is_mobile: bool = False, mobile_format: str = 'reel', elo_a: float = 1500.0, elo_b: float = 1500.0, rank_a=None, rank_b=None, tier_a=None, tier_b=None, actual_margin: float = None):
+    def draw_expectation_vs_actual(self, team_a: str, team_b: str, expected_delta: Dict, actual_delta: Dict, save_prefix: str = 'matchup_analysis', is_mobile: bool = False, mobile_format: str = 'reel', elo_a: float = 1500.0, elo_b: float = 1500.0, rank_a=None, rank_b=None, tier_a=None, tier_b=None, actual_margin: float = None, calibration=None):
         n_a = TEAM_DATA.get(team_a, {'name': team_a})['name']
         n_b = TEAM_DATA.get(team_b, {'name': team_b})['name']
         c_a, c_b = self.get_team_colors(team_a, team_b)
 
         net_expected = sum(expected_delta.values())
         net_actual = sum(actual_delta.values())
-        from Core.calibration import current as cal
+        cal = calibration or _fallback_cal()   # Phase 1: passed in, not global
         expected_margin = cal.margin(net_expected, (elo_a - elo_b) / 100.0)
         if actual_margin is None:
             actual_margin = net_actual

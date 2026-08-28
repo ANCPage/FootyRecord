@@ -2,11 +2,17 @@
 """Draft mobile design systems for review — 4 directions x 2 cards (R24 G8 + R24 tips).
 Output: ROUND_IMAGES_UPDATE/2026/DRAFTS/DRAFT_<style>_<card>.png (900x1200).
 Data: results DB only (read-only; the walk-forward record)."""
-import json, sqlite3, sys, os, math
+import json
+import math
+import os
+import sqlite3
+import sys
+
 import matplotlib
+
 matplotlib.use('Agg')
-import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+import matplotlib.pyplot as plt
 from matplotlib.font_manager import FontProperties, fontManager
 
 sys.path.insert(0, '/mnt/projects/FootyRecord')
@@ -235,7 +241,7 @@ def style_c_matchup():
         y = 0.408 - i * 0.031
         fig.text(0.12, y, f'{split_edge(e)[0]} -> {split_edge(e)[1]}', fontsize=9.5, color='#B8C4D4')
         fig.text(0.88, y, f'{v:+.3f}  {HN if v > 0 else AN}', fontsize=9.5, color=HC if v > 0 else L_AC, ha='right')
-    banner(fig, f'{HN.upper()} BY {abs(R["margin"]):.0f}', sub=f'PREDICTED MARGIN  ·  R24', y=0.06, h=0.07, bg=HC, fs=34, sub_fs=12)
+    banner(fig, f'{HN.upper()} BY {abs(R["margin"]):.0f}', sub='PREDICTED MARGIN  ·  R24', y=0.06, h=0.07, bg=HC, fs=34, sub_fs=12)
     save(fig, 'DRAFT_C_matchup.png')
 
 def style_c_tips():

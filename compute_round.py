@@ -12,7 +12,6 @@ import argparse
 import time
 from datetime import datetime, timezone
 
-import Core.calibration as cal
 import Core.config as config
 import Core.results_db as results_db
 from Core.engine_data import DataIngestor
@@ -58,9 +57,9 @@ def compute_round(ing, conn, season: int, round_num: int) -> int:
             # round (re-audit 2026-08-12, lookahead guard).
             continue
         games.append(results_db.game_row_from_prediction(
-            pred, info, season, round_num, cal.current, m_id, played=played))
+            pred, info, season, round_num, ing.calibration, m_id, played=played))
     snapshot = results_db.build_calibration_snapshot(
-        cal.current, datetime.now(timezone.utc).isoformat(timespec='seconds'))
+        ing.calibration, datetime.now(timezone.utc).isoformat(timespec='seconds'))
     results_db.upsert_round(conn, season, round_num, games, snapshot)
     return len(games)
 

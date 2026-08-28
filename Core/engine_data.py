@@ -46,6 +46,11 @@ class DataIngestor:
         self.match_performance = {} # (match_id) -> {expected, expected_delta, actual}
         self.team_elo_history = defaultdict(list) # team_id -> [(match_id, elo_before_match)]
         self.elo_engine = EloEngine()
+        # Phase 1 (2026-08-26): calibration travels with the ingestor — every
+        # decision path reads ing.calibration. Shipped fallback until a load
+        # replaces it, so the attribute always exists.
+        from Core.calibration import Calibration
+        self.calibration = Calibration.fallback()
 
     @staticmethod
     def _cache_fingerprint() -> str:
@@ -112,7 +117,10 @@ class DataIngestor:
             if latest:
                 self.calibration.tier_cutoffs = cal.compute_tier_cutoffs(list(latest.values()))
             self._skip_profiling = True
-            cal.current = getattr(self, 'calibration', cal.Calibration.fallback())
+            # Phase 1 (2026-08-26): no module global — callers read
+            # ing.calibration. Guarantee it exists on this load path.
+            if getattr(self, 'calibration', None) is None:
+                self.calibration = cal.Calibration.fallback()
             return
 
         conn.close()
@@ -186,7 +194,8 @@ class DataIngestor:
         import Core.calibration as cal
         fitted_decay, fit_acc = self._fit_decay()
         self.fitted_decay = fitted_decay
-        cal.current = cal.Calibration(decay_factor=fitted_decay)
+        # Phase 1: the fitted calibration lives on the ingestor, not a global.
+        self.calibration = cal.Calibration(decay_factor=fitted_decay)
         logger.info(f'Decay fitted: {fitted_decay} (delta-sign agreement {100*fit_acc:.1f}%)')
 
         # Pass 2: expectations + actuals + player history at the FITTED decay
@@ -229,7 +238,6 @@ class DataIngestor:
         # window. Becomes the active calibration for all decision paths.
         self.calibration = self._fit_calibration(cal.WINDOW_SEASONS)
         self.calibration.decay_factor = fitted_decay
-        cal.current = self.calibration
 
         import Core.state_store as state_store
         conn = state_store.connect(self.db_path)
@@ -417,8 +425,8 @@ class DataIngestor:
             window = config.config.window_size
         # Decay is DYNAMIC (Option B): recombine per-position weights at the
         # active calibration decay (fallback: config bootstrap).
-        from Core.calibration import current as cal
-        decay = getattr(cal, 'decay_factor', None) or config.config.decay_factor
+        # Phase 1: read our OWN calibration, not a module global.
+        decay = getattr(self.calibration, 'decay_factor', None) or config.config.decay_factor
         history = self.team_positions.get(team_id, [])
         filtered_history = []
         for m_id, pos in history:
@@ -474,7 +482,8 @@ class DataIngestor:
         return self.elo_engine.get_team_elo(team_id, season, round_num)
 
     def get_team_tier(self, elo: float) -> str:
-        return self.elo_engine.get_team_tier(elo)
+        # Phase 1: pass OUR calibration (was the module global)
+        return self.elo_engine.get_team_tier(elo, self.calibration)
 
     def get_league_rankings(self, season: int, round_num: int) -> Dict[str, int]:
         return self.elo_engine.get_league_rankings(season, round_num)

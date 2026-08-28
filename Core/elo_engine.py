@@ -37,8 +37,13 @@ class EloEngine:
         E_h = 1 / (1 + 10 ** ((a_elo - h_elo) / 400.0))
         E_a = 1 - E_h
         if divisor is None:
-            from Core.calibration import current as cal
-            divisor = getattr(cal, 'margin_divisor', None) or config.config.elo_margin_divisor
+            # Phase 1 (2026-08-26): was `Core.calibration.current.margin_divisor`.
+            # Calibration.margin_divisor DEFAULTS to config.elo_margin_divisor and
+            # the calibration active at Elo-history time is a fresh
+            # Calibration(decay_factor=...) — so this is the identical value, and
+            # the pure-math Elo layer no longer reaches up into calibration.
+            # Callers with a fitted divisor pass it explicitly (compute_elo_history).
+            divisor = config.config.elo_margin_divisor
         margin_mult = min(3.0, max(0.5,
                                    abs(actual_delta) / divisor + 1.0))
         return (elo_k * margin_mult * (S_h - E_h),
@@ -184,12 +189,18 @@ class EloEngine:
         # Fallback to the ELO of the previous round
         return self.get_team_elo(team_id, season, round_num - 1)
 
-    def get_team_tier(self, elo: float) -> str:
+    def get_team_tier(self, elo: float, calibration=None) -> str:
         """Distribution-relative tier via the ACTIVE calibration (top-4 ELITE /
         next-4 CONTENDER / next-5 MID-TABLE, dynamic cutoffs from the live Elo
-        field); absolute thresholds only as the no-fit fallback."""
-        from Core.calibration import current as cal
-        return cal.tier(elo)
+        field); absolute thresholds only as the no-fit fallback.
+
+        Phase 1 (2026-08-26): the calibration is passed in (was a module
+        global). DataIngestor.get_team_tier supplies its own.
+        """
+        if calibration is None:
+            from Core.calibration import Calibration
+            calibration = Calibration.fallback()
+        return calibration.tier(elo)
 
     def get_league_rankings(self, season: int, round_num: int) -> Dict[str, int]:
         from Core.mappings import TEAM_DATA
