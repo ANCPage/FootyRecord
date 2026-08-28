@@ -38,6 +38,11 @@ DB_PATH = os.path.expanduser('~/footyrecord-results/footyrecord.db')
 # The DB is analysis data, not a repo artifact — the Pi is where it's used.
 
 
+def db_exists(path: str = DB_PATH) -> bool:
+    """True when the results DB file exists (lets tests skip cleanly without it)."""
+    return os.path.exists(path)
+
+
 def connect(path: str = DB_PATH) -> sqlite3.Connection:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     conn = sqlite3.connect(path)
