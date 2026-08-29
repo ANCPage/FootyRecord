@@ -106,8 +106,9 @@ def test_schema_indexes_created(tmp_path):
 def test_stale_artifact_guard_wipes_round_dir(monkeypatch, tmp_path):
     """render_round_from_db deletes the round output dir BEFORE rendering —
     a failed re-render can never leave old cards behind for --resume."""
+    import Core.config as config
     from generate_round_images import _stale_round_dir
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(config, 'OUTPUT_DIR', str(tmp_path / 'ROUND_IMAGES_UPDATE'))
     stale = tmp_path / 'ROUND_IMAGES_UPDATE' / '2026' / 'R24' / 'Mobile' / 'InstaPost'
     stale.mkdir(parents=True)
     (stale / 'TIPS_RESULTS.png').write_bytes(b'old')
@@ -117,6 +118,7 @@ def test_stale_artifact_guard_wipes_round_dir(monkeypatch, tmp_path):
 
 
 def test_stale_guard_absent_dir_is_noop(monkeypatch, tmp_path):
+    import Core.config as config
     from generate_round_images import _stale_round_dir
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(config, 'OUTPUT_DIR', str(tmp_path / 'ROUND_IMAGES_UPDATE'))
     _stale_round_dir(2026, 24)  # no dir — must not raise

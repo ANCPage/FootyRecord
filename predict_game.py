@@ -15,6 +15,7 @@ from datetime import datetime
 
 import requests
 
+import Core.config as config
 import Core.results_db as results_db
 from Core.engine_data import DataIngestor
 from Core.geometry import rotate_node
@@ -25,7 +26,7 @@ from Core.prediction import compute_matchup
 def predict_game(round_num, game_num, season=None):
     if season is None:
         season = datetime.now().year  # no hardcoded year (re-audit 2026-08-12)
-    ingestor = DataIngestor('CSV_DATA')
+    ingestor = DataIngestor(config.DATA_DIR)
     ingestor.load_all_data()
     if not ingestor.team_positions:
         ingestor.profile_all_teams()

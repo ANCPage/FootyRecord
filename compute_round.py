@@ -21,7 +21,7 @@ DATA_DIR = config.DATA_DIR
 
 
 def load_ingestor():
-    ing = DataIngestor('CSV_DATA')
+    ing = DataIngestor(config.DATA_DIR)
     ing.load_all_data(light=True)  # compute never needs chains (perf 2026-08-12)
     if not ing.team_positions:
         ing.profile_all_teams()  # live path needs profiles (regression: was missing)
@@ -72,7 +72,7 @@ def main():
     args = parser.parse_args()
 
     t0 = time.time()
-    ing = DataIngestor('CSV_DATA')
+    ing = DataIngestor(config.DATA_DIR)
     ing.load_all_data()
     if args.all:
         rounds = sorted({i.round for i in ing.match_info.values() if i.season == args.season})

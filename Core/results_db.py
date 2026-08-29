@@ -10,6 +10,7 @@ import json
 import os
 import sqlite3
 
+import Core.config as _cfg
 from Core.calibration import confidence_grade
 
 SCHEMA = """
@@ -32,7 +33,7 @@ CREATE TABLE IF NOT EXISTS calibration_log (
 );
 """
 
-DB_PATH = os.path.expanduser('~/footyrecord-results/footyrecord.db')
+DB_PATH = _cfg.RESULTS_DB
 # LOCAL on purpose: SQLite needs byte-range locks, which the SMB mount
 # (NAS) can't provide (tested 2026-08-11: fresh file -> "database is locked").
 # The DB is analysis data, not a repo artifact — the Pi is where it's used.
@@ -167,6 +168,26 @@ def upsert_calibration(conn, season: int, round_num: int, snap: dict):
         (season, round_num, snap.get('decay'), snap.get('margin_b1'),
          snap.get('margin_b2'), snap.get('total_mean'), snap.get('divisor'),
          snap.get('window'), snap.get('fitted_at')))
+
+
+def season_home_teams(conn, season: int) -> dict:
+    """match_id -> home team, for played games of a season.
+
+    Analysis scripts need the home frame to sign chain deltas; they used to
+    open their own sqlite connection and inline this SQL (Phase 2, 2026-08-26).
+    """
+    return dict(conn.execute(
+        "SELECT match_id, home FROM predictions"
+        " WHERE season=? AND actual_margin IS NOT NULL", (season,)))
+
+
+def season_prediction_rows(conn, season: int) -> list:
+    """Played predictions for a season: (round, home, away, margin,
+    actual_margin, correct, match_id, grade). Used by analysis_charts."""
+    return list(conn.execute(
+        "SELECT round, home, away, margin, actual_margin, correct, match_id, grade"
+        " FROM predictions WHERE season=? AND actual_margin IS NOT NULL"
+        " ORDER BY round, match_id", (season,)))
 
 
 def cumulative_record(conn, season: int, through_round: int) -> tuple:

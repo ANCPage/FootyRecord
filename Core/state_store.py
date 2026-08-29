@@ -78,6 +78,22 @@ def edge_dict_to_json(d) -> str:
     return json.dumps({edge_str(k): float(v) for k, v in d.items()}) if d else None
 
 
+def scoring_chains(conn) -> dict:
+    """All SCORE-outcome chains grouped as {(m_id, chain_idx): [(seq, team, grid)]}.
+
+    Uses idx_chains_outcome. Phase 2 (2026-08-26): scoring_graph.py used to
+    inline this SQL with its own sqlite3 connection.
+    """
+    from collections import defaultdict
+    rows = conn.execute(
+        "SELECT m_id, chain_idx, seq, team, grid FROM chains WHERE outcome='SCORE'"
+    ).fetchall()
+    chains = defaultdict(list)
+    for m_id, cidx, seq, team, grid in rows:
+        chains[(m_id, cidx)].append((seq, team, grid))
+    return chains
+
+
 def save_state(conn, ing) -> None:
     """Write the ingestor's working state to SQLite (one transaction)."""
     c = conn.cursor()

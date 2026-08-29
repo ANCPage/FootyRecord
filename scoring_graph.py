@@ -10,7 +10,6 @@ Usage:  python scoring_graph.py --season 2026 [--out path.png]
 Repeatable: pure DB read (chains + predictions tables), no profiling.
 """
 import argparse
-import sqlite3
 import sys
 from collections import defaultdict
 
@@ -22,6 +21,8 @@ import matplotlib.pyplot as plt
 from matplotlib.font_manager import FontProperties, fontManager
 
 sys.path.insert(0, '/mnt/projects/FootyRecord')
+import Core.results_db as results_db
+import Core.state_store as state_store
 from Core.engine_core import collapse_chain
 from Core.field_visualizer import FieldVisualizer
 from Core.geometry import rotate_node
@@ -41,18 +42,11 @@ SUB = '#6A655F'
 
 
 def load(season: int):
-    conn = sqlite3.connect(DB)
-    homes = dict(conn.execute(
-        'SELECT match_id, home FROM predictions WHERE season=? AND actual_margin IS NOT NULL',
-        (season,)))
-    rows = conn.execute(
-        "SELECT m_id, chain_idx, seq, team, grid FROM chains WHERE outcome='SCORE'").fetchall()
+    # Phase 2 (2026-08-26): data access via the repositories, no inline SQL.
+    conn = state_store.connect()
+    homes = results_db.season_home_teams(conn, season)
+    chains = state_store.scoring_chains(conn)
     conn.close()
-
-    # group rows into chains
-    chains = defaultdict(list)
-    for m_id, cidx, seq, team, grid in rows:
-        chains[(m_id, cidx)].append((seq, team, grid))
 
     agg = defaultdict(float)
     n_chains = 0

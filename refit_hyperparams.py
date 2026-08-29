@@ -42,7 +42,7 @@ def set_all(decay=None, window=None, elo_k=None, regression=None):
         ing.elo_engine.regression_factor = regression
 
 
-ing = DataIngestor('CSV_DATA')
+ing = DataIngestor(config.DATA_DIR)
 ing.load_all_data()
 seasons = sorted({i.season for i in ing.match_info.values()})
 

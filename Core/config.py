@@ -8,6 +8,10 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(PROJECT_ROOT, 'CSV_DATA')
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, 'ROUND_IMAGES_UPDATE')
 FONTS_DIR = os.path.join(PROJECT_ROOT, 'downloaded_fonts')
+# Results DB lives OUTSIDE the repo (and off the SMB mount — SQLite needs
+# byte-range locks the share can't provide). Override with FOOTYRECORD_DB.
+RESULTS_DB = os.environ.get(
+    'FOOTYRECORD_DB', os.path.expanduser('~/footyrecord-results/footyrecord.db'))
 
 # Engine Settings
 # decay_factor + window_size are SCAN-FITTED (2026-08-10): walk-forward grid

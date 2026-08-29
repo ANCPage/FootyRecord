@@ -13,6 +13,7 @@ import json
 import math
 import sys
 
+import Core.config as config
 from Core.calibration import align_margin, fit_or_fallback, select_window
 from Core.engine_data import DataIngestor
 
@@ -209,7 +210,7 @@ def save_rows_to_db(out_rows, cals, ing, db_path=None):
 
 
 def evaluate(seasons=None, save=False):
-    ing = DataIngestor('CSV_DATA')
+    ing = DataIngestor(config.DATA_DIR)
     ing.load_all_data()
     # Cache load already carries profiles/elo/calibration for the current
     # config (fingerprint-gated) — skip the ~4-min rebuild (reuse pass #6).

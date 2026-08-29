@@ -373,7 +373,7 @@ def _stale_round_dir(season: int, round_num: int) -> str:
     """Delete a round's output dir so stale cards can't survive a failed
     re-render (2026-08-26: a failed round kept its old TIPS_RESULTS.png,
     which --resume then treated as 'done' forever)."""
-    round_dir = os.path.join('ROUND_IMAGES_UPDATE', str(season), f'R{round_num}')
+    round_dir = os.path.join(config.OUTPUT_DIR, str(season), f'R{round_num}')  # Phase 2: from config
     if os.path.isdir(round_dir):
         import shutil
         shutil.rmtree(round_dir, ignore_errors=True)

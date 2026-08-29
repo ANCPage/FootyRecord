@@ -20,9 +20,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Patch, Rectangle
 
+import Core.config as config
 from Core.config import FONTS_DIR
 from Core.mappings import TEAM_MAP
-from Core.results_db import connect
+from Core.results_db import connect, season_prediction_rows
 from Core.theme import BG_COLOR, SUB_TEXT_COLOR, TEXT_COLOR
 
 # match the card system's typography (audit S2/S3)
@@ -31,7 +32,7 @@ fm.fontManager.addfont(os.path.join(FONTS_DIR, 'FasterOne.ttf'))
 plt.rcParams['font.family'] = 'Roboto'
 plt.rcParams['axes.unicode_minus'] = False
 
-OUT = 'ROUND_IMAGES_UPDATE/2026/ANALYSIS'
+OUT = os.path.join(config.OUTPUT_DIR, '2026', 'ANALYSIS')  # Phase 2: from config
 os.makedirs(OUT, exist_ok=True)
 
 BG, TXT, SUB = BG_COLOR, TEXT_COLOR, SUB_TEXT_COLOR
@@ -41,9 +42,7 @@ BLUE = '#2B6CB0'
 AMBER = '#B7791F'
 
 conn = connect()
-rows26 = list(conn.execute(
-    "SELECT round, home, away, margin, actual_margin, correct, match_id, grade"
-    " FROM predictions WHERE season=2026 AND actual_margin IS NOT NULL"))
+rows26 = season_prediction_rows(conn, 2026)   # Phase 2: repository, no inline SQL
 conn.close()
 
 

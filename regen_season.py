@@ -53,8 +53,9 @@ def main():
     SEASON = args.season
     FMTS = args.formats.split(',')
 
+    import Core.config as config
     from Core.engine_data import DataIngestor
-    ING = DataIngestor('CSV_DATA')
+    ING = DataIngestor(config.DATA_DIR)
     ING.load_all_data(light=True)
     if not ING.team_positions:
         ING.profile_all_teams()
