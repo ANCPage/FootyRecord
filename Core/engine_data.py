@@ -7,9 +7,35 @@ from typing import Any, Dict
 
 import Core.config as config
 from Core.elo_engine import EloEngine
-from Core.engine_core import Graph
 from Core.geometry import xy_to_grid
 from Core.models import MatchInfo, TransitionEdge
+
+# Phase 3 (2026-08-26): the profiling math lives in Core.profiler, the
+# read-only accessors in Core.queries — DataIngestor is a facade over them.
+from Core.profiler import (
+    accumulate_match_positions,
+)
+from Core.profiler import (
+    bake_players as _bake_players_impl,
+)
+from Core.profiler import (
+    build_fit_rows as _build_fit_rows_impl,
+)
+from Core.profiler import (
+    fit_calibration as _fit_calibration_impl,
+)
+from Core.profiler import (
+    fit_decay as _fit_decay_impl,
+)
+from Core.profiler import (
+    recombine as _recombine_impl,
+)
+from Core.queries import (
+    average_matrix as _average_matrix_impl,
+)
+from Core.queries import (
+    player_matrix as _player_matrix_impl,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -18,16 +44,6 @@ logger = logging.getLogger(__name__)
 CACHE_VERSION = 8  # v8: per-team POST_ elo-history tails (v7's 2-team tail left
                     # 16/18 teams without a final rating; load path rebuilds the
                     # round index from the tails — get_team_elo was dead post-load)
-
-# Distance buckets for per-position storage (Option B): chain edges are
-# bucketed by distance-from-end 0..POSITIONS-1; longer chains lump the tail
-# into the last bucket. At decay 0.3 the tail contributes <0.01% of weight.
-POSITIONS = 12
-
-
-def _player_factory():
-    """Picklable nested-defaultdict factory for per-distance player credits."""
-    return defaultdict(float)
 
 
 class DataIngestor:
@@ -251,232 +267,52 @@ class DataIngestor:
 
     def _accumulate_positions(self, m_id):
         """Per-match, per-distance raw edge weights (decay-independent).
-
-        Mirrors the old Graph accumulation exactly: own chains +1 as-is,
-        opponent chains -1 rotated 180deg; player credits per distance.
-        Returns (h_pos, a_pos, h_player, a_player).
-        """
-        from Core.engine_core import collapse_chain
+        Delegates to Core.profiler (Phase 3)."""
         info = self.match_info[m_id]
-        h_team, a_team = info.home, info.away
-        h_pos = [defaultdict(float) for _ in range(POSITIONS)]
-        a_pos = [defaultdict(float) for _ in range(POSITIONS)]
-        h_player = [defaultdict(_player_factory) for _ in range(POSITIONS)]
-        a_player = [defaultdict(_player_factory) for _ in range(POSITIONS)]
-        g = Graph('util')
-
-        for chain in self.match_chains[m_id]:
-            if chain.get('outcome') != 'SCORE':
-                continue
-            edges, collapsed_players = collapse_chain(chain)
-            if edges is None:
-                continue
-            n = len(edges)
-            cteam = chain['team']
-            for i, (start, end) in enumerate(edges, 1):
-                d = n - i
-                if d >= POSITIONS:
-                    d = POSITIONS - 1
-                if cteam == h_team:
-                    s, e, sign = start, end, 1.0
-                else:
-                    s, e, sign = g.rotate_node(start), g.rotate_node(end), -1.0
-                if s in g.nodes:
-                    h_pos[d][TransitionEdge(s, e)] += sign
-                if cteam == a_team:
-                    s2, e2, sign2 = start, end, 1.0
-                else:
-                    s2, e2, sign2 = g.rotate_node(start), g.rotate_node(end), -1.0
-                if s2 in g.nodes:
-                    a_pos[d][TransitionEdge(s2, e2)] += sign2
-                inv = list(collapsed_players[i - 1]) if i - 1 < len(collapsed_players) else []
-                for p in inv:
-                    # INTENT (re-audit 2026-08-12, C4): player credits track
-                    # ONLY the team's OWN players — opponent chains are never
-                    # credited here, while the edge matrices DO embed opponent
-                    # chains (rotated + negated). Deliberate: the "key drivers"
-                    # panel shows YOUR players driving YOUR edges; showing
-                    # opponents as negative credits would confuse it. The
-                    # player layer is a display decomposition, not the model.
-                    if cteam == h_team:
-                        h_player[d][p][(start, end)] += 1.0
-                    else:
-                        a_player[d][p][(start, end)] += 1.0
-        return h_pos, a_pos, h_player, a_player
+        return accumulate_match_positions(self.match_chains[m_id], info.home, info.away)
 
     @staticmethod
     def _recombine(pos_list, decay):
-        """Recombine per-position weights at a decay and apply E2 normalization."""
-        mat = defaultdict(float)
-        for d, pos in enumerate(pos_list):
-            if not pos:
-                continue
-            w = decay ** d
-            if w == 0.0:
-                continue
-            for e, v in pos.items():
-                mat[e] += w * v
-        total = sum(abs(v) for v in mat.values())
-        if total <= 0:
-            return {}
-        return {e: v / total for e, v in mat.items()}
+        """Recombine per-position weights at a decay and apply E2
+        normalization (delegates to Core.profiler, Phase 3)."""
+        return _recombine_impl(pos_list, decay)
 
     @staticmethod
     def _bake_players(player_pos, decay):
-        """Bake distance-bucketed player credits at a decay (old schema)."""
-        baked = {}
-        for d, pid_map in enumerate(player_pos):
-            w = decay ** d
-            if w == 0.0:
-                continue
-            for pid, edges in pid_map.items():
-                dct = baked.setdefault(pid, {})
-                for (s, e), v in edges.items():
-                    dct[(s, e)] = dct.get((s, e), 0.0) + w * v
-        return {k: {TransitionEdge(*edge): score for edge, score in v.items()}
-                for k, v in baked.items()}
+        """Bake distance-bucketed player credits at a decay (delegates to
+        Core.profiler, Phase 3)."""
+        return _bake_players_impl(player_pos, decay)
 
     def _fit_decay(self, candidates=(0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.9, 1.0)):
-        """Fit decay on net-delta sign agreement with actual results.
-
-        Elo-free (no circularity) and fast: recombination only, no profiling.
-        """
-        from Core.engine_core import MatchupEngine
-        best, best_acc = None, -1.0
-        for cand in candidates:
-            correct = total = 0
-            for m_id, (h_pos, a_pos) in self.match_positions.items():
-                info = self.match_info.get(m_id)
-                if info is None or m_id.startswith('POST_'):
-                    continue
-                actual = self.actual_winners.get(m_id)
-                if actual not in (info.home, info.away):
-                    continue
-                h_mat = self._recombine(h_pos, cand)
-                a_mat = self._recombine(a_pos, cand)
-                if not h_mat or not a_mat:
-                    continue
-                net = sum(MatchupEngine.calculate_delta(h_mat, a_mat).values())
-                if (net > 0) == (actual == info.home):
-                    correct += 1
-                total += 1
-            acc = correct / total if total else 0.0
-            if acc > best_acc:
-                best, best_acc = cand, acc
-        return best, best_acc
+        """Fit decay on net-delta sign agreement with actual results
+        (delegates to Core.profiler, Phase 3)."""
+        return _fit_decay_impl(self.match_positions, self.match_info,
+                               self.actual_winners, candidates)
 
     def _build_fit_rows(self):
-        """Rows for calibration fitting: (season, round, expected net_delta,
-        elo diff, actual margin, actual total, actual delta) — all pre-match
-        expectations and post-match outcomes, no-lookahead by construction
-        (expected deltas were computed before the match was appended)."""
-        elo_at = defaultdict(dict)
-        for team, hist in self.team_elo_history.items():
-            for m_id, elo in hist:
-                if m_id.startswith('POST_'):
-                    continue
-                elo_at[m_id][team] = elo
-        rows = []
-        for m_id, info in self.match_info.items():
-            if m_id.startswith('POST_'):
-                continue
-            if info.home_score == 0 and info.away_score == 0:
-                continue
-            # draws INCLUDED (policy B, 2026-08-11): a draw is a margin-0
-            # outcome — valid training point, and a guaranteed miss for the
-            # winner-only model (a draw can't be tipped)
-            perf = self.match_performance.get(m_id, {})
-            exp = perf.get('expected')
-            if exp is None:
-                continue
-            eh = elo_at.get(m_id, {}).get(info.home)
-            ea = elo_at.get(m_id, {}).get(info.away)
-            if eh is None or ea is None:
-                continue
-            rows.append((info.season, info.round, exp, eh - ea,
-                         info.home_score - info.away_score,
-                         info.home_score + info.away_score,
-                         perf.get('actual', exp),
-                         m_id, info.home, info.away))
-        return rows
+        """Rows for calibration fitting (delegates to Core.profiler, Phase 3).
+        NOTE: evaluate.py calls this directly — keep the facade."""
+        return _build_fit_rows_impl(self.match_info, self.team_elo_history,
+                                    self.match_performance)
 
     def _fit_calibration(self, window_seasons=None):
-        """Fit dynamic calibration on matches before the latest round, plus
-        distribution-relative tier cutoffs from the live Elo field."""
-        import Core.calibration as cal
+        """Fit dynamic calibration + distribution-relative tier cutoffs
+        (delegates to Core.profiler, Phase 3)."""
         rows = self._build_fit_rows()
-        if not rows:
-            return cal.Calibration.fallback()
-        cur_season = max(r[0] for r in rows)
-        sel = cal.select_window(rows, cur_season, window_seasons)
-        label = f'roll{window_seasons}' if window_seasons else 'expanding'
-        c = cal.fit_or_fallback(sel, label)
-        # Tier cutoffs: top-4/next-4/next-5 from the CURRENT Elo distribution
-        # (fixes the E1 watch item — tiers now read as relative strength).
-        latest = {}
-        for team, hist in self.team_elo_history.items():
-            if hist:
-                latest[team] = hist[-1][1]
-        c.tier_cutoffs = cal.compute_tier_cutoffs(list(latest.values()))
-        return c
+        return _fit_calibration_impl(rows, self.team_elo_history, window_seasons)
 
     def get_team_average_matrix(self, team_id: str, window: int = None, up_to_match_id: str = None, up_to_season: int = None, up_to_round: int = None, return_history_info: bool = False) -> Any:
-        if window is None:
-            window = config.config.window_size
-        # Decay is DYNAMIC (Option B): recombine per-position weights at the
-        # active calibration decay (fallback: config bootstrap).
-        # Phase 1: read our OWN calibration, not a module global.
-        decay = getattr(self.calibration, 'decay_factor', None) or config.config.decay_factor
-        history = self.team_positions.get(team_id, [])
-        filtered_history = []
-        for m_id, pos in history:
-            if up_to_match_id and m_id == up_to_match_id: break
-            if up_to_season is not None and up_to_round is not None:
-                info = self.match_info.get(m_id)
-                if info and (info.season > up_to_season or (info.season == up_to_season and info.round >= up_to_round)):
-                    continue
-            filtered_history.append((m_id, pos))
-
-        history = filtered_history[-window:]
-        if not history:
-            return ({}, []) if return_history_info else {}
-
-        avg_matrix = defaultdict(float)
-        used_matches = []
-        for m_id, pos in history:
-            info = self.match_info.get(m_id)
-            if info:
-                used_matches.append(f"R{info.round}_{info.season}")
-            else:
-                used_matches.append(m_id)
-            mat = self._recombine(pos, decay)
-            for edge, score in mat.items(): avg_matrix[edge] += score / len(history)
-
-        if return_history_info:
-            return dict(avg_matrix), used_matches
-        return dict(avg_matrix)
+        # Phase 3: delegates to Core.queries (same semantics, contract-tested)
+        return _average_matrix_impl(self.team_positions, self.match_info,
+                                    self.calibration, team_id, window,
+                                    up_to_match_id, up_to_season, up_to_round,
+                                    return_history_info)
 
     def get_team_player_matrix(self, team_id: str, window: int = None, up_to_match_id: str = None, up_to_season: int = None, up_to_round: int = None) -> Dict[str, Dict[TransitionEdge, float]]:
-        if window is None:
-            window = config.config.window_size
-        history = self.team_player_history.get(team_id, [])
-        filtered_history = []
-        for m_id, mat in history:
-            if up_to_match_id and m_id == up_to_match_id: break
-            if up_to_season is not None and up_to_round is not None:
-                info = self.match_info.get(m_id)
-                if info and (info.season > up_to_season or (info.season == up_to_season and info.round >= up_to_round)):
-                    continue
-            filtered_history.append((m_id, mat))
-
-        history = filtered_history[-window:]
-        if not history: return {}
-        avg_player_matrix = defaultdict(lambda: defaultdict(float))
-        for _, p_mat in history:
-            for pid, edges in p_mat.items():
-                for edge, score in edges.items():
-                    avg_player_matrix[pid][edge] += score / len(history)
-        return dict(avg_player_matrix)
+        # Phase 3: delegates to Core.queries (same semantics, contract-tested)
+        return _player_matrix_impl(self.team_player_history, self.match_info,
+                                   team_id, window, up_to_match_id,
+                                   up_to_season, up_to_round)
 
     def get_team_elo(self, team_id: str, season: int, round_num: int) -> float:
         return self.elo_engine.get_team_elo(team_id, season, round_num)
