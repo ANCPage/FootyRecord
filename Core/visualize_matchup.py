@@ -550,15 +550,51 @@ class MatchupVisualizer(FieldVisualizer):
             rr = R * (0.20 + 0.76 * (4 - r_i) / 4.0)
             ax.add_patch(patches.Circle((cx, cy), rr, fill=False,
                                         edgecolor='#E3DCCB', lw=1.2, zorder=1))
+        # GOAL marker (2026-08-31, confusion-hunt fix #3): the centre must
+        # read as the destination, not an empty hole — in the MOVING frames.
+        ax.add_patch(patches.Circle((cx, cy), 0.014, facecolor=self.text_color,
+                                    edgecolor='none', zorder=6))
+        ax.text(cx, cy - 0.045, 'GOAL', ha='center', fontsize=11,
+                color=self.text_color, fontproperties=self.prop_title, zorder=6)
 
         def seed_rad(pts):
             return ((pts[0][0] - cx) ** 2 + (pts[0][1] - cy) ** 2) ** 0.5
 
         NFRAMES = 90
 
-        # ---- caption that narrates the acts (overlay only)
-        cap = fig.text(0.5, 0.075, '', ha='center', fontsize=12.5,
+        # ---- caption that narrates the acts
+        cap = fig.text(0.5, 0.078, '', ha='center', fontsize=12.5,
                        color=self.sub_text_color, fontproperties=self.prop_body)
+        # ---- mini-key: what the lines ARE (confusion-hunt fix #1/#4)
+        fig.text(0.5, 0.061, 'the lines = how each team moves the ball to goal · '
+                             'thicker = played more often',
+                 ha='center', fontsize=9, color='#8A8378',
+                 fontproperties=self.prop_body)
+        # ---- the engine number, always visible (confusion-hunt fix #5)
+        if single:
+            num_text = f'NET BALANCE {net:+.3f}'
+        else:
+            win_name_early = a_name if net > 0 else b_name
+            num_text = f'MODEL PREDICTS {win_name_early.upper()} · EDGE {abs(net):.3f}'
+        fig.text(0.5, 0.045, num_text, ha='center', fontsize=11.5,
+                 color=self.text_color, fontproperties=self.prop_body,
+                 fontweight='bold')
+        # ---- persistent colour legend (confusion-hunt fix #2: colour keyed
+        # to MEANING, not just to the team name)
+        if single:
+            fig.text(0.28, 0.028, 'TEAL — OWN SCORING FLOW', ha='center',
+                     fontsize=10, color='#1F6F6B', fontproperties=self.prop_body)
+            fig.text(0.72, 0.028, 'RED — CONCEDED', ha='center',
+                     fontsize=10, color='#C1553A', fontproperties=self.prop_body)
+        else:
+            fig.text(0.30, 0.028, f'TEAL — {a_name.upper()} WINS THE FLOW',
+                     ha='center', fontsize=9.5, color='#1F6F6B',
+                     fontproperties=self.prop_body)
+            fig.text(0.70, 0.028, f'RED — {b_name.upper()} WINS THE FLOW',
+                     ha='center', fontsize=9.5, color='#C1553A',
+                     fontproperties=self.prop_body)
+            fig.text(0.5, 0.016, 'blank = even', ha='center', fontsize=8.5,
+                     color='#8A8378', fontproperties=self.prop_body)
 
         if single or not act_ridges:
             lines = []
@@ -577,6 +613,14 @@ class MatchupVisualizer(FieldVisualizer):
                 for ln, pts in lines:
                     n = min(len(pts), max(1, int(len(pts) * min(prog, 1.0))))
                     ln.set_data([p[0] for p in pts[:n]], [p[1] for p in pts[:n]])
+                # narration (confusion-hunt fix #6: a mid-frame half-drawing
+                # with no caption reads as a broken card)
+                if prog < 1.0:
+                    cap.set_text(f'how {a_name.upper()} moves the ball to goal')
+                else:
+                    verdict = ('creates more than it concedes' if net > 0
+                               else 'concedes more than it creates')
+                    cap.set_text(f'NET BALANCE {net:+.3f} — {verdict}')
                 return [ln for ln, _ in lines] + [cap]
         else:
             a_own, b_own = act_ridges
@@ -615,19 +659,19 @@ class MatchupVisualizer(FieldVisualizer):
                     ink(a_lines, f / 0.30, 0.78)
                     ink(b_lines, 0, 0.0)
                     ink(d_lines, 0, 0.0)
-                    cap.set_text(f'{a_name.upper()} — how they move the ball')
+                    cap.set_text(f'1 of 2 — how {a_name.upper()} moves the ball to goal')
                 elif f < 0.60:                    # ACT 2 — press B over it
                     ink(a_lines, 1.0, 0.42)
                     ink(b_lines, (f - 0.30) / 0.30, 0.78)
                     ink(d_lines, 0, 0.0)
-                    cap.set_text(f'{b_name.upper()} — pressed over the top')
+                    cap.set_text(f'2 of 2 — how {b_name.upper()} moves the ball to goal')
                 else:                             # ACT 3 — resolve to the diff
                     k = (f - 0.60) / 0.40
                     fade = max(0.0, 0.42 * (1 - k * 2.2))
                     ink(a_lines, 1.0, fade)
                     ink(b_lines, 1.0, fade)
                     ink(d_lines, min(k * 1.4, 1.0), min(k * 2.0, 0.9))
-                    cap.set_text(f'THE DIFFERENCE → {win_name.upper()} wins the flow')
+                    cap.set_text(f"where they differ decides it — the model picks {win_name.upper()}")
                 arts = ([ln for ln, _ in a_lines] + [ln for ln, _ in b_lines]
                         + [ln for ln, _ in d_lines] + [cap])
                 return arts
