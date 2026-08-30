@@ -252,30 +252,73 @@ class MatchupVisualizer(FieldVisualizer):
                          matrix_b: Dict, season: int, round_num: int,
                          save_path: str, single: bool = False,
                          net_a: float = None, net_b: float = None,
-                         delta: Dict = None):
-        """Team fingerprint(s) as a whorl card (2026-08-30, Austin's idea).
+                         delta: Dict = None, animate: bool = False,
+                         anim_path: str = None, fps: int = 24,
+                         ink: float = 26.0):
+        """Team fingerprint(s) as a WHORLFIELD card (2026-08-30).
 
-        Geometry is REAL data, not decoration:
-          angle  = the edge's ground bearing (column A..E, row offset)
-          radius = depth from the goal (E-row innermost, A-row outermost;
-                   the GOAL is the centre)
-          width  = |weight|          colour = sign (teal = A/own, terracotta = B/conceded)
+        Design (delegated generative-art pass — Whorlfield concept):
+        every edge of the matrix emits a smooth flow; summed, the edges
+        define a 2D vector field; ridges ARE streamlines traced through
+        that field. The whorl is the data's own circulation.
 
-        Overlay mode shows the DELTA (A wins edge = teal, B wins = terracotta),
-        because fingerprints are E2-normalised: size is meaningless, balance
-        decides. The verdict banner reads sign(net_a - net_b) — the same
-        number the engine tips on.
+        Honesty (enforced in Core/fingerprint_field.py, unit-tested):
+        - weight = packing density (equal-ink budget per colour), never
+          thickness — all teams have ~equal total ink, so strength never
+          reads as size
+        - ridges keep min spacing (no moiré at Telegram compression)
+        - verdict banner always shows the ENGINE's number (net delta);
+          the geometry carries the same story but never overrides it
+
+        Overlay: same seeds traced through A's field (teal) and B's field
+        (terracotta) — agreeing regions pair up, differing regions fan.
+        Single: teal = own-scoring flow, terracotta = conceded flow.
+
+        animate=True: ridges ink in rim->goal (the "press"), A then B in
+        overlay mode; writes an MP4 (and keeps the static poster).
         """
         import math
 
+        from Core.fingerprint_field import (
+            GOAL_RING,
+            build_field,
+            node_positions,
+            overlay_verdict,
+            trace_streamlines,
+        )
 
+        TEAL, TERRA = '#1F6F6B', '#C1553A'
+        a_name = TEAM_DATA.get(team_a, {}).get('name', team_a)
+        b_name = TEAM_DATA.get(team_b, {}).get('name', team_b) if team_b else None
+        pos = node_positions()
+        cx, cy, R = 0.5, 0.52, 0.40
+
+        # ---------------- ridge generation (pure math)
+        if single:
+            field = build_field(matrix_a, pos)
+            pos_share = (sum(v for v in matrix_a.values() if v > 0)
+                         / max(sum(abs(v) for v in matrix_a.values()), 1e-9))
+            seeds = _whorl_seeds(48, rings=2, jitter=1.4)
+            ridges_pos = trace_streamlines(field, seeds, pos, ink * pos_share,
+                                           field, min_spacing=0.012)
+            ridges_neg = trace_streamlines(field, seeds, pos, ink * (1 - pos_share),
+                                           field, min_spacing=0.012)
+            teal_ridges, terra_ridges = ridges_pos, ridges_neg
+            net = net_a if net_a is not None else sum(matrix_a.values())
+        else:
+            field_a = build_field(matrix_a, pos)
+            field_b = build_field(matrix_b, pos)
+            seeds = _whorl_seeds(56, rings=2, jitter=1.4)
+            teal_ridges = trace_streamlines(field_a, seeds, pos, ink, field_a,
+                                            min_spacing=0.012)
+            terra_ridges = trace_streamlines(field_b, seeds, pos, ink, field_b,
+                                             min_spacing=0.012)
+            net = (net_a or 0.0) - (net_b or 0.0)
+        ta_c, tb_c, geom_verdict = overlay_verdict(teal_ridges, terra_ridges, pos)
+
+        # ---------------- canvas
         fig = plt.figure(figsize=(9, 12), facecolor=self.bg_color)
         try:
-            TEAL, TERRA = '#1F6F6B', '#C1553A'
-            a_name = TEAM_DATA.get(team_a, {}).get('name', team_a)
-            b_name = TEAM_DATA.get(team_b, {}).get('name', team_b) if team_b else None
-
-            # ---- masthead
             fig.text(0.5, 0.955, 'FINGERPRINT', ha='center', fontsize=30,
                      color=self.text_color, fontproperties=self.prop_title)
             sub = (f'SEASON {season} · THROUGH R{round_num}'
@@ -287,119 +330,159 @@ class MatchupVisualizer(FieldVisualizer):
             ax = fig.add_axes([0.06, 0.10, 0.88, 0.80])
             ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.set_aspect('equal')
             ax.axis('off')
-            cx, cy, R = 0.5, 0.52, 0.40
 
-            # ---- node positions: radius = depth from goal, angle = bearing
-            from Core.geometry import GRID_NAMES
-            pos = {}
-            for r_i, row in enumerate(GRID_NAMES):
-                for c_i, name in enumerate(row):
-                    radius = R * (0.14 + 0.82 * (4 - r_i) / 4.0)
-                    angle = math.radians(90 + (c_i - 2) * 34 + (1 - 1) * 0)
-                    pos[name] = (cx + radius * math.cos(angle),
-                                 cy + radius * math.sin(angle))
-            pos['SCORE'] = (cx, cy)
-
-            # ---- paper texture: concentric rings + spokes
+            # paper texture: concentric rings + spokes
             for r_i in range(5):
                 rr = R * (0.14 + 0.82 * (4 - r_i) / 4.0)
-                circ = patches.Circle((cx, cy), rr, fill=False,
-                                      edgecolor='#E3DCCB', lw=1.2, zorder=1)
-                ax.add_patch(circ)
+                ax.add_patch(patches.Circle((cx, cy), rr, fill=False,
+                                            edgecolor='#E3DCCB', lw=1.2, zorder=1))
             for c_i in range(5):
                 ang = math.radians(90 + (c_i - 2) * 34)
                 ax.plot([cx + 0.02 * math.cos(ang), cx + R * math.cos(ang)],
                         [cy + 0.02 * math.sin(ang), cy + R * math.sin(ang)],
                         color='#EAE4D5', lw=1.0, zorder=1)
+            # goal ring (the verdict ring)
+            ax.add_patch(patches.Circle((cx, cy), R * GOAL_RING, fill=False,
+                                        edgecolor='#D5CCB8', lw=1.6, zorder=1))
 
-            # ---- which edges to draw
-            if single:
-                edges = dict(matrix_a)
-                edges = {k: v for k, v in edges.items()
-                         if abs(v) > 0.02 * max((abs(x) for x in edges.values()), default=0)}
-                maxw = max((abs(v) for v in edges.values()), default=0.0)
-                net = net_a if net_a is not None else sum(matrix_a.values())
-            else:
-                edges = {k: v for k, v in (delta or {}).items()
-                         if abs(v) > 0.02 * max((abs(x) for x in (delta or {}).values()), default=0)}
-                maxw = max((abs(v) for v in edges.values()), default=0.0)
-                net = (net_a or 0.0) - (net_b or 0.0)
+            def draw_ridges(ridges, color):
+                # tapered: flow is thickest at its source (the seed) and
+                # thins toward the goal — a real data property, not styling
+                for pts in ridges:
+                    n = len(pts)
+                    for seg, w in ((0, 3.1), (1, 2.4), (2, 1.7)):
+                        i0 = n * seg // 3
+                        i1 = n * (seg + 1) // 3
+                        if i1 <= i0:
+                            continue
+                        xs = [p[0] for p in pts[i0:i1 + 1]]
+                        ys = [p[1] for p in pts[i0:i1 + 1]]
+                        ax.plot(xs, ys, color=color, lw=w, alpha=0.85,
+                                solid_capstyle='round', zorder=3)
 
-            def sample_quad(p0, p1, p2, n=42):
-                pts = []
-                for i in range(n + 1):
-                    t = i / n
-                    x = (1 - t) ** 2 * p0[0] + 2 * (1 - t) * t * p1[0] + t ** 2 * p2[0]
-                    y = (1 - t) ** 2 * p0[1] + 2 * (1 - t) * t * p1[1] + t ** 2 * p2[1]
-                    pts.append((x, y))
-                return pts
+            draw_ridges(teal_ridges, TEAL)
+            draw_ridges(terra_ridges, TERRA)
 
-            def offset_curve(pts, dist):
-                out = []
-                for i, (x, y) in enumerate(pts):
-                    dx = pts[min(i + 1, len(pts) - 1)][0] - pts[max(i - 1, 0)][0]
-                    dy = pts[min(i + 1, len(pts) - 1)][1] - pts[max(i - 1, 0)][1]
-                    L = math.hypot(dx, dy) or 1.0
-                    out.append((x - dist * dy / L, y + dist * dx / L))
-                return out
-
-            def draw_edge(s, t, v):
-                w = 1.2 + 22.0 * abs(v) / maxw
-                col = TEAL if v > 0 else TERRA
-                if t == 'SCORE':
-                    p0 = pos[s]; p2 = (cx + 0.03 * (p0[0] - cx), cy + 0.03 * (p0[1] - cy))
-                    p1 = ((p0[0] + p2[0]) / 2, (p0[1] + p2[1]) / 2)
-                else:
-                    p0, p2 = pos[s], pos[t]
-                    mx, my = (p0[0] + p2[0]) / 2, (p0[1] + p2[1]) / 2
-                    d = math.hypot(p2[0] - p0[0], p2[1] - p0[1]) or 1.0
-                    bow = 0.10 * d
-                    p1 = (mx - (my - cy) / d * bow, my + (mx - cx) / d * bow)
-                pts = sample_quad(p0, p1, p2)
-                # ridge texture: two faint parallel curves + the main band
-                for off, al in ((-(w / 2 + 1.6), 0.28), (w / 2 + 1.6, 0.28)):
-                    xs, ys = zip(*offset_curve(pts, off))
-                    ax.plot(xs, ys, color=col, lw=1.0, alpha=al, zorder=3)
-                xs, ys = zip(*pts)
-                ax.plot(xs, ys, color=col, lw=w, alpha=0.88, solid_capstyle='round', zorder=4)
-
-            # smallest first so the big ridges sit on top
-            for k, v in sorted(edges.items(), key=lambda kv: abs(kv[1])):
-                if k.source in pos and k.target in pos:
-                    draw_edge(k.source, k.target, v)
-
-            # ---- centre goal mark
             ax.add_patch(patches.Circle((cx, cy), 0.018, facecolor=self.text_color,
                                         edgecolor='none', zorder=5))
             fig.text(cx, cy - 0.052, 'GOAL', ha='center', fontsize=13,
                      color=self.text_color, fontproperties=self.prop_title)
 
-            # ---- legend
+            # legend
             if single:
-                fig.text(0.30, 0.055, '— OWN SCORING', ha='center', fontsize=11,
+                fig.text(0.30, 0.055, '— OWN SCORING FLOW', ha='center', fontsize=11,
                          color=TEAL, fontproperties=self.prop_body)
-                fig.text(0.70, 0.055, '— CONCEDED', ha='center', fontsize=11,
+                fig.text(0.70, 0.055, '— CONCEDED FLOW', ha='center', fontsize=11,
                          color=TERRA, fontproperties=self.prop_body)
             else:
-                fig.text(0.30, 0.055, f'— {a_name.upper()} EDGE', ha='center', fontsize=11,
+                fig.text(0.30, 0.055, f'— {a_name.upper()} FLOW', ha='center', fontsize=11,
                          color=TEAL, fontproperties=self.prop_body)
-                fig.text(0.70, 0.055, f'— {b_name.upper()} EDGE', ha='center', fontsize=11,
+                fig.text(0.70, 0.055, f'— {b_name.upper()} FLOW', ha='center', fontsize=11,
                          color=TERRA, fontproperties=self.prop_body)
 
-            # ---- verdict banner
+            # verdict banner — always the ENGINE's number
             fig.add_artist(patches.Rectangle((0.03, 0.012), 0.94, 0.032,
-                                             facecolor=self.text_color, edgecolor='none', zorder=5))
+                                             facecolor=self.text_color,
+                                             edgecolor='none', zorder=5))
             if single:
                 msg = f'NET BALANCE {net:+.3f}'
             else:
                 win = a_name if net > 0 else b_name
                 msg = f'NET DELTA {net:+.3f}  →  {win.upper()}'
-            # DejaVu Sans (matplotlib default) — FasterOne/Roboto both lack
-            # the U+2192 arrow glyph; a missing glyph renders as a tofu box.
+            # DejaVu Sans (default) — FasterOne/Roboto lack U+2192
             fig.text(0.5, 0.0285, msg, ha='center', va='center', fontsize=17,
                      color=self.bg_color, zorder=6, fontweight='bold')
 
             self.save_and_close(fig, save_path, dpi=100)
+
+            if animate and anim_path:
+                self._animate_fingerprint(teal_ridges, terra_ridges, anim_path,
+                                          fps, single, a_name, b_name, season,
+                                          round_num, net, cx, cy, R)
         except Exception:
             plt.close(fig)
             raise
+
+    def _animate_fingerprint(self, teal_ridges, terra_ridges, anim_path, fps,
+                             single, a_name, b_name, season, round_num, net,
+                             cx, cy, R):
+        """The press: ridges ink in rim->goal; overlay presses A then B.
+        Writes an MP4 (ffmpeg, available on the Pi)."""
+        from matplotlib.animation import FuncAnimation
+
+        fig = plt.figure(figsize=(9, 12), facecolor=self.bg_color)
+        fig.text(0.5, 0.955, 'FINGERPRINT', ha='center', fontsize=30,
+                 color=self.text_color, fontproperties=self.prop_title)
+        sub = (f'SEASON {season} · THROUGH R{round_num}'
+               + (f' · {a_name.upper()} vs {b_name.upper()}' if not single
+                  else f' · {a_name.upper()}'))
+        fig.text(0.5, 0.924, sub, ha='center', fontsize=12,
+                 color=self.sub_text_color)
+        ax = fig.add_axes([0.06, 0.10, 0.88, 0.80])
+        ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.set_aspect('equal')
+        ax.axis('off')
+        for r_i in range(5):
+            rr = R * (0.14 + 0.82 * (4 - r_i) / 4.0)
+            ax.add_patch(patches.Circle((cx, cy), rr, fill=False,
+                                        edgecolor='#E3DCCB', lw=1.2, zorder=1))
+
+        TEAL, TERRA = '#1F6F6B', '#C1553A'
+        lines = []
+        for pts in teal_ridges:
+            ln, = ax.plot([], [], color=TEAL, lw=2.6, alpha=0.85,
+                          solid_capstyle='round', zorder=3)
+            lines.append(('teal', ln, pts))
+        for pts in terra_ridges:
+            ln, = ax.plot([], [], color=TERRA, lw=2.6, alpha=0.85,
+                          solid_capstyle='round', zorder=3)
+            lines.append(('terra', ln, pts))
+
+        # order ridges by seed distance from goal: press rim->goal
+        def seed_rad(pts):
+            return ((pts[0][0] - cx) ** 2 + (pts[0][1] - cy) ** 2) ** 0.5
+
+        lines.sort(key=lambda item: -seed_rad(item[2]))
+
+        NFRAMES = 60
+        if single:
+            def frame(t):
+                prog = (t / NFRAMES) * 1.25
+                for color, ln, pts in lines:
+                    n = min(len(pts), max(1, int(len(pts) * min(prog, 1.0))))
+                    ln.set_data([p[0] for p in pts[:n]], [p[1] for p in pts[:n]])
+                return [ln for _, ln, _ in lines]
+        else:
+            # press A (first 40%), then B (next 40%), hold both (last 20%)
+            def frame(t):
+                frac = t / NFRAMES
+                for color, ln, pts in lines:
+                    if color == 'teal':
+                        local = min(max((frac - 0.00) / 0.40, 0.0), 1.0)
+                    else:
+                        local = min(max((frac - 0.40) / 0.40, 0.0), 1.0)
+                    n = max(1, int(len(pts) * min(local * 1.1, 1.0)))
+                    ln.set_data([p[0] for p in pts[:n]], [p[1] for p in pts[:n]])
+                return [ln for _, ln, _ in lines]
+
+        anim = FuncAnimation(fig, frame, frames=NFRAMES, interval=1000 / fps,
+                             blit=True)
+        anim.save(anim_path, writer='ffmpeg', fps=fps, dpi=100)
+        plt.close(fig)
+
+
+def _whorl_seeds(n: int, rings: int = 1, jitter: float = 0.0):
+    """Seeds on concentric rings (outer rim + mid ring), with a tiny angle
+    jitter so the whorl isn't digitally mirror-perfect (jitter is cosmetic
+    only — it never moves a data point)."""
+    import math
+    import random
+
+    random.seed(7)  # deterministic
+    cx, cy, R = 0.5, 0.52, 0.40
+    out = []
+    for ring in range(rings):
+        r = R * (0.98 - 0.22 * ring)
+        for i in range(n):
+            a = 2 * math.pi * i / n + math.radians(random.uniform(-jitter, jitter))
+            out.append((cx + r * math.cos(a), cy + r * math.sin(a)))
+    return out

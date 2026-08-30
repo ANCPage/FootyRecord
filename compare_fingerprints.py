@@ -44,6 +44,11 @@ def main():
     ap.add_argument('--round', type=int, default=25,
                     help='fingerprint through this round (default 25 = end of H&A)')
     ap.add_argument('--out', help='output path (default: ROUND_IMAGES_UPDATE/<season>/ANALYSIS/)')
+    ap.add_argument('--animate', action='store_true',
+                    help='also render the animated "press" as MP4 (same path, .mp4)')
+    ap.add_argument('--ink', type=float, default=26.0,
+                    help='equal-ink budget: total ridge length per colour '
+                         '(higher = denser whorl)')
     a = ap.parse_args()
 
     single = a.team is not None
@@ -63,7 +68,9 @@ def main():
             raise SystemExit(f'no fingerprint for {a.team} through R{a.round} {a.season}')
         out = a.out or os.path.join(config.OUTPUT_DIR, str(a.season), 'ANALYSIS',
                                     f'FINGERPRINT_{TEAM_DATA[tid]["name"].replace(" ", "")}_R{a.round}.png')
-        v.draw_fingerprint(tid, None, m, {}, a.season, a.round, out, single=True)
+        anim = out.replace('.png', '.mp4') if a.animate else None
+        v.draw_fingerprint(tid, None, m, {}, a.season, a.round, out, single=True,
+                           animate=a.animate, anim_path=anim, ink=a.ink)
     else:
         ta, tb = resolve_team(a.team_a), resolve_team(a.team_b)
         m_a = ing.get_team_average_matrix(ta, up_to_season=a.season, up_to_round=a.round)
@@ -75,8 +82,10 @@ def main():
         out = a.out or os.path.join(config.OUTPUT_DIR, str(a.season), 'ANALYSIS',
                                     f'FINGERPRINT_{TEAM_DATA[ta]["name"].replace(" ", "")}'
                                     f'_vs_{TEAM_DATA[tb]["name"].replace(" ", "")}_R{a.round}.png')
+        anim = out.replace('.png', '.mp4') if a.animate else None
         v.draw_fingerprint(ta, tb, m_a, m_b, a.season, a.round, out,
-                           single=False, net_a=net_a, net_b=net_b, delta=delta)
+                           single=False, net_a=net_a, net_b=net_b, delta=delta,
+                           animate=a.animate, anim_path=anim, ink=a.ink)
     print(f'wrote {out}')
 
 
