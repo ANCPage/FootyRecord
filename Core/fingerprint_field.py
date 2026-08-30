@@ -43,8 +43,13 @@ MAX_LEN = 3.0
 def node_positions() -> Dict[str, Tuple[float, float]]:
     """Node positions in the whorl geometry (unit square, goal at centre).
 
-    radius = depth from goal (row A outermost, row E hugging the goal);
-    angle  = ground bearing (column A..E spread symmetrically).
+    radius = depth from goal (A-row outermost/deepest, E-row hugging the
+    goal); angle = lane (rows 1..3 spread symmetrically around the top).
+
+    NOTE (2026-08-30, caught by a subagent's comprehension question): the
+    original implementation had this SWAPPED — lane->radius, depth->angle —
+    which put E1 (the attacking end) on the outermost ring next to A1 (the
+    defensive end), silently contradicting the docstring and the design.
     """
     import math
 
@@ -52,11 +57,11 @@ def node_positions() -> Dict[str, Tuple[float, float]]:
 
     cx, cy, R = 0.5, 0.52, 0.40
     pos = {}
-    for r_i, row in enumerate(GRID_NAMES):
-        radius = R * (0.14 + 0.82 * (4 - r_i) / 4.0)
-        for c_i, name in enumerate(row):
-            ang = math.radians(90 + (c_i - 2) * 34)
-            pos[name] = (cx + radius * math.cos(ang), cy + radius * math.sin(ang))
+    for lane_i, row in enumerate(GRID_NAMES):   # GRID_NAMES rows = lanes 1..3
+        for depth_i, name in enumerate(row):    # GRID_NAMES cols = depth A..E
+            radius = R * (0.20 + 0.76 * (4 - depth_i) / 4.0)
+            angle = math.radians(90 + (lane_i - 1) * 38)
+            pos[name] = (cx + radius * math.cos(angle), cy + radius * math.sin(angle))
     pos['SCORE'] = (cx, cy)
     return pos
 
