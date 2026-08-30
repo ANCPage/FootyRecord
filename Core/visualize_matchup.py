@@ -444,15 +444,43 @@ class MatchupVisualizer(FieldVisualizer):
                 fig.text(0.70, 0.055, '— CONCEDED FLOW', ha='center', fontsize=11,
                          color=TERRA, fontproperties=self.prop_body)
             else:
-                fig.text(0.30, 0.082, f'TEAL — {a_name.upper()} TERRITORY',
-                         ha='center', fontsize=11, color=TEAL,
-                         fontproperties=self.prop_body)
-                fig.text(0.70, 0.082, f'RED — {b_name.upper()} TERRITORY',
-                         ha='center', fontsize=11, color=TERRA,
-                         fontproperties=self.prop_body)
-                fig.text(0.5, 0.060, 'blank = even · closer to the centre = closer to goal',
+                # THE KEY (2026-08-30): the colour legend explained the
+                # colours but never the OBJECT. A viewer must learn what a
+                # line IS — ball movement — before any of this reads.
+                fig.text(0.5, 0.093, 'WHAT THE LINES ARE', ha='center',
+                         fontsize=8.5, color=self.sub_text_color,
+                         fontproperties=self.prop_body,
+                         style='italic')
+                fig.text(0.5, 0.077,
+                         'the lines = how each team moves the ball to goal',
+                         ha='center', fontsize=12.5, color=self.text_color,
+                         fontproperties=self.prop_body, fontweight='bold')
+                fig.text(0.5, 0.060,
+                         'thicker = played more often · all flow toward the goal',
                          ha='center', fontsize=9.5, color=self.sub_text_color,
                          fontproperties=self.prop_body)
+                fig.text(0.30, 0.041, f'TEAL — {a_name.upper()} TERRITORY',
+                         ha='center', fontsize=10.5, color=TEAL,
+                         fontproperties=self.prop_body)
+                fig.text(0.70, 0.041, f'RED — {b_name.upper()} TERRITORY',
+                         ha='center', fontsize=10.5, color=TERRA,
+                         fontproperties=self.prop_body)
+                # direction glyph: a curved line flowing into the goal dot —
+                # the one thing the whorl can't say with static ridges
+                kax = fig.add_axes([0.415, 0.016, 0.17, 0.028])
+                kax.set_xlim(0, 1); kax.set_ylim(0, 1); kax.axis('off')
+                import numpy as np
+                t = np.linspace(0, 1, 40)
+                kax.plot(0.12 + 0.55 * t, 0.15 + 0.55 * t - 0.5 * t * (1 - t),
+                         color=self.text_color, lw=2.0, solid_capstyle='round')
+                kax.annotate('', xy=(0.80, 0.55), xytext=(0.55, 0.45),
+                             arrowprops=dict(arrowstyle='-|>', color=self.text_color,
+                                             lw=2.0))
+                kax.add_patch(patches.Circle((0.88, 0.55), 0.055,
+                                              facecolor=self.text_color,
+                                              edgecolor='none'))
+                fig.text(0.5, 0.0165, 'flow → goal', ha='center', fontsize=7.5,
+                         color=self.sub_text_color)  # default font: has U+2192
 
             # single mode keeps the compact bottom banner
             if single:
