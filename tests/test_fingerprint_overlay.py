@@ -117,7 +117,10 @@ def test_single_mode_ridge_balance_matches_weight_share():
     import Core.config as config
     from Core.engine_data import DataIngestor
     from Core.fingerprint_field import (
-        balance_ridges, build_field, node_positions, trace_streamlines,
+        balance_ridges,
+        build_field,
+        node_positions,
+        trace_streamlines,
     )
     from Core.mappings import TEAM_DATA
     from Core.visualize_matchup import _whorl_seeds
