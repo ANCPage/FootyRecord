@@ -128,6 +128,31 @@ def build_field(edges: Dict[TransitionEdge, float], pos: Dict[str, Tuple[float, 
             'xs': xs, 'ys': ys}
 
 
+def build_delta_field(delta: Dict[TransitionEdge, float],
+                      pos: Dict[str, Tuple[float, float]],
+                      sigma: float = 0.045):
+    """Field of the DELTA between two teams (2026-08-30).
+
+    The overlay MUST show the difference, not both teams' full fields.
+    Showing both at full strength is a semantic overload: every edge carries
+    two meanings at once and — because fingerprints are equal-ink — the card
+    reads as a 50/50 tangle no matter who is winning. Austin: "I wouldn't
+    understand if it's telling me North was better, or Sydney."
+
+    With the delta field:
+      teal ridges  = zones where A wins the flow (delta > 0)
+      red ridges   = zones where B wins the flow (delta < 0)
+      bare cream   = zones where they're equal (delta ~ 0) — genuine
+                     information, not empty space
+    So a red-heavy card literally MEANS B is winning, which is what the
+    banner says. The picture becomes the verdict instead of hiding it.
+
+    Returns the same dict shape as build_field: xp/yp carry the positive
+    (A-winning) flow, xn/yn the negative (B-winning) flow.
+    """
+    return build_field(delta, pos, sigma=sigma)
+
+
 def _sample_grid(grid, x, y):
     """Bilinear sample of a field grid at (x, y); NaN-safe outside [0,1]."""
     gx = np.clip(x, 0, 1) * (GRID - 1)

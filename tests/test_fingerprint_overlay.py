@@ -148,3 +148,51 @@ def test_single_mode_ridge_balance_matches_weight_share():
     # the data balance (tracing is stochastic; it must not be 99/1)
     assert abs(share - pos_share) < 0.12, \
         f'ridge balance {share:.2f} vs data share {pos_share:.2f}'
+
+
+def test_delta_field_colour_matches_verdict_sign():
+    """The overlay's colour balance must AGREE with the banner's verdict.
+
+    This is the readability fix (2026-08-30, Austin: "I wouldn't understand
+    if it's telling me North was better, or Sydney"). The overlay traces the
+    DELTA field, so the dominant colour IS the winner — if this test fails,
+    the picture contradicts the number and the card lies.
+    """
+    import Core.config as config
+    from Core.engine_core import fingerprint_overlay
+    from Core.engine_data import DataIngestor
+    from Core.fingerprint_field import (
+        balance_ridges, build_delta_field, node_positions, trace_streamlines,
+    )
+    from Core.mappings import TEAM_DATA
+    from Core.visualize_matchup import _whorl_seeds
+
+    ing = DataIngestor(config.DATA_DIR)
+    ing.load_all_data(light=True)
+    north = [t for t in TEAM_DATA if TEAM_DATA[t]['name'] == 'North Melbourne'][0]
+    syd = [t for t in TEAM_DATA if TEAM_DATA[t]['name'] == 'Sydney Swans'][0]
+    m_n = ing.get_team_average_matrix(north, up_to_season=2026, up_to_round=25)
+    m_s = ing.get_team_average_matrix(syd, up_to_season=2026, up_to_round=25)
+
+    delta, net_a, net_b = fingerprint_overlay(m_n, m_s)
+    net = net_a - net_b
+    pos = node_positions()
+    dfield = build_delta_field(delta, pos)
+    seeds = _whorl_seeds(56, rings=2, jitter=1.4)
+    d_pos = sum(v for v in delta.values() if v > 0)
+    d_neg = sum(-v for v in delta.values() if v < 0)
+    share = d_pos / (d_pos + d_neg)
+    rt = trace_streamlines(dfield, seeds, pos, 38.0 * share,
+                           fx=dfield['xp'], fy=dfield['yp'])
+    rr = trace_streamlines(dfield, seeds, pos, 38.0 * (1 - share),
+                           fx=dfield['xn'], fy=dfield['yn'])
+    rt, rr = balance_ridges(rt, rr, share)
+    teal_len = sum(len(r) for r in rt)
+    terra_len = sum(len(r) for r in rr)
+
+    # Sydney has the better net balance, so the delta favours THEM: the
+    # terracotta (B-wins) ridges must dominate, matching the banner.
+    assert net < 0, 'Sydney should have the better net balance'
+    assert terra_len > teal_len, (
+        f'picture contradicts the verdict: teal {teal_len} vs terra {terra_len} '
+        f'for net {net:+.4f}')

@@ -282,6 +282,7 @@ class MatchupVisualizer(FieldVisualizer):
         from Core.fingerprint_field import (
             GOAL_RING,
             balance_ridges,
+            build_delta_field,
             build_field,
             node_positions,
             overlay_verdict,
@@ -315,30 +316,60 @@ class MatchupVisualizer(FieldVisualizer):
                                                        pos_share)
             net = net_a if net_a is not None else sum(matrix_a.values())
         else:
-            field_a = build_field(matrix_a, pos)
-            field_b = build_field(matrix_b, pos)
+            # THE DIFFERENCE, not both fields (2026-08-30): showing both at
+            # full strength was a semantic overload — equal-ink fingerprints
+            # made every card a 50/50 tangle regardless of who was winning.
+            # teal = A wins the flow here, red = B wins, cream = equal.
+            if delta is None:
+                from Core.engine_core import fingerprint_overlay
+                delta, net_a, net_b = fingerprint_overlay(matrix_a, matrix_b)
+            dfield = build_delta_field(delta, pos)
             seeds = _whorl_seeds(56, rings=2, jitter=1.4)
-            teal_ridges = trace_streamlines(field_a, seeds, pos, ink,
-                                            fx=field_a['x'], fy=field_a['y'],
+            d_pos = sum(v for v in delta.values() if v > 0)
+            d_neg = sum(-v for v in delta.values() if v < 0)
+            d_share = d_pos / max(d_pos + d_neg, 1e-9)
+            teal_ridges = trace_streamlines(dfield, seeds, pos, ink * d_share,
+                                            fx=dfield['xp'], fy=dfield['yp'],
                                             min_spacing=0.012)
-            terra_ridges = trace_streamlines(field_b, seeds, pos, ink,
-                                             fx=field_b['x'], fy=field_b['y'],
+            terra_ridges = trace_streamlines(dfield, seeds, pos, ink * (1 - d_share),
+                                             fx=dfield['xn'], fy=dfield['yn'],
                                              min_spacing=0.012)
+            teal_ridges, terra_ridges = balance_ridges(teal_ridges, terra_ridges,
+                                                       d_share)
             net = (net_a or 0.0) - (net_b or 0.0)
         ta_c, tb_c, geom_verdict = overlay_verdict(teal_ridges, terra_ridges, pos)
 
         # ---------------- canvas
         fig = plt.figure(figsize=(9, 12), facecolor=self.bg_color)
         try:
-            fig.text(0.5, 0.955, 'FINGERPRINT', ha='center', fontsize=30,
+            fig.text(0.5, 0.978, 'FINGERPRINT', ha='center', fontsize=20,
                      color=self.text_color, fontproperties=self.prop_title)
-            sub = (f'SEASON {season} · THROUGH R{round_num}'
-                   + (f' · {a_name.upper()} vs {b_name.upper()}' if not single
-                      else f' · {a_name.upper()}'))
-            fig.text(0.5, 0.924, sub, ha='center', fontsize=12,
-                     color=self.sub_text_color)
+            if not single:
+                # VERDICT FIRST — the largest element, top of the card.
+                # The cold-read showed the banner at the bottom is the
+                # weakest position for a headline claim.
+                win_name = a_name if net >= 0 else b_name
+                win_col = TEAL if net >= 0 else TERRA
+                fig.add_artist(patches.Rectangle((0.03, 0.906), 0.94, 0.062,
+                                                 facecolor=win_col,
+                                                 edgecolor='none', zorder=5))
+                fig.text(0.5, 0.944, win_name.upper(), ha='center', va='center',
+                         fontsize=30, color=self.bg_color, zorder=6,
+                         fontproperties=self.prop_title)
+                fig.text(0.5, 0.923, f'MODEL PREDICTS · EDGE {abs(net):.3f}',
+                         ha='center', va='center', fontsize=10,
+                         color=self.bg_color, zorder=6, fontweight='bold')
+                fig.text(0.5, 0.890,
+                         f'SEASON {season} · THROUGH R{round_num} · '
+                         f'{a_name.upper()} vs {b_name.upper()}',
+                         ha='center', fontsize=11.5, color=self.sub_text_color)
+            else:
+                sub = f'SEASON {season} · THROUGH R{round_num} · {a_name.upper()}'
+                fig.text(0.5, 0.924, sub, ha='center', fontsize=12,
+                         color=self.sub_text_color)
 
-            ax = fig.add_axes([0.06, 0.10, 0.88, 0.80])
+            ax = fig.add_axes([0.06, 0.10, 0.88, 0.80]) if single else \
+                fig.add_axes([0.06, 0.115, 0.88, 0.74])
             ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.set_aspect('equal')
             ax.axis('off')
 
@@ -365,30 +396,41 @@ class MatchupVisualizer(FieldVisualizer):
                     out.append((x - dist * dy / L, y + dist * dx / L))
                 return out
 
-            def draw_ridges(ridges, color, side):
+            def draw_ridges(ridges, color, side, emphasis=1.0):
                 # tapered: flow is thickest at its source (the seed) and
                 # thins toward the goal — a real data property, not styling.
                 # Perpendicular offset (side=-1/+1) pairs overlapping flows
                 # side-by-side instead of stacking them — where both colours
                 # run, you SEE both (draw order no longer buries a colour).
+                # emphasis < 1 thins the LOSER's ridges so visual weight
+                # follows the verdict (2026-08-30 cold-read: the densest
+                # colour belonged to the losing team).
+                widths = (3.4, 2.6, 1.9)
                 for pts in ridges:
                     off = offset_pts(pts, 0.0045 * side)
                     n = len(off)
-                    for seg, w in ((0, 3.1), (1, 2.4), (2, 1.7)):
+                    for seg, w in enumerate(widths):
                         i0 = n * seg // 3
                         i1 = n * (seg + 1) // 3
                         if i1 <= i0:
                             continue
                         xs = [p[0] for p in off[i0:i1 + 1]]
                         ys = [p[1] for p in off[i0:i1 + 1]]
-                        ax.plot(xs, ys, color=color, lw=w, alpha=0.72,
+                        ax.plot(xs, ys, color=color, lw=w * emphasis,
+                                alpha=0.72 * (0.55 + 0.45 * emphasis),
                                 solid_capstyle='round', zorder=3)
 
-            # alpha < 1 lets overlapping flows blend instead of burying the
-            # under-colour; teal on top so the goal-ring verdict zone doesn't
-            # read as one-sided for conceding teams (2026-08-30)
-            draw_ridges(terra_ridges, TERRA, side=+1)
-            draw_ridges(teal_ridges, TEAL, side=-1)
+            if single:
+                draw_ridges(terra_ridges, TERRA, side=+1)
+                draw_ridges(teal_ridges, TEAL, side=-1)
+            else:
+                # the winner's territory is drawn heavy and on top — the
+                # verdict is the message, the zones are the explanation
+                win_teal = net >= 0
+                draw_ridges(terra_ridges, TERRA, side=+1,
+                            emphasis=0.62 if win_teal else 1.0)
+                draw_ridges(teal_ridges, TEAL, side=-1,
+                            emphasis=1.0 if win_teal else 0.62)
 
             ax.add_patch(patches.Circle((cx, cy), 0.018, facecolor=self.text_color,
                                         edgecolor='none', zorder=5))
@@ -402,41 +444,69 @@ class MatchupVisualizer(FieldVisualizer):
                 fig.text(0.70, 0.055, '— CONCEDED FLOW', ha='center', fontsize=11,
                          color=TERRA, fontproperties=self.prop_body)
             else:
-                fig.text(0.30, 0.055, f'— {a_name.upper()} FLOW', ha='center', fontsize=11,
-                         color=TEAL, fontproperties=self.prop_body)
-                fig.text(0.70, 0.055, f'— {b_name.upper()} FLOW', ha='center', fontsize=11,
-                         color=TERRA, fontproperties=self.prop_body)
+                fig.text(0.30, 0.082, f'TEAL — {a_name.upper()} TERRITORY',
+                         ha='center', fontsize=11, color=TEAL,
+                         fontproperties=self.prop_body)
+                fig.text(0.70, 0.082, f'RED — {b_name.upper()} TERRITORY',
+                         ha='center', fontsize=11, color=TERRA,
+                         fontproperties=self.prop_body)
+                fig.text(0.5, 0.060, 'blank = even · closer to the centre = closer to goal',
+                         ha='center', fontsize=9.5, color=self.sub_text_color,
+                         fontproperties=self.prop_body)
 
-            # verdict banner — always the ENGINE's number
-            fig.add_artist(patches.Rectangle((0.03, 0.012), 0.94, 0.032,
-                                             facecolor=self.text_color,
-                                             edgecolor='none', zorder=5))
+            # single mode keeps the compact bottom banner
             if single:
-                msg = f'NET BALANCE {net:+.3f}'
-            else:
-                win = a_name if net > 0 else b_name
-                msg = f'NET DELTA {net:+.3f}  →  {win.upper()}'
-            # DejaVu Sans (default) — FasterOne/Roboto lack U+2192
-            fig.text(0.5, 0.0285, msg, ha='center', va='center', fontsize=17,
-                     color=self.bg_color, zorder=6, fontweight='bold')
+                fig.add_artist(patches.Rectangle((0.03, 0.012), 0.94, 0.032,
+                                                 facecolor=self.text_color,
+                                                 edgecolor='none', zorder=5))
+                fig.text(0.5, 0.0285, f'NET BALANCE {net:+.3f}', ha='center',
+                         va='center', fontsize=17, color=self.bg_color,
+                         zorder=6, fontweight='bold')
 
             self.save_and_close(fig, save_path, dpi=100)
 
             if animate and anim_path:
+                act_ridges = None
+                if not single:
+                    # 3-act press needs each team's OWN field ridges too
+                    fa = build_field(matrix_a, pos)
+                    fb = build_field(matrix_b, pos)
+                    sd = _whorl_seeds(56, rings=2, jitter=1.4)
+                    act_ridges = (
+                        trace_streamlines(fa, sd, pos, ink, fx=fa['x'],
+                                          fy=fa['y'], min_spacing=0.012),
+                        trace_streamlines(fb, sd, pos, ink, fx=fb['x'],
+                                          fy=fb['y'], min_spacing=0.012),
+                    )
                 self._animate_fingerprint(teal_ridges, terra_ridges, anim_path,
                                           fps, single, a_name, b_name, season,
-                                          round_num, net, cx, cy, R)
+                                          round_num, net, cx, cy, R,
+                                          act_ridges=act_ridges)
         except Exception:
             plt.close(fig)
             raise
 
     def _animate_fingerprint(self, teal_ridges, terra_ridges, anim_path, fps,
                              single, a_name, b_name, season, round_num, net,
-                             cx, cy, R):
-        """The press: ridges ink in rim->goal; overlay presses A then B.
-        Writes an MP4 (ffmpeg, available on the Pi)."""
+                             cx, cy, R, act_ridges=None):
+        """The press, in three acts (2026-08-30).
+
+        Single mode: the team's whorl inks in, rim -> goal.
+
+        Overlay mode (act_ridges = (A's own ridges, B's own ridges)):
+          ACT 1 (0-30%)   press A — A's full fingerprint inks in, teal
+          ACT 2 (30-60%)  press B — B's full fingerprint inks over it, red
+          ACT 3 (60-100%) RESOLVE — both fade out and the DIFFERENCE field
+                          inks in: teal where A wins, red where B wins, bare
+                          paper where they're even. The loop therefore
+                          *explains* the static card every time it plays:
+                          two identities -> one verdict.
+
+        Writes an MP4 (ffmpeg).
+        """
         from matplotlib.animation import FuncAnimation
 
+        TEAL, TERRA = '#1F6F6B', '#C1553A'
         fig = plt.figure(figsize=(9, 12), facecolor=self.bg_color)
         fig.text(0.5, 0.955, 'FINGERPRINT', ha='center', fontsize=30,
                  color=self.text_color, fontproperties=self.prop_title)
@@ -449,50 +519,93 @@ class MatchupVisualizer(FieldVisualizer):
         ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.set_aspect('equal')
         ax.axis('off')
         for r_i in range(5):
-            rr = R * (0.14 + 0.82 * (4 - r_i) / 4.0)
+            rr = R * (0.20 + 0.76 * (4 - r_i) / 4.0)
             ax.add_patch(patches.Circle((cx, cy), rr, fill=False,
                                         edgecolor='#E3DCCB', lw=1.2, zorder=1))
 
-        TEAL, TERRA = '#1F6F6B', '#C1553A'
-        lines = []
-        for pts in teal_ridges:
-            ln, = ax.plot([], [], color=TEAL, lw=2.6, alpha=0.85,
-                          solid_capstyle='round', zorder=3)
-            lines.append(('teal', ln, pts))
-        for pts in terra_ridges:
-            ln, = ax.plot([], [], color=TERRA, lw=2.6, alpha=0.85,
-                          solid_capstyle='round', zorder=3)
-            lines.append(('terra', ln, pts))
-
-        # order ridges by seed distance from goal: press rim->goal
         def seed_rad(pts):
             return ((pts[0][0] - cx) ** 2 + (pts[0][1] - cy) ** 2) ** 0.5
 
-        lines.sort(key=lambda item: -seed_rad(item[2]))
+        NFRAMES = 90
 
-        NFRAMES = 60
-        if single:
+        # ---- caption that narrates the acts (overlay only)
+        cap = fig.text(0.5, 0.075, '', ha='center', fontsize=12.5,
+                       color=self.sub_text_color, fontproperties=self.prop_body)
+
+        if single or not act_ridges:
+            lines = []
+            for pts in teal_ridges:
+                ln, = ax.plot([], [], color=TEAL, lw=2.6, alpha=0.85,
+                              solid_capstyle='round', zorder=3)
+                lines.append((ln, pts))
+            for pts in terra_ridges:
+                ln, = ax.plot([], [], color=TERRA, lw=2.6, alpha=0.85,
+                              solid_capstyle='round', zorder=3)
+                lines.append((ln, pts))
+            lines.sort(key=lambda it: -seed_rad(it[1]))
+
             def frame(t):
-                prog = (t / NFRAMES) * 1.25
-                for color, ln, pts in lines:
+                prog = (t / NFRAMES) * 1.2
+                for ln, pts in lines:
                     n = min(len(pts), max(1, int(len(pts) * min(prog, 1.0))))
                     ln.set_data([p[0] for p in pts[:n]], [p[1] for p in pts[:n]])
-                return [ln for _, ln, _ in lines]
+                return [ln for ln, _ in lines] + [cap]
         else:
-            # press A (first 40%), then B (next 40%), hold both (last 20%)
-            def frame(t):
-                frac = t / NFRAMES
-                for color, ln, pts in lines:
-                    if color == 'teal':
-                        local = min(max((frac - 0.00) / 0.40, 0.0), 1.0)
+            a_own, b_own = act_ridges
+            # act 1+2 artists (each team's own fingerprint)
+            a_lines = [(ax.plot([], [], color=TEAL, lw=2.4, alpha=0.75,
+                                solid_capstyle='round', zorder=3)[0], pts)
+                       for pts in a_own]
+            b_lines = [(ax.plot([], [], color=TERRA, lw=2.4, alpha=0.75,
+                                solid_capstyle='round', zorder=3)[0], pts)
+                       for pts in b_own]
+            # act 3 artists (the difference)
+            d_lines = [(ax.plot([], [], color=TEAL, lw=2.9, alpha=0.0,
+                                solid_capstyle='round', zorder=4)[0], pts)
+                       for pts in teal_ridges]
+            d_lines += [(ax.plot([], [], color=TERRA, lw=2.9, alpha=0.0,
+                                 solid_capstyle='round', zorder=4)[0], pts)
+                        for pts in terra_ridges]
+            a_lines.sort(key=lambda it: -seed_rad(it[1]))
+            b_lines.sort(key=lambda it: -seed_rad(it[1]))
+            d_lines.sort(key=lambda it: -seed_rad(it[1]))
+            win_name = a_name if net > 0 else b_name
+
+            def ink(lines, prog, alpha):
+                for ln, pts in lines:
+                    n = max(1, int(len(pts) * min(prog * 1.1, 1.0)))
+                    if prog <= 0:
+                        ln.set_data([], [])
                     else:
-                        local = min(max((frac - 0.40) / 0.40, 0.0), 1.0)
-                    n = max(1, int(len(pts) * min(local * 1.1, 1.0)))
-                    ln.set_data([p[0] for p in pts[:n]], [p[1] for p in pts[:n]])
-                return [ln for _, ln, _ in lines]
+                        ln.set_data([p[0] for p in pts[:n]],
+                                    [p[1] for p in pts[:n]])
+                    ln.set_alpha(alpha)
+
+            def frame(t):
+                f = t / NFRAMES
+                if f < 0.30:                      # ACT 1 — press A
+                    ink(a_lines, f / 0.30, 0.78)
+                    ink(b_lines, 0, 0.0)
+                    ink(d_lines, 0, 0.0)
+                    cap.set_text(f'{a_name.upper()} — how they move the ball')
+                elif f < 0.60:                    # ACT 2 — press B over it
+                    ink(a_lines, 1.0, 0.42)
+                    ink(b_lines, (f - 0.30) / 0.30, 0.78)
+                    ink(d_lines, 0, 0.0)
+                    cap.set_text(f'{b_name.upper()} — pressed over the top')
+                else:                             # ACT 3 — resolve to the diff
+                    k = (f - 0.60) / 0.40
+                    fade = max(0.0, 0.42 * (1 - k * 2.2))
+                    ink(a_lines, 1.0, fade)
+                    ink(b_lines, 1.0, fade)
+                    ink(d_lines, min(k * 1.4, 1.0), min(k * 2.0, 0.9))
+                    cap.set_text(f'THE DIFFERENCE → {win_name.upper()} wins the flow')
+                arts = ([ln for ln, _ in a_lines] + [ln for ln, _ in b_lines]
+                        + [ln for ln, _ in d_lines] + [cap])
+                return arts
 
         anim = FuncAnimation(fig, frame, frames=NFRAMES, interval=1000 / fps,
-                             blit=True)
+                             blit=False)
         anim.save(anim_path, writer='ffmpeg', fps=fps, dpi=100)
         plt.close(fig)
 
