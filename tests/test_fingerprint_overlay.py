@@ -162,7 +162,10 @@ def test_delta_field_colour_matches_verdict_sign():
     from Core.engine_core import fingerprint_overlay
     from Core.engine_data import DataIngestor
     from Core.fingerprint_field import (
-        balance_ridges, build_delta_field, node_positions, trace_streamlines,
+        balance_ridges,
+        build_delta_field,
+        node_positions,
+        trace_streamlines,
     )
     from Core.mappings import TEAM_DATA
     from Core.visualize_matchup import _whorl_seeds
