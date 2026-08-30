@@ -128,6 +128,26 @@ class MatchupEngine:
         return delta_matrix
 
 
+def fingerprint_overlay(mat_a: dict, mat_b: dict):
+    """Two-team fingerprint overlay (2026-08-30, Austin's idea).
+
+    Returns (delta, net_a, net_b):
+      delta  = MatchupEngine.calculate_delta(mat_a, mat_b) — element-wise
+               difference with B rotated into A's frame. Its sign per edge is
+               the overlay colour, its magnitude the ridge thickness.
+      net_a, net_b = sum of each matrix's values — the net balance of the
+               fingerprint (own scoring geometry minus conceded).
+
+    LOAD-BEARING IDENTITY (tested in test_fingerprint_overlay.py):
+    sum(delta.values()) == net_a - net_b. The predicted winner is
+    sign(net_a - net_b); the overlay's overall teal-vs-terracotta balance IS
+    the prediction, not a metaphor. (Both matrices are E2-normalised to
+    ~equal total weight, so the overlay must encode balance, never size.)
+    """
+    delta = MatchupEngine.calculate_delta(mat_a, mat_b)
+    return delta, sum(mat_a.values()), sum(mat_b.values())
+
+
 def collapse_chain(chain):
     """Collapse a chain's (grids, players) into consecutive nodes + edges
     (recycle #8: single implementation shared by the profile accumulator and

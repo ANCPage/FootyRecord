@@ -246,3 +246,160 @@ class MatchupVisualizer(FieldVisualizer):
                 except:
                     plt.close(fig_m)
                     raise
+
+
+    def draw_fingerprint(self, team_a: str, team_b: str, matrix_a: Dict,
+                         matrix_b: Dict, season: int, round_num: int,
+                         save_path: str, single: bool = False,
+                         net_a: float = None, net_b: float = None,
+                         delta: Dict = None):
+        """Team fingerprint(s) as a whorl card (2026-08-30, Austin's idea).
+
+        Geometry is REAL data, not decoration:
+          angle  = the edge's ground bearing (column A..E, row offset)
+          radius = depth from the goal (E-row innermost, A-row outermost;
+                   the GOAL is the centre)
+          width  = |weight|          colour = sign (teal = A/own, terracotta = B/conceded)
+
+        Overlay mode shows the DELTA (A wins edge = teal, B wins = terracotta),
+        because fingerprints are E2-normalised: size is meaningless, balance
+        decides. The verdict banner reads sign(net_a - net_b) — the same
+        number the engine tips on.
+        """
+        import math
+
+
+        fig = plt.figure(figsize=(9, 12), facecolor=self.bg_color)
+        try:
+            TEAL, TERRA = '#1F6F6B', '#C1553A'
+            a_name = TEAM_DATA.get(team_a, {}).get('name', team_a)
+            b_name = TEAM_DATA.get(team_b, {}).get('name', team_b) if team_b else None
+
+            # ---- masthead
+            fig.text(0.5, 0.955, 'FINGERPRINT', ha='center', fontsize=30,
+                     color=self.text_color, fontproperties=self.prop_title)
+            sub = (f'SEASON {season} · THROUGH R{round_num}'
+                   + (f' · {a_name.upper()} vs {b_name.upper()}' if not single
+                      else f' · {a_name.upper()}'))
+            fig.text(0.5, 0.924, sub, ha='center', fontsize=12,
+                     color=self.sub_text_color)
+
+            ax = fig.add_axes([0.06, 0.10, 0.88, 0.80])
+            ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.set_aspect('equal')
+            ax.axis('off')
+            cx, cy, R = 0.5, 0.52, 0.40
+
+            # ---- node positions: radius = depth from goal, angle = bearing
+            from Core.geometry import GRID_NAMES
+            pos = {}
+            for r_i, row in enumerate(GRID_NAMES):
+                for c_i, name in enumerate(row):
+                    radius = R * (0.14 + 0.82 * (4 - r_i) / 4.0)
+                    angle = math.radians(90 + (c_i - 2) * 34 + (1 - 1) * 0)
+                    pos[name] = (cx + radius * math.cos(angle),
+                                 cy + radius * math.sin(angle))
+            pos['SCORE'] = (cx, cy)
+
+            # ---- paper texture: concentric rings + spokes
+            for r_i in range(5):
+                rr = R * (0.14 + 0.82 * (4 - r_i) / 4.0)
+                circ = patches.Circle((cx, cy), rr, fill=False,
+                                      edgecolor='#E3DCCB', lw=1.2, zorder=1)
+                ax.add_patch(circ)
+            for c_i in range(5):
+                ang = math.radians(90 + (c_i - 2) * 34)
+                ax.plot([cx + 0.02 * math.cos(ang), cx + R * math.cos(ang)],
+                        [cy + 0.02 * math.sin(ang), cy + R * math.sin(ang)],
+                        color='#EAE4D5', lw=1.0, zorder=1)
+
+            # ---- which edges to draw
+            if single:
+                edges = dict(matrix_a)
+                edges = {k: v for k, v in edges.items()
+                         if abs(v) > 0.02 * max((abs(x) for x in edges.values()), default=0)}
+                maxw = max((abs(v) for v in edges.values()), default=0.0)
+                net = net_a if net_a is not None else sum(matrix_a.values())
+            else:
+                edges = {k: v for k, v in (delta or {}).items()
+                         if abs(v) > 0.02 * max((abs(x) for x in (delta or {}).values()), default=0)}
+                maxw = max((abs(v) for v in edges.values()), default=0.0)
+                net = (net_a or 0.0) - (net_b or 0.0)
+
+            def sample_quad(p0, p1, p2, n=42):
+                pts = []
+                for i in range(n + 1):
+                    t = i / n
+                    x = (1 - t) ** 2 * p0[0] + 2 * (1 - t) * t * p1[0] + t ** 2 * p2[0]
+                    y = (1 - t) ** 2 * p0[1] + 2 * (1 - t) * t * p1[1] + t ** 2 * p2[1]
+                    pts.append((x, y))
+                return pts
+
+            def offset_curve(pts, dist):
+                out = []
+                for i, (x, y) in enumerate(pts):
+                    dx = pts[min(i + 1, len(pts) - 1)][0] - pts[max(i - 1, 0)][0]
+                    dy = pts[min(i + 1, len(pts) - 1)][1] - pts[max(i - 1, 0)][1]
+                    L = math.hypot(dx, dy) or 1.0
+                    out.append((x - dist * dy / L, y + dist * dx / L))
+                return out
+
+            def draw_edge(s, t, v):
+                w = 1.2 + 22.0 * abs(v) / maxw
+                col = TEAL if v > 0 else TERRA
+                if t == 'SCORE':
+                    p0 = pos[s]; p2 = (cx + 0.03 * (p0[0] - cx), cy + 0.03 * (p0[1] - cy))
+                    p1 = ((p0[0] + p2[0]) / 2, (p0[1] + p2[1]) / 2)
+                else:
+                    p0, p2 = pos[s], pos[t]
+                    mx, my = (p0[0] + p2[0]) / 2, (p0[1] + p2[1]) / 2
+                    d = math.hypot(p2[0] - p0[0], p2[1] - p0[1]) or 1.0
+                    bow = 0.10 * d
+                    p1 = (mx - (my - cy) / d * bow, my + (mx - cx) / d * bow)
+                pts = sample_quad(p0, p1, p2)
+                # ridge texture: two faint parallel curves + the main band
+                for off, al in ((-(w / 2 + 1.6), 0.28), (w / 2 + 1.6, 0.28)):
+                    xs, ys = zip(*offset_curve(pts, off))
+                    ax.plot(xs, ys, color=col, lw=1.0, alpha=al, zorder=3)
+                xs, ys = zip(*pts)
+                ax.plot(xs, ys, color=col, lw=w, alpha=0.88, solid_capstyle='round', zorder=4)
+
+            # smallest first so the big ridges sit on top
+            for k, v in sorted(edges.items(), key=lambda kv: abs(kv[1])):
+                if k.source in pos and k.target in pos:
+                    draw_edge(k.source, k.target, v)
+
+            # ---- centre goal mark
+            ax.add_patch(patches.Circle((cx, cy), 0.018, facecolor=self.text_color,
+                                        edgecolor='none', zorder=5))
+            fig.text(cx, cy - 0.052, 'GOAL', ha='center', fontsize=13,
+                     color=self.text_color, fontproperties=self.prop_title)
+
+            # ---- legend
+            if single:
+                fig.text(0.30, 0.055, '— OWN SCORING', ha='center', fontsize=11,
+                         color=TEAL, fontproperties=self.prop_body)
+                fig.text(0.70, 0.055, '— CONCEDED', ha='center', fontsize=11,
+                         color=TERRA, fontproperties=self.prop_body)
+            else:
+                fig.text(0.30, 0.055, f'— {a_name.upper()} EDGE', ha='center', fontsize=11,
+                         color=TEAL, fontproperties=self.prop_body)
+                fig.text(0.70, 0.055, f'— {b_name.upper()} EDGE', ha='center', fontsize=11,
+                         color=TERRA, fontproperties=self.prop_body)
+
+            # ---- verdict banner
+            fig.add_artist(patches.Rectangle((0.03, 0.012), 0.94, 0.032,
+                                             facecolor=self.text_color, edgecolor='none', zorder=5))
+            if single:
+                msg = f'NET BALANCE {net:+.3f}'
+            else:
+                win = a_name if net > 0 else b_name
+                msg = f'NET DELTA {net:+.3f}  →  {win.upper()}'
+            # DejaVu Sans (matplotlib default) — FasterOne/Roboto both lack
+            # the U+2192 arrow glyph; a missing glyph renders as a tofu box.
+            fig.text(0.5, 0.0285, msg, ha='center', va='center', fontsize=17,
+                     color=self.bg_color, zorder=6, fontweight='bold')
+
+            self.save_and_close(fig, save_path, dpi=100)
+        except Exception:
+            plt.close(fig)
+            raise
