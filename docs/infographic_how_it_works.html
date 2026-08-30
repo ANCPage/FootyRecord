@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FootyRecord — How It Predicts</title>
+<style>
+  @font-face { font-family: 'FasterOne'; src: url('file:///mnt/projects/FootyRecord/downloaded_fonts/FasterOne.ttf'); }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root{
+    --cream:#F5F0E6; --ink:#1C1A17; --mid:#6B6459; --rule:#D8D0C0;
+    --teal:#1F6F6B; --terra:#A8412A; --gold:#C99A2E; --panel:#FBF8F2;
+  }
+  body{ width:1200px; height:1424px; background:var(--cream); color:var(--ink);
+        font-family:'Roboto','DejaVu Sans',sans-serif; padding:46px 52px; }
+
+  /* ---------- masthead ---------- */
+  .top{ display:flex; justify-content:space-between; align-items:flex-end;
+        border-bottom:5px solid var(--ink); padding-bottom:14px; }
+  .brand{ font-family:'FasterOne',serif; font-size:60px; letter-spacing:1px; line-height:.95; }
+  .sub{ font-size:15px; letter-spacing:3.5px; color:var(--mid); text-transform:uppercase; margin-top:8px; }
+  .hero{ text-align:right; }
+  .hero .n{ font-size:76px; font-weight:900; line-height:.9; color:var(--teal); }
+  .hero .l{ font-size:13px; letter-spacing:2.5px; color:var(--mid); text-transform:uppercase; margin-top:4px;}
+
+  h2{ font-size:14px; letter-spacing:3.5px; text-transform:uppercase; color:var(--mid);
+      margin:26px 0 12px; border-bottom:1.5px solid var(--rule); padding-bottom:6px; }
+
+  .thesis{ background:var(--ink); color:var(--cream); padding:18px 22px; margin-top:20px;
+           font-size:21px; line-height:1.42; }
+  .thesis b{ color:var(--gold); }
+
+  /* ---------- pipeline ---------- */
+  .steps{ display:flex; gap:10px; }
+  .step{ flex:1; background:var(--panel); border:1.5px solid var(--rule);
+         border-top:4px solid var(--teal); padding:13px 13px 15px; }
+  .step .k{ font-family:'FasterOne',serif; font-size:26px; color:var(--teal); line-height:1; }
+  .step .t{ font-size:14.5px; font-weight:700; margin:7px 0 5px; line-height:1.25; }
+  .step .d{ font-size:12.5px; color:var(--mid); line-height:1.42; }
+  .step .f{ font-size:11.5px; color:var(--terra); font-weight:700; margin-top:7px; }
+
+  /* ---------- diagram + accuracy row ---------- */
+  .row{ display:flex; gap:22px; align-items:stretch; }
+  .box{ background:var(--panel); border:1.5px solid var(--rule); padding:16px 18px; }
+  .cap{ font-size:11.5px; color:var(--mid); line-height:1.45; margin-top:8px; }
+
+  /* season bars */
+  .seasons{ display:flex; align-items:flex-end; gap:13px; height:186px; padding-top:6px;}
+  .sbar{ flex:1; display:flex; flex-direction:column; justify-content:flex-end; align-items:center; height:100%; }
+  .sbar .fill{ width:100%; background:var(--teal); position:relative; }
+  .sbar .fill.best{ background:var(--gold); }
+  .sbar .pct{ position:absolute; top:-19px; left:0; right:0; text-align:center;
+              font-size:13px; font-weight:800; color:var(--ink); }
+  .sbar .yr{ font-size:12px; color:var(--mid); margin-top:6px; letter-spacing:.5px; }
+
+  /* ---------- confidence ladder ---------- */
+  .lad{ display:flex; flex-direction:column; gap:8px; }
+  .lrow{ display:flex; align-items:center; gap:12px; }
+  .lrow .nm{ width:150px; font-size:13px; font-weight:700; }
+  .lrow .track{ flex:1; height:26px; background:#EAE3D5; position:relative; }
+  .lrow .bar{ height:100%; background:var(--teal); position:relative; }
+  .lrow .v{ position:absolute; right:10px; top:4px; font-size:14px; font-weight:800; color:#fff; }
+  .lrow .v.dark{ color:var(--ink); }
+  .lrow .n{ width:86px; font-size:11.5px; color:var(--mid); text-align:right; }
+
+  /* ---------- benchmark ---------- */
+  .bm{ display:flex; gap:0; border:1.5px solid var(--rule); }
+  .bm div{ flex:1; padding:13px 10px; text-align:center; border-right:1.5px solid var(--rule); }
+  .bm div:last-child{ border-right:none; }
+  .bm .v{ font-size:30px; font-weight:900; line-height:1; }
+  .bm .l{ font-size:10.5px; letter-spacing:1.2px; color:var(--mid); text-transform:uppercase; margin-top:6px; }
+  .bm .us{ background:var(--teal); padding-bottom:16px; }
+  .bm .us .v,.bm .us .l{ color:#fff; }
+
+  .foot{ margin-top:20px; border-top:3px solid var(--ink); padding-top:12px;
+         display:flex; justify-content:space-between; font-size:12px; color:var(--mid); }
+  .foot b{ color:var(--ink); }
+</style>
+</head>
+<body>
+
+  <div class="top">
+    <div>
+      <div class="brand">FOOTYRECORD</div>
+      <div class="sub">AFL match prediction &mdash; how it works</div>
+    </div>
+    <div class="hero">
+      <div class="n">66.5%</div>
+      <div class="l">813 of 1,222 games &middot; 2021&ndash;2026</div>
+    </div>
+  </div>
+
+  <div class="thesis">
+    Every other public model rates teams on <b>what the scoreboard said</b>.
+    This one rates them on <b>how they move the ball to score</b> &mdash; the geometry of
+    their scoring chains, not the result.
+  </div>
+
+  <h2>The prediction pipeline</h2>
+  <div class="steps">
+    <div class="step">
+      <div class="k">01</div>
+      <div class="t">Read every chain</div>
+      <div class="d">Each possession chain from every game, 2021&ndash;2026.</div>
+      <div class="f">289,469 chains<br>1.9M events</div>
+    </div>
+    <div class="step">
+      <div class="k">02</div>
+      <div class="t">Map to the ground</div>
+      <div class="d">The ground is a 5&times;3 grid. Every scoring chain becomes a path between cells, ending in a shot.</div>
+      <div class="f">15 cells + GOAL</div>
+    </div>
+    <div class="step">
+      <div class="k">03</div>
+      <div class="t">Build a fingerprint</div>
+      <div class="d">Each team gets a movement fingerprint. Their own chains count up; the opponent's count down, viewed from the other end.</div>
+      <div class="f">56,016 scoring chains</div>
+    </div>
+    <div class="step">
+      <div class="k">04</div>
+      <div class="t">Subtract the two</div>
+      <div class="d">Home fingerprint minus away fingerprint. Whoever comes out positive is the tip.</div>
+      <div class="f">The raw signal decides</div>
+    </div>
+    <div class="step">
+      <div class="k">05</div>
+      <div class="t">Size the margin</div>
+      <div class="d">That difference, plus a recent-form rating, converted into a predicted margin.</div>
+      <div class="f">&plusmn;26.8 pts avg error</div>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:22px;">
+    <div class="box" style="width:430px;">
+      <h2 style="margin-top:0;">A chain, as the model sees it</h2>
+      <svg viewBox="0 0 400 236" width="100%">
+        <!-- direction of play -->
+        <text x="10" y="12" font-size="10.5" fill="#A79C86" font-family="DejaVu Sans" letter-spacing="1">DEFENDING END</text>
+        <text x="286" y="12" font-size="10.5" fill="#C1553A" font-family="DejaVu Sans" letter-spacing="1">ATTACKING END</text>
+        <!-- row labels -->
+        <g font-size="11" fill="#A79C86" font-family="DejaVu Sans" font-weight="bold">
+          <text x="2" y="52">1</text><text x="2" y="112">2</text><text x="2" y="172">3</text>
+        </g>
+        <!-- grid -->
+        <g stroke="#C9C0AE" stroke-width="1.5" fill="#F0EADC">
+          <rect x="16" y="20" width="72" height="60"/><rect x="88" y="20" width="72" height="60"/>
+          <rect x="160" y="20" width="72" height="60"/><rect x="232" y="20" width="72" height="60"/>
+          <rect x="304" y="20" width="72" height="60"/>
+          <rect x="16" y="80" width="72" height="60"/><rect x="88" y="80" width="72" height="60"/>
+          <rect x="160" y="80" width="72" height="60"/><rect x="232" y="80" width="72" height="60"/>
+          <rect x="304" y="80" width="72" height="60"/>
+          <rect x="16" y="140" width="72" height="60"/><rect x="88" y="140" width="72" height="60"/>
+          <rect x="160" y="140" width="72" height="60"/><rect x="232" y="140" width="72" height="60"/>
+          <rect x="304" y="140" width="72" height="60"/>
+        </g>
+        <!-- column labels A..E across the middle row -->
+        <g font-size="11.5" fill="#A79C86" font-family="DejaVu Sans">
+          <text x="45" y="115">A2</text><text x="117" y="115">B2</text><text x="189" y="115">C2</text>
+          <text x="261" y="115">D2</text><text x="333" y="115">E2</text>
+        </g>
+        <g font-size="10.5" fill="#BEB3A0" font-family="DejaVu Sans">
+          <text x="45" y="55">A1</text><text x="117" y="55">B1</text><text x="189" y="55">C1</text>
+          <text x="261" y="55">D1</text><text x="333" y="55">E1</text>
+          <text x="45" y="175">A3</text><text x="117" y="175">B3</text><text x="189" y="175">C3</text>
+          <text x="261" y="175">D3</text><text x="333" y="175">E3</text>
+        </g>
+        <!-- chain path: B2 -> C1 -> D2 -> E2 -> shot -->
+        <g stroke="#1F6F6B" stroke-width="4" fill="none">
+          <line x1="128" y1="110" x2="192" y2="58" marker-end="url(#ah)"/>
+          <line x1="198" y1="56" x2="262" y2="104" marker-end="url(#ah)"/>
+          <line x1="270" y1="108" x2="330" y2="110" marker-end="url(#ah)"/>
+        </g>
+        <line x1="340" y1="114" x2="368" y2="152" stroke="#C1553A" stroke-width="4.5" marker-end="url(#ah2)"/>
+        <text x="330" y="176" font-size="12" fill="#C1553A" font-weight="bold" font-family="DejaVu Sans">GOAL</text>
+        <defs>
+          <marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+            <path d="M0,0 L9,4.5 L0,9 z" fill="#1F6F6B"/>
+          </marker>
+          <marker id="ah2" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+            <path d="M0,0 L9,4.5 L0,9 z" fill="#C1553A"/>
+          </marker>
+        </defs>
+        <circle cx="128" cy="110" r="6" fill="#1C1A17"/>
+        <text x="92" y="136" font-size="12" fill="#1C1A17" font-weight="bold" font-family="DejaVu Sans">start</text>
+        <!-- shot label -->
+        <text x="340" y="100" font-size="11" fill="#A03A22" font-weight="bold" font-family="DejaVu Sans">shot</text>
+      </svg>
+      <div class="cap">
+        Four transitions: three movements between cells, then the shot. Each is weighted by
+        how close it was to the goal. <b>Two teams can kick the same score and leave completely
+        different fingerprints</b> &mdash; that difference is what the model reads.
+      </div>
+    </div>
+
+    <div class="box" style="flex:1;">
+      <h2 style="margin-top:0;">Accuracy by season</h2>
+      <div class="seasons">
+        <div class="sbar"><div class="fill" style="height:63.7%"><div class="pct">63.7</div></div><div class="yr">2021</div></div>
+        <div class="sbar"><div class="fill" style="height:70.3%"><div class="pct">70.3</div></div><div class="yr">2022</div></div>
+        <div class="sbar"><div class="fill" style="height:63.3%"><div class="pct">63.3</div></div><div class="yr">2023</div></div>
+        <div class="sbar"><div class="fill" style="height:61.2%"><div class="pct">61.2</div></div><div class="yr">2024</div></div>
+        <div class="sbar"><div class="fill" style="height:69.6%"><div class="pct">69.6</div></div><div class="yr">2025</div></div>
+        <div class="sbar"><div class="fill best" style="height:71.0%"><div class="pct">71.0</div></div><div class="yr">2026</div></div>
+      </div>
+      <div class="cap" style="margin-top:14px;">
+        Bars are percentage of games tipped correctly. <b>2026 is the best season at 71.0%</b>
+        (147 of 207). Every prediction was made using only data available <i>before</i>&nbsp;that
+        game was played &mdash; no hindsight, ever.
+      </div>
+    </div>
+  </div>
+
+  <h2>The model knows when it knows &mdash; confidence vs actual hit rate</h2>
+  <div class="lad">
+    <div class="lrow"><div class="nm">Locks (A&ndash;B grade)</div>
+      <div class="track"><div class="bar" style="width:93.9%"><span class="v">93.9%</span></div></div>
+      <div class="n">77 / 82</div></div>
+    <div class="lrow"><div class="nm">Strong (C grade)</div>
+      <div class="track"><div class="bar" style="width:84.1%"><span class="v">84.1%</span></div></div>
+      <div class="n">106 / 126</div></div>
+    <div class="lrow"><div class="nm">Moderate (D grade)</div>
+      <div class="track"><div class="bar" style="width:73.4%"><span class="v">73.4%</span></div></div>
+      <div class="n">199 / 271</div></div>
+    <div class="lrow"><div class="nm">Coin-flips (E&ndash;F)</div>
+      <div class="track"><div class="bar" style="width:58.0%"><span class="v">58.0%</span></div></div>
+      <div class="n">431 / 743</div></div>
+  </div>
+  <div class="cap" style="margin-bottom:4px;">
+    The ladder never inverts: the more confident the call, the more often it lands. That
+    monotonic order is the real test of an honest model &mdash; and it means the grade on a tip
+    is information, not decoration.
+  </div>
+
+  <h2>How that compares</h2>
+  <div class="bm">
+    <div><div class="v" style="color:var(--mid)">50%</div><div class="l">Coin flip</div></div>
+    <div><div class="v" style="color:var(--mid)">55%</div><div class="l">Always tip home</div></div>
+    <div class="us"><div class="v">66.5%</div><div class="l">&#9660; We are here</div></div>
+    <div><div class="v" style="color:var(--terra)">69.2%</div><div class="l">Bookmaker favourite</div></div>
+    <div><div class="v" style="color:var(--terra)">74.4%</div><div class="l">Best public model 2026</div></div>
+  </div>
+  <div class="cap">
+    The gap to the leaders is mostly <b>information we deliberately don't use</b>: venue, team
+    selections, injuries and player ratings. The model is a pure read of ball movement.
+  </div>
+
+  <div class="foot">
+    <div><b>Walk-forward:</b> 1,231 matches ingested &middot; the maths re-tuned before every round</div>
+    <div><b>Rebuilt from scratch:</b> record reproduced byte-identical</div>
+  </div>
+
+</body>
+</html>
