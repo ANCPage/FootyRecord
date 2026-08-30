@@ -107,3 +107,41 @@ def test_render_smoke_single_and_overlay(tmp_path):
     for p in (out_single, out_overlay):
         im = Image.open(p)
         assert im.size == (900, 1200)
+
+
+def test_single_mode_ridge_balance_matches_weight_share():
+    """The all-one-colour regression: a conceding team's fingerprint must be
+    roughly proportional to its own scoring vs conceded weight share — NOT
+    dominated by the conceded colour because its teal ridges died in the
+    negative flow (2026-08-30, caught by Austin eyeballing North's card)."""
+    import Core.config as config
+    from Core.engine_data import DataIngestor
+    from Core.fingerprint_field import (
+        balance_ridges, build_field, node_positions, trace_streamlines,
+    )
+    from Core.mappings import TEAM_DATA
+    from Core.visualize_matchup import _whorl_seeds
+
+    ing = DataIngestor(config.DATA_DIR)
+    ing.load_all_data(light=True)
+    tid = [t for t in TEAM_DATA if TEAM_DATA[t]['name'] == 'North Melbourne'][0]
+    m = ing.get_team_average_matrix(tid, up_to_season=2026, up_to_round=25)
+    pos = sum(v for v in m.values() if v > 0)
+    neg = sum(-v for v in m.values() if v < 0)
+    tot = pos + neg
+    pos_share = pos / tot
+
+    field = build_field(m, node_positions())
+    seeds = _whorl_seeds(48, rings=2, jitter=1.4)
+    rp = trace_streamlines(field, seeds, node_positions(), 26.0 * pos_share,
+                           fx=field['xp'], fy=field['yp'])
+    rn = trace_streamlines(field, seeds, node_positions(), 26.0 * (1 - pos_share),
+                           fx=field['xn'], fy=field['yn'])
+    rp, rn = balance_ridges(rp, rn, pos_share)  # the renderer's own step
+    len_p = sum(len(r) for r in rp)
+    len_n = sum(len(r) for r in rn)
+    share = len_p / max(len_p + len_n, 1)
+    # North is 46.9/53.1 — the rendered balance must be within 12 points of
+    # the data balance (tracing is stochastic; it must not be 99/1)
+    assert abs(share - pos_share) < 0.12, \
+        f'ridge balance {share:.2f} vs data share {pos_share:.2f}'

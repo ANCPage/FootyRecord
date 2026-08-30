@@ -123,28 +123,29 @@ def build_field(edges: Dict[TransitionEdge, float], pos: Dict[str, Tuple[float, 
             'xs': xs, 'ys': ys}
 
 
-def _sample(field, x, y):
+def _sample_grid(grid, x, y):
     """Bilinear sample of a field grid at (x, y); NaN-safe outside [0,1]."""
     gx = np.clip(x, 0, 1) * (GRID - 1)
     gy = np.clip(y, 0, 1) * (GRID - 1)
     i0, j0 = int(gx), int(gy)
     i1, j1 = min(i0 + 1, GRID - 1), min(j0 + 1, GRID - 1)
     tx, ty = gx - i0, gy - j0
-    return (field[i0, j0] * (1 - tx) * (1 - ty) + field[i1, j0] * tx * (1 - ty)
-            + field[i0, j1] * (1 - tx) * ty + field[i1, j1] * tx * ty)
+    return (grid[i0, j0] * (1 - tx) * (1 - ty) + grid[i1, j0] * tx * (1 - ty)
+            + grid[i0, j1] * (1 - tx) * ty + grid[i1, j1] * tx * ty)
 
 
-def _field_vel(field, x, y, signed: bool):
-    """Velocity at (x,y): signed field (pos - neg) or per-sign field."""
-    if signed:
-        return (_sample(field['x'], x, y), _sample(field['y'], x, y))
-    raise ValueError('per-sign tracing not used; pass signed=True')
-
-
-def trace_streamlines(field, seeds, pos, budget: float, sign_field,
+def trace_streamlines(field, seeds, pos, budget: float, fx=None, fy=None,
                       min_spacing: float = MIN_SPACING,
                       max_len: float = MAX_LEN) -> List[List[Tuple[float, float]]]:
-    """Trace ridges from seeds through a signed field.
+    """Trace ridges from seeds through a field.
+
+    fx/fy: the velocity grids to follow. Callers choose:
+      - signed field  (field['x'], field['y'])     — net flow (overlay mode)
+      - positive-only (field['xp'], field['yp'])   — own scoring flow
+      - negative-only (field['xn'], field['yn'])   — conceded flow
+    Tracing a colour through the wrong field is the classic "all one colour"
+    bug (2026-08-30: single mode traced both colours through the signed
+    field; a conceding team's teal ridges died in their own negative flow).
 
     Returns list of ridge polylines (in field coords). Stops when:
       - the equal-ink budget (total traced length) is exhausted
@@ -152,6 +153,9 @@ def trace_streamlines(field, seeds, pos, budget: float, sign_field,
       - the streamline leaves the whorl area or hits the goal ring
       - max_len reached without progress
     """
+    if fx is None:
+        fx, fy = field['x'], field['y']
+
     cx, cy, R = 0.5, 0.52, 0.40
     inner = R * GOAL_RING
 
@@ -161,12 +165,11 @@ def trace_streamlines(field, seeds, pos, budget: float, sign_field,
     def near_goal(x, y):
         return (x - cx) ** 2 + (y - cy) ** 2 < inner * inner
 
-    occupied = []  # list of points already drawn, for min-spacing
+    occupied = []  # points already drawn, for min-spacing
 
     def too_close(x, y):
         if not occupied:
             return False
-        # coarse bucket check: only scan the last chunk for speed
         for px, py in occupied[-400:]:
             if (px - x) ** 2 + (py - y) ** 2 < min_spacing ** 2:
                 return True
@@ -181,7 +184,10 @@ def trace_streamlines(field, seeds, pos, budget: float, sign_field,
         pts = [(x, y)]
         length = 0.0
         for _ in range(4000):
-            vx, vy = _field_vel(sign_field, x, y, signed=True)
+            if length > max_len:  # 2026-08-30: was MISSING — a streamline in
+                break             # a circulating field ran 4000 steps, ate the
+                                  # whole colour's ink budget in one ridge
+            vx, vy = _sample_grid(fx, x, y), _sample_grid(fy, x, y)
             spd = (vx * vx + vy * vy) ** 0.5
             if spd < 1e-6:
                 break
@@ -200,6 +206,48 @@ def trace_streamlines(field, seeds, pos, budget: float, sign_field,
             occupied.extend(pts)
             used += length
     return ridges
+
+
+def balance_ridges(ridges_a, ridges_b, target_a_share: float):
+    """Enforce the equal-ink colour balance structurally.
+
+    The trace budget is a CAP, not a target — one colour's field can be more
+    continuous than the other's, so its ridges over-consume and the visual
+    balance drifts from the data's weight share (2026-08-30: North's teal hit
+    63% against a 46.9% data share). Trimming the OVER-represented colour's
+    SHORTEST ridges picks the closest achievable ratio to the weight ratio
+    (ridges are indivisible, so exact hits aren't always possible — the first
+    naive loop dropped ALL of a colour when a single ridge overshot).
+    Returns (trimmed_a, trimmed_b).
+    """
+    def total(ridges):
+        return sum(len(r) for r in ridges)
+
+    la, lb = total(ridges_a), total(ridges_b)
+    if la + lb == 0:
+        return ridges_a, ridges_b
+    share = la / (la + lb)
+
+    def best_trim(ordered, fixed_total, target):
+        """Drop shortest ridges; return the subset closest to target."""
+        best, best_err = list(ordered), abs(total(ordered) / (total(ordered) + fixed_total) - target)
+        for i in range(1, len(ordered)):
+            cand = ordered[i:]
+            if not cand:
+                break
+            s = total(cand) / (total(cand) + fixed_total)
+            err = abs(s - target)
+            if err < best_err:
+                best, best_err = cand, err
+            elif s < target:  # ratio decreases monotonically; stop past target
+                break
+        return best
+
+    if share > target_a_share:
+        return best_trim(sorted(ridges_a, key=len), lb, target_a_share), ridges_b
+    if share < target_a_share:
+        return ridges_a, best_trim(sorted(ridges_b, key=len), la, 1.0 - target_a_share)
+    return ridges_a, ridges_b
 
 
 def overlay_verdict(ridges_a, ridges_b, pos, inner_frac: float = GOAL_RING):

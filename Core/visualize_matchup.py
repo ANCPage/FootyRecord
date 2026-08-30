@@ -281,6 +281,7 @@ class MatchupVisualizer(FieldVisualizer):
 
         from Core.fingerprint_field import (
             GOAL_RING,
+            balance_ridges,
             build_field,
             node_positions,
             overlay_verdict,
@@ -299,19 +300,29 @@ class MatchupVisualizer(FieldVisualizer):
             pos_share = (sum(v for v in matrix_a.values() if v > 0)
                          / max(sum(abs(v) for v in matrix_a.values()), 1e-9))
             seeds = _whorl_seeds(48, rings=2, jitter=1.4)
+            # teal follows the OWN-scoring flow, terra the CONCEDED flow —
+            # tracing both through the signed field is the all-one-colour bug
+            # (2026-08-30: North's teal ridges died in their negative flow)
             ridges_pos = trace_streamlines(field, seeds, pos, ink * pos_share,
-                                           field, min_spacing=0.012)
+                                           fx=field['xp'], fy=field['yp'],
+                                           min_spacing=0.012)
             ridges_neg = trace_streamlines(field, seeds, pos, ink * (1 - pos_share),
-                                           field, min_spacing=0.012)
-            teal_ridges, terra_ridges = ridges_pos, ridges_neg
+                                           fx=field['xn'], fy=field['yn'],
+                                           min_spacing=0.012)
+            # budget is a cap; the BALANCE is enforced structurally so the
+            # colour ratio matches the data's weight ratio (equal-ink truth)
+            teal_ridges, terra_ridges = balance_ridges(ridges_pos, ridges_neg,
+                                                       pos_share)
             net = net_a if net_a is not None else sum(matrix_a.values())
         else:
             field_a = build_field(matrix_a, pos)
             field_b = build_field(matrix_b, pos)
             seeds = _whorl_seeds(56, rings=2, jitter=1.4)
-            teal_ridges = trace_streamlines(field_a, seeds, pos, ink, field_a,
+            teal_ridges = trace_streamlines(field_a, seeds, pos, ink,
+                                            fx=field_a['x'], fy=field_a['y'],
                                             min_spacing=0.012)
-            terra_ridges = trace_streamlines(field_b, seeds, pos, ink, field_b,
+            terra_ridges = trace_streamlines(field_b, seeds, pos, ink,
+                                             fx=field_b['x'], fy=field_b['y'],
                                              min_spacing=0.012)
             net = (net_a or 0.0) - (net_b or 0.0)
         ta_c, tb_c, geom_verdict = overlay_verdict(teal_ridges, terra_ridges, pos)
@@ -345,23 +356,39 @@ class MatchupVisualizer(FieldVisualizer):
             ax.add_patch(patches.Circle((cx, cy), R * GOAL_RING, fill=False,
                                         edgecolor='#D5CCB8', lw=1.6, zorder=1))
 
-            def draw_ridges(ridges, color):
+            def offset_pts(pts, dist):
+                out = []
+                for i, (x, y) in enumerate(pts):
+                    dx = pts[min(i + 1, len(pts) - 1)][0] - pts[max(i - 1, 0)][0]
+                    dy = pts[min(i + 1, len(pts) - 1)][1] - pts[max(i - 1, 0)][1]
+                    L = (dx * dx + dy * dy) ** 0.5 or 1.0
+                    out.append((x - dist * dy / L, y + dist * dx / L))
+                return out
+
+            def draw_ridges(ridges, color, side):
                 # tapered: flow is thickest at its source (the seed) and
-                # thins toward the goal — a real data property, not styling
+                # thins toward the goal — a real data property, not styling.
+                # Perpendicular offset (side=-1/+1) pairs overlapping flows
+                # side-by-side instead of stacking them — where both colours
+                # run, you SEE both (draw order no longer buries a colour).
                 for pts in ridges:
-                    n = len(pts)
+                    off = offset_pts(pts, 0.0045 * side)
+                    n = len(off)
                     for seg, w in ((0, 3.1), (1, 2.4), (2, 1.7)):
                         i0 = n * seg // 3
                         i1 = n * (seg + 1) // 3
                         if i1 <= i0:
                             continue
-                        xs = [p[0] for p in pts[i0:i1 + 1]]
-                        ys = [p[1] for p in pts[i0:i1 + 1]]
-                        ax.plot(xs, ys, color=color, lw=w, alpha=0.85,
+                        xs = [p[0] for p in off[i0:i1 + 1]]
+                        ys = [p[1] for p in off[i0:i1 + 1]]
+                        ax.plot(xs, ys, color=color, lw=w, alpha=0.72,
                                 solid_capstyle='round', zorder=3)
 
-            draw_ridges(teal_ridges, TEAL)
-            draw_ridges(terra_ridges, TERRA)
+            # alpha < 1 lets overlapping flows blend instead of burying the
+            # under-colour; teal on top so the goal-ring verdict zone doesn't
+            # read as one-sided for conceding teams (2026-08-30)
+            draw_ridges(terra_ridges, TERRA, side=+1)
+            draw_ridges(teal_ridges, TEAL, side=-1)
 
             ax.add_patch(patches.Circle((cx, cy), 0.018, facecolor=self.text_color,
                                         edgecolor='none', zorder=5))
