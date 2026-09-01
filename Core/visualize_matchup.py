@@ -903,7 +903,7 @@ class MatchupVisualizer(FieldVisualizer):
         b_own = {k: v for k, v in mat_b.items() if v > 0}
         b_con = {k: -v for k, v in mat_b.items() if v < 0}
 
-        def build_trace(edges, pos_map, goal):
+        def build_trace(edges, pos_map, goal, budget=None):
             if not edges:
                 return []
             f = build_field(edges, pos_map)
@@ -912,7 +912,7 @@ class MatchupVisualizer(FieldVisualizer):
             if seeds is None:
                 return []
             rr = _goal_reaching(
-                trace_streamlines(f, seeds, pos_map, ink,
+                trace_streamlines(f, seeds, pos_map, budget or ink,
                                   fx=f['xp'], fy=f['yp'], min_spacing=0.012),
                 goal[0], goal[1], R * GOAL_RING)
             # equal DENSITY across the four flows (top 5 by length) so the
@@ -925,13 +925,17 @@ class MatchupVisualizer(FieldVisualizer):
                + sum(b_own.values()) + sum(b_con.values()))
         shares = [sum(a_own.values()) / tot, sum(b_con.values()) / tot,
                   sum(b_own.values()) / tot, sum(a_con.values()) / tot]
-        # A_con conceded is flipped (pos_neg) to its true end — the bottom
-        # goal; B_con (flipped) concedes at the TOP goal (B defends the top).
+        # A_con: flipped to its true end — the bottom goal (opponents score
+        # at A's defensive end). B_con: in A's frame — opponents score at
+        # B's defensive end = the TOP goal, the same goal A attacks.
+        # conceded flows get DOUBLE the budget: their paths span the whole
+        # ground (longest ridges) so they starve at equal budgets — the
+        # invisible-concession bug (2026-09-01, Austin).
         flows = [
-            (build_trace(a_own, pos, (gx, gy)), TEAL, shares[0]),
-            (build_trace(b_con, pos_neg, (gx, gy)), GREY, shares[1]),
-            (build_trace(b_own, pos_neg, (gx, gy2)), TERRA, shares[2]),
-            (build_trace(a_con, pos_neg, (gx, gy2)), GREY, shares[3]),
+            (build_trace(a_own, pos, (gx, gy), ink / 3.0), TEAL, shares[0]),
+            (build_trace(b_con, pos, (gx, gy), ink / 2.0), GREY, shares[1]),
+            (build_trace(b_own, pos_neg, (gx, gy2), ink / 3.0), TERRA, shares[2]),
+            (build_trace(a_con, pos_neg, (gx, gy2), ink / 2.0), GREY, shares[3]),
         ]
 
         fig = plt.figure(figsize=(9, 12), facecolor=self.bg_color)
