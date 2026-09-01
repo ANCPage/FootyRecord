@@ -114,9 +114,9 @@ def main():
                                               up_to_round=pre_round)
             if not m_a or not m_b:
                 raise SystemExit(f'no pre-game fingerprint for R{a.round} {a.season}')
-            v.draw_game_prediction(ta, tb, m_a, m_b, a.season, a.round, out,
-                                   result_line=result_line, anim_path=anim,
-                                   ink=a.ink)
+            v.draw_game_delta(ta, tb, m_a, m_b, a.season, a.round, out,
+                              result_line=result_line, anim_path=anim,
+                              ink=a.ink)
         print(f'wrote {out}' + (f' + {anim}' if anim else ''))
         return
 
