@@ -709,6 +709,155 @@ class MatchupVisualizer(FieldVisualizer):
         self.save_and_close(fig, save_path, dpi=100)
 
 
+
+    def draw_game_prediction(self, a_id, b_id, mat_a, mat_b, season, round_num,
+                             save_path, result_line=None, anim_path=None,
+                             fps=24, ink=26.0):
+        """TWO-ENDED PRE-GAME prediction card (2026-09-01, Austin).
+
+        The model's actual process: each team's fingerprint through
+        R-1 (the information set at tip time), delta = A - rotate(B).
+        Positive delta edges press UP into the top GOAL; negative delta
+        edges (flipped to B's true orientation) press DOWN into the OPP
+        GOAL. The banner is sign(delta) — the video and the model arrive
+        at the same conclusion BY CONSTRUCTION.
+        """
+        from collections import Counter
+
+        from matplotlib.animation import FuncAnimation
+
+        from Core.engine_core import fingerprint_overlay
+        from Core.fingerprint_field import GOAL_RING, build_field, node_positions, trace_streamlines
+        from Core.mappings import TEAM_DATA
+
+        delta, net_a, net_b = fingerprint_overlay(mat_a, mat_b)
+        net = net_a - net_b
+        win_a = net >= 0
+        TEAL = TEAM_DATA.get(a_id, {}).get('primary', '#1F6F6B')
+        TERRA = TEAM_DATA.get(b_id, {}).get('primary', '#C1553A')
+        a_name = TEAM_DATA.get(a_id, {}).get('name', a_id)
+        b_name = TEAM_DATA.get(b_id, {}).get('name', b_id)
+        winner = a_name if win_a else b_name
+
+        pos = node_positions()
+        pos_neg = {k: (1.0 - x, 1.0 - y) for k, (x, y) in pos.items()}
+        gx, gy, gy2 = 0.5, 0.92, 0.08
+        R = 0.42
+        cx, cy = 0.5, 0.5
+
+        pos_edges = {k: v for k, v in delta.items() if v > 0}
+        neg_edges = {k: v for k, v in delta.items() if v < 0}
+        p_tot = sum(pos_edges.values())
+        n_tot = -sum(neg_edges.values())
+        ink_a = ink * p_tot / max(p_tot + n_tot, 1e-9)
+        ink_b = ink * n_tot / max(p_tot + n_tot, 1e-9)
+
+        fa = build_field(pos_edges, pos) if pos_edges else None
+        fb = build_field(neg_edges, pos_neg) if neg_edges else None
+
+        def source_seeds(edges, pos_map):
+            cnt = Counter(e.source for e in edges)
+            return _zone_seeds(cnt, pos_map) if cnt else None
+
+        seeds_a = source_seeds(pos_edges, pos) if fa else None
+        seeds_b = source_seeds(neg_edges, pos_neg) if fb else None
+        ridges_a = (_goal_reaching(
+            trace_streamlines(fa, seeds_a, pos, ink_a,
+                              fx=fa['xp'], fy=fa['yp'], min_spacing=0.012),
+            gx, gy, R * GOAL_RING) if fa and seeds_a else [])
+        ridges_b = (_goal_reaching(
+            trace_streamlines(fb, seeds_b, pos_neg, ink_b,
+                              fx=fb['xn'], fy=fb['yn'], min_spacing=0.012),
+            gx, gy2, R * GOAL_RING) if fb and seeds_b else [])
+
+        fig = plt.figure(figsize=(9, 12), facecolor=self.bg_color)
+        ax = fig.add_axes([0.06, 0.10, 0.88, 0.80])
+        ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.set_aspect('equal')
+        ax.axis('off')
+        for r_i in range(5):
+            rr = R * (0.14 + 0.82 * (4 - r_i) / 4.0)
+            ax.add_patch(patches.Circle((cx, cy), rr, fill=False,
+                                        edgecolor='#E3DCCB', lw=1.2, zorder=1))
+        fig.text(0.5, 0.955, 'FINGERPRINT', ha='center', fontsize=30,
+                 color=self.text_color, fontproperties=self.prop_title)
+        fig.text(0.5, 0.924,
+                 f'SEASON {season} · R{round_num} PREDICTION · {a_name.upper()} vs {b_name.upper()}',
+                 ha='center', fontsize=11.5, color=self.sub_text_color)
+
+        def draw_ridges(ridges, color, emphasis=1.0):
+            for pts in ridges:
+                ax.plot([p[0] for p in pts], [p[1] for p in pts],
+                        color=color, lw=2.4 * emphasis, alpha=0.95 * emphasis,
+                        solid_capstyle='round', zorder=4)
+
+        draw_ridges(ridges_b, TERRA, emphasis=0.62 if win_a else 1.0)
+        draw_ridges(ridges_a, TEAL, emphasis=1.0 if win_a else 0.62)
+
+        ax.add_patch(patches.Circle((gx, gy), 0.026, fill=False,
+                                    edgecolor=TEAL, lw=2.6, zorder=5))
+        ax.add_patch(patches.Circle((gx, gy), 0.012, facecolor=self.text_color,
+                                    edgecolor='none', zorder=5))
+        fig.text(gx, gy - 0.045, 'GOAL', ha='center', fontsize=13,
+                 color=self.text_color, fontproperties=self.prop_title)
+        ax.add_patch(patches.Circle((gx, gy2), 0.026, fill=False,
+                                    edgecolor=TERRA, lw=2.6, zorder=5))
+        ax.add_patch(patches.Circle((gx, gy2), 0.012, facecolor=TERRA,
+                                    edgecolor='none', zorder=5))
+        fig.text(gx, gy2 + 0.045, 'OPP GOAL', ha='center', fontsize=9.5,
+                 color=TERRA, fontproperties=self.prop_body, zorder=6)
+
+        fig.text(0.5, 0.062,
+                 "the model's view before the game: where each team wins the ball",
+                 ha='center', fontsize=11, color='#3E3A35',
+                 fontproperties=self.prop_body)
+        fig.text(0.30, 0.041, f'— {a_name.upper()} WINS', ha='center', fontsize=11,
+                 color=TEAL, fontproperties=self.prop_body)
+        fig.text(0.70, 0.041, f'— {b_name.upper()} WINS', ha='center', fontsize=11,
+                 color=TERRA, fontproperties=self.prop_body)
+        fig.text(0.5, 0.0285, f'MODEL PREDICTS {winner.upper()} · EDGE {abs(net):.3f}',
+                 ha='center', fontsize=13, color=self.text_color,
+                 fontproperties=self.prop_body, fontweight='bold')
+        fig.text(0.5, 0.0145, result_line or '', ha='center', fontsize=9.5,
+                 color=self.sub_text_color, fontproperties=self.prop_body)
+
+        if anim_path:
+            lines = ([(pts, TEAL) for pts in ridges_a]
+                     + [(pts, TERRA) for pts in ridges_b])
+            NFRAMES = 90
+            cap = fig.text(0.5, 0.078, '', ha='center', fontsize=12.5,
+                           color=self.sub_text_color, fontproperties=self.prop_body)
+
+            def frame(t):
+                prog_a = min(t / (NFRAMES * 0.42), 1.0)
+                prog_b = min((t - NFRAMES * 0.42) / (NFRAMES * 0.42), 1.0)
+                for ln in ax.lines:
+                    ln.remove()
+                for pts, color in lines:
+                    is_a = color == TEAL
+                    prog = prog_a if is_a else prog_b
+                    if prog <= 0:
+                        continue
+                    n = max(1, int(len(pts) * prog))
+                    em = 1.0 if (is_a == win_a) else 0.62
+                    ax.plot([p[0] for p in pts[:n]], [p[1] for p in pts[:n]],
+                            color=color, lw=2.4 * em, alpha=0.95 * em,
+                            solid_capstyle='round', zorder=4)
+                if t < NFRAMES * 0.42:
+                    cap.set_text(f'where {a_name} wins the ball (pre-game)')
+                elif t < NFRAMES * 0.84:
+                    cap.set_text(f'where {b_name} wins the ball (pre-game)')
+                else:
+                    cap.set_text(f'the model picks {winner}')
+                return []
+
+            anim = FuncAnimation(fig, frame, frames=NFRAMES, interval=1000 // fps)
+            anim.save(anim_path, writer='ffmpeg', fps=fps, dpi=100)
+            self.save_and_close(fig, save_path, dpi=100)
+            return
+
+        self.save_and_close(fig, save_path, dpi=100)
+
+
     def _animate_fingerprint(self, teal_ridges, terra_ridges, anim_path, fps,
                              single, a_name, b_name, season, round_num, net,
                              cx, cy, gx, gy, R, act_ridges=None):

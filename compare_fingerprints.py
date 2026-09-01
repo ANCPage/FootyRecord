@@ -40,6 +40,8 @@ def main():
     ap.add_argument('--team', help='single-team fingerprint')
     ap.add_argument('--game-a', help='GAME MODE: team A of the single game')
     ap.add_argument('--game-b', help='GAME MODE: team B of the single game')
+    ap.add_argument('--recap', action='store_true',
+                    help='GAME MODE: post-game recap (the actual chains of the match)')
     ap.add_argument('--team-a', help='overlay: team A')
     ap.add_argument('--team-b', help='overlay: team B')
     ap.add_argument('--season', type=int, default=2026)
@@ -76,12 +78,6 @@ def main():
     if a.game_a and a.game_b:
         ta, tb = resolve_team(a.game_a), resolve_team(a.game_b)
         conn = results_db.connect()
-        chains = state_store.match_scoring_chains(conn, a.season, a.round,
-                                                 ta, tb)
-        ca, cb = chains.get(ta, []), chains.get(tb, [])
-        if not ca and not cb:
-            conn.close()
-            raise SystemExit(f'no scoring chains for R{a.round} {a.season}')
         res = state_store.match_result(conn, a.season, a.round, ta, tb)
         conn.close()
         if res:
@@ -98,9 +94,29 @@ def main():
             f'FINGERPRINT_GAME_{a.game_a.replace(" ", "")}_vs_'
             f'{a.game_b.replace(" ", "")}_R{a.round}.png')
         anim = out.replace('.png', '.mp4') if a.animate else None
-        v.draw_game_fingerprint(ta, tb, ca, cb, a.season, a.round, out,
-                                result_line=result_line, anim_path=anim,
-                                ink=a.ink)
+        if a.recap:
+            conn = results_db.connect()
+            chains = state_store.match_scoring_chains(conn, a.season, a.round,
+                                                     ta, tb)
+            conn.close()
+            ca, cb = chains.get(ta, []), chains.get(tb, [])
+            if not ca and not cb:
+                raise SystemExit(f'no scoring chains for R{a.round} {a.season}')
+            v.draw_game_fingerprint(ta, tb, ca, cb, a.season, a.round, out,
+                                    result_line=result_line, anim_path=anim,
+                                    ink=a.ink)
+        else:
+            # PREDICTION card: the model's information set is R-1 (walk-forward)
+            pre_round = max(a.round - 1, 0)
+            m_a = ing.get_team_average_matrix(ta, up_to_season=a.season,
+                                              up_to_round=pre_round)
+            m_b = ing.get_team_average_matrix(tb, up_to_season=a.season,
+                                              up_to_round=pre_round)
+            if not m_a or not m_b:
+                raise SystemExit(f'no pre-game fingerprint for R{a.round} {a.season}')
+            v.draw_game_prediction(ta, tb, m_a, m_b, a.season, a.round, out,
+                                   result_line=result_line, anim_path=anim,
+                                   ink=a.ink)
         print(f'wrote {out}' + (f' + {anim}' if anim else ''))
         return
 
