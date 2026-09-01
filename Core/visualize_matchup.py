@@ -561,6 +561,154 @@ class MatchupVisualizer(FieldVisualizer):
             plt.close(fig)
             raise
 
+
+    def draw_game_fingerprint(self, a_id, b_id, chains_a, chains_b, season,
+                              round_num, save_path, result_line=None,
+                              anim_path=None, fps=24, ink=26.0):
+        """TWO-ENDED single-game card (2026-09-01, Austin).
+
+        Team A's real scoring chains press UP into the top GOAL; team B's
+        press DOWN into the OPP GOAL — the game as it was played, in club
+        colours, in the whorl style. No delta: each team's own chains at
+        their true orientation.
+        """
+        from collections import Counter
+
+        from matplotlib.animation import FuncAnimation
+
+        from Core.fingerprint_field import GOAL_RING, build_field, node_positions, trace_streamlines
+        from Core.mappings import TEAM_DATA
+
+        pos = node_positions()
+        TEAL = TEAM_DATA.get(a_id, {}).get('primary', '#1F6F6B')
+        TERRA = TEAM_DATA.get(b_id, {}).get('primary', '#C1553A')
+        a_name = TEAM_DATA.get(a_id, {}).get('name', a_id)
+        b_name = TEAM_DATA.get(b_id, {}).get('name', b_id)
+
+        def edges_of(chains):
+            from Core.models import TransitionEdge
+            edges = Counter()
+            for chain in chains:
+                for x, y in zip(chain[:-1], chain[1:]):
+                    if x != y:
+                        edges[TransitionEdge(x, y)] += 1
+                if chain:
+                    edges[TransitionEdge(chain[-1], 'SCORE')] += 1
+            return dict(edges)
+
+        def starts_of(chains):
+            return Counter(c[0] for c in chains if c)
+
+        gx, gy, gy2 = 0.5, 0.92, 0.08
+        R = 0.42
+        cx, cy = 0.5, 0.5
+        pos_neg = {k: (1.0 - x, 1.0 - y) for k, (x, y) in pos.items()}
+
+        # GLOBAL normalisation (2026-09-01): ink is split by each team's
+        # actual scoring-chain volume, so the team that scored more in the
+        # game reads stronger — the picture agrees with the scoreboard.
+        n_a, n_b = max(len(chains_a), 1), max(len(chains_b), 1)
+        ink_a = ink * n_a / (n_a + n_b)
+        ink_b = ink * n_b / (n_a + n_b)
+        fa = build_field(edges_of(chains_a), pos)
+        fb = build_field(edges_of(chains_b), pos_neg)
+        sa = starts_of(chains_a)
+        sb = starts_of(chains_b)
+        seeds_a = _zone_seeds(sa, pos) if sa else _whorl_seeds(40, rings=2, jitter=1.4)
+        seeds_b = _zone_seeds(sb, pos_neg) if sb else _whorl_seeds(40, rings=2, jitter=1.4)
+        ridges_a = _goal_reaching(trace_streamlines(fa, seeds_a, pos, ink_a,
+                                                    fx=fa['xp'], fy=fa['yp'],
+                                                    min_spacing=0.012),
+                                  gx, gy, R * GOAL_RING)
+        ridges_b = _goal_reaching(trace_streamlines(fb, seeds_b, pos_neg, ink_b,
+                                                    fx=fb['xp'], fy=fb['yp'],
+                                                    min_spacing=0.012),
+                                  gx, gy2, R * GOAL_RING)
+
+        fig = plt.figure(figsize=(9, 12), facecolor=self.bg_color)
+        ax = fig.add_axes([0.06, 0.10, 0.88, 0.80])
+        ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.set_aspect('equal')
+        ax.axis('off')
+        for r_i in range(5):
+            rr = R * (0.14 + 0.82 * (4 - r_i) / 4.0)
+            ax.add_patch(patches.Circle((cx, cy), rr, fill=False,
+                                        edgecolor='#E3DCCB', lw=1.2, zorder=1))
+        fig.text(0.5, 0.955, 'FINGERPRINT', ha='center', fontsize=30,
+                 color=self.text_color, fontproperties=self.prop_title)
+        fig.text(0.5, 0.924, f'SEASON {season} · R{round_num} · {a_name.upper()} vs {b_name.upper()}',
+                 ha='center', fontsize=11.5, color=self.sub_text_color)
+
+        def draw_ridges(ridges, color):
+            for pts in ridges:
+                xs = [p[0] for p in pts]; ys = [p[1] for p in pts]
+                ax.plot(xs, ys, color=color, lw=2.2, alpha=0.9,
+                        solid_capstyle='round', zorder=4)
+
+        draw_ridges(ridges_a, TEAL)
+        draw_ridges(ridges_b, TERRA)
+
+        # both goals
+        ax.add_patch(patches.Circle((gx, gy), 0.026, fill=False,
+                                    edgecolor=TEAL, lw=2.6, zorder=5))
+        ax.add_patch(patches.Circle((gx, gy), 0.012, facecolor=self.text_color,
+                                    edgecolor='none', zorder=5))
+        fig.text(gx, gy - 0.045, 'GOAL', ha='center', fontsize=13,
+                 color=self.text_color, fontproperties=self.prop_title)
+        ax.add_patch(patches.Circle((gx, gy2), 0.026, fill=False,
+                                    edgecolor=TERRA, lw=2.6, zorder=5))
+        ax.add_patch(patches.Circle((gx, gy2), 0.012, facecolor=TERRA,
+                                    edgecolor='none', zorder=5))
+        fig.text(gx, gy2 + 0.045, 'OPP GOAL', ha='center', fontsize=9.5,
+                 color=TERRA, fontproperties=self.prop_body, zorder=6)
+
+        fig.text(0.5, 0.062, "the lines = each team's scoring chains in this game · thicker = more often",
+                 ha='center', fontsize=11, color='#3E3A35',
+                 fontproperties=self.prop_body)
+        fig.text(0.30, 0.041, f'— {a_name.upper()}', ha='center', fontsize=11,
+                 color=TEAL, fontproperties=self.prop_body)
+        fig.text(0.70, 0.041, f'— {b_name.upper()}', ha='center', fontsize=11,
+                 color=TERRA, fontproperties=self.prop_body)
+        fig.text(0.5, 0.0265, result_line or '', ha='center', fontsize=12.5,
+                 color=self.text_color, fontproperties=self.prop_body,
+                 fontweight='bold')
+
+        if anim_path:
+            lines = ([(pts, TEAL) for pts in ridges_a]
+                     + [(pts, TERRA) for pts in ridges_b])
+            NFRAMES = 90
+            cap = fig.text(0.5, 0.078, '', ha='center', fontsize=12.5,
+                           color=self.sub_text_color, fontproperties=self.prop_body)
+
+            def frame(t):
+                prog_a = min(t / (NFRAMES * 0.42), 1.0)
+                prog_b = min((t - NFRAMES * 0.42) / (NFRAMES * 0.42), 1.0)
+                for ln in ax.lines:
+                    ln.remove()
+                for pts, color in lines:
+                    is_a = color == TEAL
+                    prog = prog_a if is_a else prog_b
+                    if prog <= 0:
+                        continue
+                    n = max(1, int(len(pts) * prog))
+                    ax.plot([p[0] for p in pts[:n]], [p[1] for p in pts[:n]],
+                            color=color, lw=2.2, alpha=0.9,
+                            solid_capstyle='round', zorder=4)
+                if t < NFRAMES * 0.42:
+                    cap.set_text(f'how {a_name} moves the ball to goal')
+                elif t < NFRAMES * 0.84:
+                    cap.set_text(f'how {b_name} moves the ball to goal')
+                else:
+                    cap.set_text('the game as it was played')
+                return []
+
+            anim = FuncAnimation(fig, frame, frames=NFRAMES, interval=1000 // fps)
+            anim.save(anim_path, writer='ffmpeg', fps=fps, dpi=100)
+            self.save_and_close(fig, save_path, dpi=100)
+            return
+
+        self.save_and_close(fig, save_path, dpi=100)
+
+
     def _animate_fingerprint(self, teal_ridges, terra_ridges, anim_path, fps,
                              single, a_name, b_name, season, round_num, net,
                              cx, cy, gx, gy, R, act_ridges=None):

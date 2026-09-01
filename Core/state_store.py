@@ -294,3 +294,52 @@ def scoring_chain_start_zones(conn, season: int, up_to_round: int) -> dict:
         if seq == 0:  # the chain's first event = its start zone
             first[team][grid] += 1
     return first
+
+
+def match_scoring_chains(conn, season: int, round_num: int,
+                         team_a: str = None, team_b: str = None) -> dict:
+    """All SCORE-outcome chains from ONE match, keyed by team.
+
+    Returns {team_id: [ [zone, zone, ...], ... ]} — the full zone sequence
+    of each scoring possession (the last zone is the shot origin).
+    Pass team_a/team_b to pick the specific matchup in the round.
+    """
+    if team_a and team_b:
+        m = conn.execute(
+            'SELECT m_id FROM matches WHERE season=? AND round=? '
+            'AND ((home=? AND away=?) OR (home=? AND away=?))',
+            (season, round_num, team_a, team_b, team_b, team_a)).fetchone()
+    else:
+        m = conn.execute(
+            'SELECT m_id FROM matches WHERE season=? AND round=?',
+            (season, round_num)).fetchone()
+    if m is None:
+        return {}
+    rows = conn.execute(
+        'SELECT team, seq, grid FROM chains WHERE m_id=? AND outcome=?  ORDER BY seq',
+        (m[0], 'SCORE')).fetchall()
+    chains = {}
+    for team, seq, grid in rows:
+        if grid in (None, ''):
+            continue
+        chains.setdefault(team, []).append(grid)
+    # group consecutive rows into per-chain sequences by (team, seq) runs
+    # (seq is per-chain monotonically increasing; a new chain starts when
+    #  seq drops back to 0)
+    out = {}
+    cur = []
+    prev_team = None
+    prev_seq = -1
+    for team, seq, grid in rows:
+        if grid in (None, ''):
+            continue
+        if team != prev_team or seq <= prev_seq:
+            if cur and prev_team:
+                out.setdefault(prev_team, []).append(cur)
+            cur = [grid]
+        else:
+            cur.append(grid)
+        prev_team, prev_seq = team, seq
+    if cur and prev_team:
+        out.setdefault(prev_team, []).append(cur)
+    return out

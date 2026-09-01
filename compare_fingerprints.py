@@ -38,6 +38,8 @@ def resolve_team(name: str) -> str:
 def main():
     ap = argparse.ArgumentParser(description='Team fingerprint card(s)')
     ap.add_argument('--team', help='single-team fingerprint')
+    ap.add_argument('--game-a', help='GAME MODE: team A of the single game')
+    ap.add_argument('--game-b', help='GAME MODE: team B of the single game')
     ap.add_argument('--team-a', help='overlay: team A')
     ap.add_argument('--team-b', help='overlay: team B')
     ap.add_argument('--season', type=int, default=2026)
@@ -52,9 +54,14 @@ def main():
     a = ap.parse_args()
 
     single = a.team is not None
+    game = bool(a.game_a or a.game_b)
+    if game and not (a.game_a and a.game_b):
+        ap.error('--game mode needs BOTH --game-a and --game-b')
     if single and (a.team_a or a.team_b):
         ap.error('use --team OR --team-a/--team-b, not both')
-    if not single and not (a.team_a and a.team_b):
+    if game and single:
+        ap.error('--game mode is exclusive with --team')
+    if not single and not game and not (a.team_a and a.team_b):
         ap.error('need --team, or --team-a AND --team-b')
 
     ing = DataIngestor(config.DATA_DIR)
@@ -65,6 +72,41 @@ def main():
         sz_conn, a.season, a.round)
     sz_conn.close()
     v = MatchupVisualizer()
+
+    if a.game_a and a.game_b:
+        ta, tb = resolve_team(a.game_a), resolve_team(a.game_b)
+        conn = results_db.connect()
+        chains = state_store.match_scoring_chains(conn, a.season, a.round,
+                                                 ta, tb)
+        ca, cb = chains.get(ta, []), chains.get(tb, [])
+        if not ca and not cb:
+            conn.close()
+            raise SystemExit(f'no scoring chains for R{a.round} {a.season}')
+        res = conn.execute(
+            'SELECT home, away, home_score, away_score, correct '
+            'FROM predictions WHERE season=? AND round=? '
+            'AND ((home=? AND away=?) OR (home=? AND away=?))',
+            (a.season, a.round, ta, tb, tb, ta)).fetchone()
+        conn.close()
+        if res:
+            home, away, hs, aw, correct = res
+            home_n = TEAM_DATA.get(home, {}).get('name', home)
+            away_n = TEAM_DATA.get(away, {}).get('name', away)
+            pick = home_n if hs > aw else away_n
+            result_line = (f'R{a.round}: {home_n} {hs}–{away_n} {aw} · '
+                           f'model {"correct" if correct else "wrong"} · picked {pick}')
+        else:
+            result_line = f'R{a.round} · model prediction pending'
+        out = a.out or os.path.join(
+            config.OUTPUT_DIR, str(a.season), 'ANALYSIS',
+            f'FINGERPRINT_GAME_{a.game_a.replace(" ", "")}_vs_'
+            f'{a.game_b.replace(" ", "")}_R{a.round}.png')
+        anim = out.replace('.png', '.mp4') if a.animate else None
+        v.draw_game_fingerprint(ta, tb, ca, cb, a.season, a.round, out,
+                                result_line=result_line, anim_path=anim,
+                                ink=a.ink)
+        print(f'wrote {out}' + (f' + {anim}' if anim else ''))
+        return
 
     if single:
         tid = resolve_team(a.team)
