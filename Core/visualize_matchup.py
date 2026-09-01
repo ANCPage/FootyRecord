@@ -3,10 +3,12 @@ import math
 import matplotlib
 
 matplotlib.use('Agg')
+from collections import Counter
 from typing import Dict, List
 
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
+import numpy as np
 
 from Core.engine_core import home_favored
 from Core.field_visualizer import FieldVisualizer
@@ -256,7 +258,7 @@ class MatchupVisualizer(FieldVisualizer):
                          net_a: float = None, net_b: float = None,
                          delta: Dict = None, animate: bool = False,
                          anim_path: str = None, fps: int = 24,
-                         ink: float = 26.0):
+                         ink: float = 26.0, start_zones: dict = None):
         """Team fingerprint(s) as a WHORLFIELD card (2026-08-30).
 
         Design (delegated generative-art pass — Whorlfield concept):
@@ -307,7 +309,9 @@ class MatchupVisualizer(FieldVisualizer):
             field = build_field(matrix_a, pos)
             pos_share = (sum(v for v in matrix_a.values() if v > 0)
                          / max(sum(abs(v) for v in matrix_a.values()), 1e-9))
-            seeds = _whorl_seeds(48, rings=2, jitter=1.4)
+            sz = (start_zones or {}).get(team_a)
+            seeds = _zone_seeds(sz, pos) if sz else _whorl_seeds(
+                48, rings=2, jitter=1.4)
             # teal follows the OWN-scoring flow, terra the CONCEDED flow —
             # tracing both through the signed field is the all-one-colour bug
             # (2026-08-30: North's teal ridges died in their negative flow)
@@ -333,7 +337,7 @@ class MatchupVisualizer(FieldVisualizer):
                 from Core.engine_core import fingerprint_overlay
                 delta, net_a, net_b = fingerprint_overlay(matrix_a, matrix_b)
             dfield = build_delta_field(delta, pos)
-            seeds = _whorl_seeds(56, rings=2, jitter=1.4)
+            seeds = _whorl_seeds(56, rings=2, jitter=1.4)  # shared seed grid
             d_pos = sum(v for v in delta.values() if v > 0)
             d_neg = sum(-v for v in delta.values() if v < 0)
             d_share = d_pos / max(d_pos + d_neg, 1e-9)
@@ -512,7 +516,10 @@ class MatchupVisualizer(FieldVisualizer):
                     # 3-act press needs each team's OWN field ridges too
                     fa = build_field(matrix_a, pos)
                     fb = build_field(matrix_b, pos)
-                    sd = _whorl_seeds(56, rings=2, jitter=1.4)
+                    sz_a = (start_zones or {}).get(team_a) or Counter()
+                    sz_b = (start_zones or {}).get(team_b) or Counter()
+                    sd = (_zone_seeds(sz_a + sz_b, pos) if (sz_a or sz_b) else
+                          _whorl_seeds(56, rings=2, jitter=1.4))
                     act_ridges = (
                         _goal_reaching(trace_streamlines(
                             fa, sd, pos, ink, fx=fa['x'], fy=fa['y'],
@@ -725,6 +732,27 @@ def _goal_reaching(ridges, cx, cy, ring, tol=2.2):
         if math.hypot(x - cx, y - cy) < ring * tol:
             keep.append(r)
     return keep
+
+def _zone_seeds(start_counter, pos, n_total=56, jitter=0.012):
+    """Seeds at the team's real chain-START zones (2026-09-01, Austin).
+
+    Each scoring possession began in one of the 15 zones; the whorl's lines
+    must start there (data), not at arbitrary integration rings. Seed count
+    per zone is proportional to the zone's start frequency; a small jitter
+    lets the lines fan out like the previous swirl.
+    """
+    total = sum(start_counter.values())
+    if not total:
+        return _whorl_seeds(n_total, rings=2, jitter=1.4)
+    rng = np.random.default_rng(20260901)
+    seeds = []
+    for zone, count in start_counter.most_common():
+        n = max(1, round(n_total * count / total))
+        for _ in range(n):
+            x, y = pos[zone]
+            seeds.append((x + rng.uniform(-jitter, jitter),
+                          y + rng.uniform(-jitter, jitter)))
+    return seeds
 
 def _whorl_seeds(n: int, rings: int = 1, jitter: float = 0.0):
     """Seeds on concentric rings (outer rim + mid ring), with a tiny angle

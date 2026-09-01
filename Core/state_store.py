@@ -272,3 +272,25 @@ def meta_get(conn, key: str) -> str:
 def meta_set(conn, key: str, value: str) -> None:
     conn.execute("INSERT OR REPLACE INTO meta VALUES (?,?)", (key, value))
     conn.commit()
+
+
+def scoring_chain_start_zones(conn, season: int, up_to_round: int) -> dict:
+    """Chain-START zone per team for SCORE-outcome chains (model scope).
+
+    {team_id: Counter(first-zone)} — the zones where the team's scoring
+    possessions actually began, through the given round. 2026-09-01: the
+    whorl's line starts must be data, not integration seeds (Austin).
+    """
+    from collections import Counter, defaultdict
+    rows = conn.execute(
+        "SELECT ch.m_id, ch.chain_idx, ch.seq, ch.team, ch.grid "
+        "FROM chains ch JOIN matches m ON ch.m_id = m.m_id "
+        "WHERE ch.outcome = 'SCORE' AND m.season = ? AND m.round <= ? "
+        "ORDER BY ch.m_id, ch.chain_idx, ch.seq",
+        (season, up_to_round),
+    ).fetchall()
+    first = defaultdict(Counter)
+    for m_id, cidx, seq, team, grid in rows:
+        if seq == 0:  # the chain's first event = its start zone
+            first[team][grid] += 1
+    return first

@@ -199,3 +199,21 @@ def test_delta_field_colour_matches_verdict_sign():
     assert terra_len > teal_len, (
         f'picture contradicts the verdict: teal {teal_len} vs terra {terra_len} '
         f'for net {net:+.4f}')
+
+
+def test_scoring_chain_start_zones_are_real_zones():
+    """The whorl's line starts are data: chain-START zones of SCORE chains."""
+    from Core import results_db, state_store
+    conn = results_db.connect()
+    starts = state_store.scoring_chain_start_zones(conn, 2026, 25)
+    conn.close()
+    north = starts.get('CD_T100')
+    syd = starts.get('CD_T160')
+    assert north and syd, 'both teams must have start zones'
+    assert sum(north.values()) > 400, 'North ~527 scoring chains through R25'
+    assert all(z in GRID_NAMES_15 for z in north)
+    assert all(z in GRID_NAMES_15 for z in syd)
+
+
+GRID_NAMES_15 = [g for row in __import__(
+    'Core.geometry', fromlist=['GRID_NAMES']).GRID_NAMES for g in row]

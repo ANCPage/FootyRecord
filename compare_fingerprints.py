@@ -59,6 +59,11 @@ def main():
 
     ing = DataIngestor(config.DATA_DIR)
     ing.load_all_data(light=True)
+    from Core import results_db, state_store
+    sz_conn = results_db.connect()
+    start_zones = state_store.scoring_chain_start_zones(
+        sz_conn, a.season, a.round)
+    sz_conn.close()
     v = MatchupVisualizer()
 
     if single:
@@ -70,7 +75,8 @@ def main():
                                     f'FINGERPRINT_{TEAM_DATA[tid]["name"].replace(" ", "")}_R{a.round}.png')
         anim = out.replace('.png', '.mp4') if a.animate else None
         v.draw_fingerprint(tid, None, m, {}, a.season, a.round, out, single=True,
-                           animate=a.animate, anim_path=anim, ink=a.ink)
+                           animate=a.animate, anim_path=anim, ink=a.ink,
+                           start_zones=start_zones)
     else:
         ta, tb = resolve_team(a.team_a), resolve_team(a.team_b)
         m_a = ing.get_team_average_matrix(ta, up_to_season=a.season, up_to_round=a.round)
@@ -85,7 +91,8 @@ def main():
         anim = out.replace('.png', '.mp4') if a.animate else None
         v.draw_fingerprint(ta, tb, m_a, m_b, a.season, a.round, out,
                            single=False, net_a=net_a, net_b=net_b, delta=delta,
-                           animate=a.animate, anim_path=anim, ink=a.ink)
+                           animate=a.animate, anim_path=anim, ink=a.ink,
+                           start_zones=start_zones)
     print(f'wrote {out}')
 
 
