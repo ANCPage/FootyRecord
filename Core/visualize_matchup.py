@@ -320,10 +320,25 @@ class MatchupVisualizer(FieldVisualizer):
                 trace_streamlines(field, seeds, pos, ink * pos_share,
                                   fx=field['xp'], fy=field['yp'],
                                   min_spacing=0.012), gx, gy, R * GOAL_RING)
-            ridges_neg = _goal_reaching(
-                trace_streamlines(field, seeds, pos, ink * (1 - pos_share),
-                                  fx=field['xn'], fy=field['yn'],
-                                  min_spacing=0.012), gx, gy, R * GOAL_RING)
+            # CONCEDED FLIP (2026-09-01, Austin): the conceded chains are
+            # shown at their TRUE orientation — heading to the OPPOSITION
+            # goal at the bottom, not rotated into the home frame. The
+            # 180-degree rotation is un-done (positions mirrored x AND y),
+            # and the conceded field is traced to the bottom goal.
+            gy2 = 0.08
+            pos_neg = {k: (1.0 - x, 1.0 - y) for k, (x, y) in pos.items()}
+            neg_edges = {k: v for k, v in matrix_a.items() if v < 0}
+            if neg_edges:
+                neg_field = build_field(neg_edges, pos_neg)
+                seeds_neg = _zone_seeds(sz, pos_neg) if sz else seeds
+                ridges_neg = _goal_reaching(
+                    trace_streamlines(neg_field, seeds_neg, pos_neg,
+                                      ink * (1 - pos_share),
+                                      fx=neg_field['xn'], fy=neg_field['yn'],
+                                      min_spacing=0.012),
+                    gx, gy2, R * GOAL_RING)
+            else:
+                ridges_neg = []
             # budget is a cap; the BALANCE is enforced structurally so the
             # colour ratio matches the data's weight ratio (equal-ink truth)
             teal_ridges, terra_ridges = balance_ridges(ridges_pos, ridges_neg,
@@ -452,6 +467,15 @@ class MatchupVisualizer(FieldVisualizer):
                                         edgecolor='none', zorder=5))
             fig.text(gx, gy - 0.050, 'GOAL', ha='center', fontsize=13,
                      color=self.text_color, fontproperties=self.prop_title)
+            if single:
+                # the OPPOSITION goal at the bottom (conceded flow, flipped)
+                ax.add_patch(patches.Circle((gx, gy2), 0.026, fill=False,
+                                            edgecolor=TERRA, lw=2.6, zorder=5))
+                ax.add_patch(patches.Circle((gx, gy2), 0.012,
+                                            facecolor=TERRA, edgecolor='none',
+                                            zorder=5))
+                fig.text(gx, gy2 + 0.045, 'OPP GOAL', ha='center', fontsize=9.5,
+                         color=TERRA, fontproperties=self.prop_body, zorder=6)
 
             # legend
             if single:
@@ -730,7 +754,7 @@ def _goal_reaching(ridges, cx, cy, ring, tol=2.2):
     keep = []
     for r in ridges:
         x, y = r[-1]
-        if math.hypot(x - cx, y - cy) < ring * tol:
+        if math.hypot(x - cx, y - cy) < ring * tol and min(p[1] for p in r) >= 0.06:
             keep.append(r)
     return keep
 
