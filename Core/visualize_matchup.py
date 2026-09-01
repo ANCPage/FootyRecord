@@ -952,18 +952,22 @@ class MatchupVisualizer(FieldVisualizer):
                  f'SEASON {season} · R{round_num} PREDICTION · {a_name.upper()} vs {b_name.upper()}',
                  ha='center', fontsize=11.5, color=self.sub_text_color)
 
+        from Core.engine_core import fingerprint_overlay
+        d, _, _ = fingerprint_overlay(mat_a, mat_b)
+        d_pos = {e: v for e, v in d.items() if v > 0}
+        d_neg = {e: -v for e, v in d.items() if v < 0}
+        d_up = build_trace(d_pos, pos, (gx, gy), ink / 2.0)
+        d_dn = build_trace(d_neg, pos_neg, (gx, gy2), ink / 2.0)
+        win_goal = (gx, gy) if win_a else (gx, gy2)
+        win_col = TEAL if win_a else TERRA
         max_share = max(shares)
-        for ridges, color, share in flows:
-            em = 0.0
-            if color == TEAL and win_a:
-                em = 0.5
-            elif color == TERRA and not win_a:
-                em = 0.5
-            lw = 1.6 + 3.0 * (share / max_share) + em
+        for color, ridges in ((TEAL, d_up), (TERRA, d_dn)):
             for pts in ridges:
                 ax.plot([p[0] for p in pts], [p[1] for p in pts],
-                        color=color, lw=lw, alpha=0.9,
+                        color=color, lw=2.6, alpha=0.95,
                         solid_capstyle='round', zorder=4)
+        ax.add_patch(patches.Circle(win_goal, 0.036, fill=False,
+                                    edgecolor=win_col, lw=3.4, zorder=6))
 
         ax.add_patch(patches.Circle((gx, gy), 0.026, fill=False,
                                     edgecolor=TEAL, lw=2.6, zorder=5))
@@ -978,14 +982,12 @@ class MatchupVisualizer(FieldVisualizer):
         fig.text(gx, gy2 + 0.045, 'OPP GOAL', ha='center', fontsize=9.5,
                  color=self.text_color, fontproperties=self.prop_body, zorder=6)
 
-        fig.text(0.5, 0.064, 'the model\'s view before the game — the delta, built from four flows',
+        fig.text(0.5, 0.064, 'the model\'s view before the game — the delta: where each team wins the ball',
                  ha='center', fontsize=10.5, color='#3E3A35',
                  fontproperties=self.prop_body)
-        fig.text(0.18, 0.040, f'— {a_name.upper()} ATTACKS', ha='center', fontsize=9.5,
+        fig.text(0.22, 0.040, f'— {a_name.upper()} WINS (up)', ha='center', fontsize=9.5,
                  color=TEAL, fontproperties=self.prop_body)
-        fig.text(0.44, 0.040, '— CONCEDED', ha='center', fontsize=9.5,
-                 color=GREY, fontproperties=self.prop_body)
-        fig.text(0.68, 0.040, f'— {b_name.upper()} ATTACKS', ha='center', fontsize=9.5,
+        fig.text(0.72, 0.040, f'— {b_name.upper()} WINS (down)', ha='center', fontsize=9.5,
                  color=TERRA, fontproperties=self.prop_body)
         fig.text(0.5, 0.0265, f'MODEL PREDICTS {winner.upper()} · EDGE {abs(net):.3f}',
                  ha='center', fontsize=13, color=self.text_color,
@@ -998,27 +1000,62 @@ class MatchupVisualizer(FieldVisualizer):
             cap = fig.text(0.5, 0.080, '', ha='center', fontsize=12.5,
                            color=self.sub_text_color, fontproperties=self.prop_body)
 
+            ring = ax.add_patch(patches.Circle(win_goal, 0.036, fill=False,
+                                               edgecolor=win_col, lw=3.4, zorder=6))
+            ring.set_alpha(0.0)
+
             def frame(t):
                 for ln in ax.lines:
                     ln.remove()
-                for i, (ridges, color, share) in enumerate(flows):
-                    prog = min((t - NFRAMES * i / 4.0) / (NFRAMES / 4.0), 1.0)
-                    if prog <= 0:
-                        continue
-                    em = 0.5 if ((color == TEAL and win_a)
-                                 or (color == TERRA and not win_a)) else 0.0
-                    lw = 1.6 + 3.0 * (share / max_share) + em
-                    for pts in ridges:
-                        n = max(1, int(len(pts) * prog))
-                        ax.plot([p[0] for p in pts[:n]], [p[1] for p in pts[:n]],
-                                color=color, lw=lw, alpha=0.9,
-                                solid_capstyle='round', zorder=4)
                 acts = [f'how {a_name} scores (up)',
                         f'what {b_name} concedes (up)',
                         f'how {b_name} scores (down)',
-                        f'what {a_name} concedes (down)',
-                        f'the delta resolves — the model picks {winner}']
-                cap.set_text(acts[min(int(t / (NFRAMES / 4.0)), 4)])
+                        f'what {a_name} concedes (down)']
+                if t < NFRAMES * 0.40:
+                    # ACT 1: the four flows press in — the ingredients
+                    for i, (ridges, color, share) in enumerate(flows):
+                        prog = min((t - NFRAMES * 0.40 * i / 4.0) / (NFRAMES * 0.10), 1.0)
+                        if prog <= 0:
+                            continue
+                        em = 0.5 if ((color == TEAL and win_a)
+                                     or (color == TERRA and not win_a)) else 0.0
+                        lw = 1.6 + 3.0 * (share / max_share) + em
+                        for pts in ridges:
+                            n = max(1, int(len(pts) * prog))
+                            ax.plot([p[0] for p in pts[:n]], [p[1] for p in pts[:n]],
+                                    color=color, lw=lw, alpha=0.9,
+                                    solid_capstyle='round', zorder=4)
+                    cap.set_text(acts[min(int(t / (NFRAMES * 0.10)), 3)])
+                elif t < NFRAMES * 0.80:
+                    # ACT 2: the four flows fade, the DELTA inks in
+                    f = (t - NFRAMES * 0.40) / (NFRAMES * 0.40)
+                    fade = max(0.0, 1.0 - f * 2.0)
+                    for i, (ridges, color, share) in enumerate(flows):
+                        em = 0.5 if ((color == TEAL and win_a)
+                                     or (color == TERRA and not win_a)) else 0.0
+                        lw = 1.6 + 3.0 * (share / max_share) + em
+                        for pts in ridges:
+                            ax.plot([p[0] for p in pts], [p[1] for p in pts],
+                                    color=color, lw=lw, alpha=0.9 * fade,
+                                    solid_capstyle='round', zorder=4)
+                    ink = min(f * 2.0, 1.0)
+                    for color, dr in ((TEAL, d_up), (TERRA, d_dn)):
+                        for pts in dr:
+                            n = max(1, int(len(pts) * ink))
+                            ax.plot([p[0] for p in pts[:n]], [p[1] for p in pts[:n]],
+                                    color=color, lw=2.6, alpha=0.95 * ink,
+                                    solid_capstyle='round', zorder=4)
+                    cap.set_text('the delta — where each team wins the ball')
+                else:
+                    # ACT 3: the delta holds, the winner ring lands
+                    f = (t - NFRAMES * 0.80) / (NFRAMES * 0.20)
+                    for color, dr in ((TEAL, d_up), (TERRA, d_dn)):
+                        for pts in dr:
+                            ax.plot([p[0] for p in pts], [p[1] for p in pts],
+                                    color=color, lw=2.6, alpha=0.95,
+                                    solid_capstyle='round', zorder=4)
+                    ring.set_alpha(min(f * 2.0, 1.0))
+                    cap.set_text(f'the delta decides — the model picks {winner}')
                 return []
 
             anim = FuncAnimation(fig, frame, frames=NFRAMES, interval=1000 // fps)
