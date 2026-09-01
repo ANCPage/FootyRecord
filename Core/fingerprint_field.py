@@ -41,28 +41,30 @@ MAX_LEN = 3.0
 
 
 def node_positions() -> Dict[str, Tuple[float, float]]:
-    """Node positions in the whorl geometry (unit square, goal at centre).
+    """Zones at their TRUE field positions (2026-09-01, Austin).
 
-    radius = depth from goal (A-row outermost/deepest, E-row hugging the
-    goal); angle = lane (rows 1..3 spread symmetrically around the top).
+    The chains must appear where they actually took place: a straight 5x3
+    grid inside the circular frame — goal at the top, defensive end (A-row)
+    at the bottom, lanes 1-3 left/centre/right at constant width (a real
+    ground's boundary lines are parallel, not a funnel). The whorl's frame,
+    curves and motion stay; only the geometry is true to the field.
 
     NOTE (2026-08-30, caught by a subagent's comprehension question): the
     original implementation had this SWAPPED — lane->radius, depth->angle —
     which put E1 (the attacking end) on the outermost ring next to A1 (the
     defensive end), silently contradicting the docstring and the design.
     """
-    import math
 
     from Core.geometry import GRID_NAMES
 
-    cx, cy, R = 0.5, 0.52, 0.40
+    GOAL = (0.5, 0.92)
     pos = {}
     for lane_i, row in enumerate(GRID_NAMES):   # GRID_NAMES rows = lanes 1..3
         for depth_i, name in enumerate(row):    # GRID_NAMES cols = depth A..E
-            radius = R * (0.20 + 0.76 * (4 - depth_i) / 4.0)
-            angle = math.radians(90 + (lane_i - 1) * 38)
-            pos[name] = (cx + radius * math.cos(angle), cy + radius * math.sin(angle))
-    pos['SCORE'] = (cx, cy)
+            x = 0.5 + (lane_i - 1) * 0.26       # lanes parallel, constant width
+            y = 0.16 + 0.17 * depth_i           # A bottom .. E near the goal
+            pos[name] = (x, y)
+    pos['SCORE'] = GOAL
     return pos
 
 

@@ -302,7 +302,8 @@ class MatchupVisualizer(FieldVisualizer):
         a_name = TEAM_DATA.get(team_a, {}).get('name', team_a)
         b_name = TEAM_DATA.get(team_b, {}).get('name', team_b) if team_b else None
         pos = node_positions()
-        cx, cy, R = 0.5, 0.52, 0.40
+        cx, cy, R = 0.5, 0.5, 0.42   # whorl frame centred at MIDFIELD
+        gx, gy = 0.5, 0.92           # the GOAL: top of the circle (true field)
 
         # ---------------- ridge generation (pure math)
         if single:
@@ -318,11 +319,11 @@ class MatchupVisualizer(FieldVisualizer):
             ridges_pos = _goal_reaching(
                 trace_streamlines(field, seeds, pos, ink * pos_share,
                                   fx=field['xp'], fy=field['yp'],
-                                  min_spacing=0.012), cx, cy, R * GOAL_RING)
+                                  min_spacing=0.012), gx, gy, R * GOAL_RING)
             ridges_neg = _goal_reaching(
                 trace_streamlines(field, seeds, pos, ink * (1 - pos_share),
                                   fx=field['xn'], fy=field['yn'],
-                                  min_spacing=0.012), cx, cy, R * GOAL_RING)
+                                  min_spacing=0.012), gx, gy, R * GOAL_RING)
             # budget is a cap; the BALANCE is enforced structurally so the
             # colour ratio matches the data's weight ratio (equal-ink truth)
             teal_ridges, terra_ridges = balance_ridges(ridges_pos, ridges_neg,
@@ -344,11 +345,11 @@ class MatchupVisualizer(FieldVisualizer):
             teal_ridges = _goal_reaching(
                 trace_streamlines(dfield, seeds, pos, ink * d_share,
                                   fx=dfield['xp'], fy=dfield['yp'],
-                                  min_spacing=0.012), cx, cy, R * GOAL_RING)
+                                  min_spacing=0.012), gx, gy, R * GOAL_RING)
             terra_ridges = _goal_reaching(
                 trace_streamlines(dfield, seeds, pos, ink * (1 - d_share),
                                   fx=dfield['xn'], fy=dfield['yn'],
-                                  min_spacing=0.012), cx, cy, R * GOAL_RING)
+                                  min_spacing=0.012), gx, gy, R * GOAL_RING)
             teal_ridges, terra_ridges = balance_ridges(teal_ridges, terra_ridges,
                                                        d_share)
             net = (net_a or 0.0) - (net_b or 0.0)
@@ -399,7 +400,7 @@ class MatchupVisualizer(FieldVisualizer):
                         [cy + 0.02 * math.sin(ang), cy + R * math.sin(ang)],
                         color='#EAE4D5', lw=1.0, zorder=1)
             # goal ring (the verdict ring)
-            ax.add_patch(patches.Circle((cx, cy), R * GOAL_RING, fill=False,
+            ax.add_patch(patches.Circle((gx, gy), R * GOAL_RING, fill=False,
                                         edgecolor='#D5CCB8', lw=1.6, zorder=1))
 
             def offset_pts(pts, dist):
@@ -447,9 +448,9 @@ class MatchupVisualizer(FieldVisualizer):
                 draw_ridges(teal_ridges, TEAL, side=-1,
                             emphasis=1.0 if win_teal else 0.62)
 
-            ax.add_patch(patches.Circle((cx, cy), 0.018, facecolor=self.text_color,
+            ax.add_patch(patches.Circle((gx, gy), 0.018, facecolor=self.text_color,
                                         edgecolor='none', zorder=5))
-            fig.text(cx, cy - 0.052, 'GOAL', ha='center', fontsize=13,
+            fig.text(gx, gy - 0.050, 'GOAL', ha='center', fontsize=13,
                      color=self.text_color, fontproperties=self.prop_title)
 
             # legend
@@ -523,14 +524,14 @@ class MatchupVisualizer(FieldVisualizer):
                     act_ridges = (
                         _goal_reaching(trace_streamlines(
                             fa, sd, pos, ink, fx=fa['x'], fy=fa['y'],
-                            min_spacing=0.012), cx, cy, R * GOAL_RING),
+                            min_spacing=0.012), gx, gy, R * GOAL_RING),
                         _goal_reaching(trace_streamlines(
                             fb, sd, pos, ink, fx=fb['x'], fy=fb['y'],
-                            min_spacing=0.012), cx, cy, R * GOAL_RING),
+                            min_spacing=0.012), gx, gy, R * GOAL_RING),
                     )
                 self._animate_fingerprint(teal_ridges, terra_ridges, anim_path,
                                           fps, single, a_name, b_name, season,
-                                          round_num, net, cx, cy, R,
+                                          round_num, net, cx, cy, gx, gy, R,
                                           act_ridges=act_ridges)
         except Exception:
             plt.close(fig)
@@ -538,7 +539,7 @@ class MatchupVisualizer(FieldVisualizer):
 
     def _animate_fingerprint(self, teal_ridges, terra_ridges, anim_path, fps,
                              single, a_name, b_name, season, round_num, net,
-                             cx, cy, R, act_ridges=None):
+                             cx, cy, gx, gy, R, act_ridges=None):
         """The press, in three acts (2026-08-30).
 
         Single mode: the team's whorl inks in, rim -> goal.
@@ -583,13 +584,13 @@ class MatchupVisualizer(FieldVisualizer):
         # stops ridges at R*GOAL_RING, but with no visible boundary the
         # converging tips read as crossing the centre (esp. at phone size).
         ring_r = R * 0.16
-        win_col_anim = '#1F6F6B' if (single or net > 0) else '#C1553A'
-        ax.add_patch(patches.Circle((cx, cy), ring_r, fill=False,
+        win_col_anim = TEAL if (single or net > 0) else TERRA
+        ax.add_patch(patches.Circle((gx, gy), ring_r, fill=False,
                                     edgecolor=win_col_anim, lw=4.0, alpha=0.9,
                                     zorder=5))
-        ax.add_patch(patches.Circle((cx, cy), 0.014, facecolor=self.text_color,
+        ax.add_patch(patches.Circle((gx, gy), 0.014, facecolor=self.text_color,
                                     edgecolor='none', zorder=6))
-        ax.text(cx, cy - 0.045, 'GOAL', ha='center', fontsize=11,
+        ax.text(gx, gy - 0.045, 'GOAL', ha='center', fontsize=11,
                 color=self.text_color, fontproperties=self.prop_title, zorder=6)
 
         def seed_rad(pts):
@@ -618,9 +619,9 @@ class MatchupVisualizer(FieldVisualizer):
         # to MEANING, not just to the team name)
         if single:
             fig.text(0.28, 0.028, 'OWN SCORING FLOW', ha='center',
-                     fontsize=10, color='#1F6F6B', fontproperties=self.prop_body)
-            fig.text(0.72, 0.028, 'RED — CONCEDED', ha='center',
-                     fontsize=10, color='#C1553A', fontproperties=self.prop_body)
+                     fontsize=10, color=TEAL, fontproperties=self.prop_body)
+            fig.text(0.72, 0.028, 'CONCEDED', ha='center',
+                     fontsize=10, color=TERRA, fontproperties=self.prop_body)
         else:
             fig.text(0.30, 0.028, f'{a_name.upper()} WINS THE FLOW',
                      ha='center', fontsize=9.5, color='#1F6F6B',
