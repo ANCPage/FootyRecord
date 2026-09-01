@@ -82,11 +82,7 @@ def main():
         if not ca and not cb:
             conn.close()
             raise SystemExit(f'no scoring chains for R{a.round} {a.season}')
-        res = conn.execute(
-            'SELECT home, away, home_score, away_score, correct '
-            'FROM predictions WHERE season=? AND round=? '
-            'AND ((home=? AND away=?) OR (home=? AND away=?))',
-            (a.season, a.round, ta, tb, tb, ta)).fetchone()
+        res = state_store.match_result(conn, a.season, a.round, ta, tb)
         conn.close()
         if res:
             home, away, hs, aw, correct = res
