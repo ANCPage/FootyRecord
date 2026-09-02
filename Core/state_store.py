@@ -348,7 +348,7 @@ def match_scoring_chains(conn, season: int, round_num: int,
 def match_result(conn, season: int, round_num: int, team_a: str, team_b: str):
     """Prediction + actual result row for a specific matchup."""
     return conn.execute(
-        'SELECT home, away, home_score, away_score, correct '
+        'SELECT home, away, home_score, away_score, margin, correct '
         'FROM predictions WHERE season=? AND round=? '
         'AND ((home=? AND away=?) OR (home=? AND away=?))',
         (season, round_num, team_a, team_b, team_b, team_a)).fetchone()

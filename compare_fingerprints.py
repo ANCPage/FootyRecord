@@ -80,13 +80,18 @@ def main():
         conn = results_db.connect()
         res = state_store.match_result(conn, a.season, a.round, ta, tb)
         conn.close()
+        model_winner = None
         if res:
-            home, away, hs, aw, correct = res
+            home, away, hs, aw, margin, correct = res
             home_n = TEAM_DATA.get(home, {}).get('name', home)
             away_n = TEAM_DATA.get(away, {}).get('name', away)
-            pick = home_n if hs > aw else away_n
+            # E1/E2 (2026-09-02 audit): the model's pick is the SHIPPED
+            # decision = stored margin sign (home - away), never the actual
+            # score. The card's verdict must match the walk-forward record.
+            model_winner = home if margin > 0 else away
+            pick_n = home_n if margin > 0 else away_n
             result_line = (f'R{a.round}: {home_n} {hs}–{away_n} {aw} · '
-                           f'model {"correct" if correct else "wrong"} · picked {pick}')
+                           f'model {"correct" if correct else "wrong"} · picked {pick_n}')
         else:
             result_line = f'R{a.round} · model prediction pending'
         out = a.out or os.path.join(
@@ -116,7 +121,7 @@ def main():
                 raise SystemExit(f'no pre-game fingerprint for R{a.round} {a.season}')
             v.draw_game_delta(ta, tb, m_a, m_b, a.season, a.round, out,
                               result_line=result_line, anim_path=anim,
-                              ink=a.ink)
+                              ink=a.ink, model_winner=model_winner)
         print(f'wrote {out}' + (f' + {anim}' if anim else ''))
         return
 

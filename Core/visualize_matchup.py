@@ -861,7 +861,7 @@ class MatchupVisualizer(FieldVisualizer):
 
     def draw_game_delta(self, a_id, b_id, mat_a, mat_b, season, round_num,
                         save_path, result_line=None, anim_path=None,
-                        fps=24, ink=26.0):
+                        fps=24, ink=26.0, model_winner=None):
         """FOUR-FLOW pre-game card (2026-09-01, Austin): the delta, crafted.
 
         The delta is decomposed into its four constituents, each at its
@@ -883,7 +883,10 @@ class MatchupVisualizer(FieldVisualizer):
 
         delta, net_a, net_b = fingerprint_overlay(mat_a, mat_b)
         net = net_a - net_b
-        win_a = net >= 0
+        # E1 (2026-09-02 audit): the verdict is the SHIPPED decision (stored
+        # margin sign, passed as model_winner), NOT the raw delta sign. The
+        # delta is a feature; the model's pick is the record's pick.
+        win_a = (model_winner == a_id) if model_winner else (net >= 0)
         GREY = '#8A8172'
         TEAL = TEAM_DATA.get(a_id, {}).get('primary', '#1F6F6B')
         TERRA = TEAM_DATA.get(b_id, {}).get('primary', '#C1553A')
