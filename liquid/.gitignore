@@ -1,0 +1,5 @@
+# regenerable artifacts — code is the source of truth
+*.json
+*.mp4
+*.png
+__pycache__/

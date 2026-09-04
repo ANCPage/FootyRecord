@@ -712,7 +712,7 @@ class MatchupVisualizer(FieldVisualizer):
 
     def draw_game_prediction(self, a_id, b_id, mat_a, mat_b, season, round_num,
                              save_path, result_line=None, anim_path=None,
-                             fps=24, ink=26.0):
+                             fps=24, ink=26.0, model_winner=None, label=None):
         """TWO-ENDED PRE-GAME prediction card (2026-09-01, Austin).
 
         The model's actual process: each team's fingerprint through
@@ -781,7 +781,7 @@ class MatchupVisualizer(FieldVisualizer):
         fig.text(0.5, 0.955, 'FINGERPRINT', ha='center', fontsize=30,
                  color=self.text_color, fontproperties=self.prop_title)
         fig.text(0.5, 0.924,
-                 f'SEASON {season} · R{round_num} PREDICTION · {a_name.upper()} vs {b_name.upper()}',
+                 f'SEASON {season} · {(label or f"R{round_num}")} PREDICTION · {a_name.upper()} vs {b_name.upper()}',
                  ha='center', fontsize=11.5, color=self.sub_text_color)
 
         def draw_ridges(ridges, color, emphasis=1.0):
@@ -861,7 +861,7 @@ class MatchupVisualizer(FieldVisualizer):
 
     def draw_game_delta(self, a_id, b_id, mat_a, mat_b, season, round_num,
                         save_path, result_line=None, anim_path=None,
-                        fps=24, ink=26.0, model_winner=None):
+                        fps=24, ink=26.0, model_winner=None, label=None):
         """FOUR-FLOW pre-game card (2026-09-01, Austin): the delta, crafted.
 
         The delta is decomposed into its four constituents, each at its
@@ -952,7 +952,7 @@ class MatchupVisualizer(FieldVisualizer):
         fig.text(0.5, 0.955, 'FINGERPRINT', ha='center', fontsize=30,
                  color=self.text_color, fontproperties=self.prop_title)
         fig.text(0.5, 0.924,
-                 f'SEASON {season} · R{round_num} PREDICTION · {a_name.upper()} vs {b_name.upper()}',
+                 f'SEASON {season} · {(label or f"R{round_num}")} PREDICTION · {a_name.upper()} vs {b_name.upper()}',
                  ha='center', fontsize=11.5, color=self.sub_text_color)
 
         from Core.engine_core import fingerprint_overlay
