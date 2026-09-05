@@ -16,7 +16,7 @@ import os
 import sqlite3
 import sys
 
-ROOT = '/mnt/projects/FootyRecord'
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, 'liquid'))
 
@@ -264,7 +264,9 @@ data = {
     'round_label': 'FINALS WEEK 1 \u00b7 PREDICTION',
     'teams': {'top': {'name': NAMES[A], 'colour': COLOUR_OF.get(A, TEAM_COLOURS[A][0])},
               'bottom': {'name': NAMES[B], 'colour': COLOUR_OF.get(B, TEAM_COLOURS[B][0])}},
-    'verdict': {'winner': NAMES[winner_id], 'margin': margin},
+    'verdict': {'winner': NAMES[winner_id], 'margin': margin,
+               'projected': [pred.home_score if A == HOME else pred.away_score,
+                             pred.home_score if B == HOME else pred.away_score]},
     'result': {'home_name': NAMES[HOME], 'away_name': NAMES[AWAY],
                'model_winner_name': NAMES[winner_id],
                'pred_margin': margin, 'correct': None},
