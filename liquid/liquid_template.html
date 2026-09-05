@@ -20,6 +20,7 @@ const MODE = DATA.mode || 'pred';
 const RECAP = MODE === 'recap', NET = MODE === 'net';
 const SOFT = RECAP ? 0.88 : (NET ? 0.55 : 1.0); // layer softly for one-game data
 const TN = DATA.teams.top.name, BN = DATA.teams.bottom.name;
+const TCOL = {top: DATA.teams.top.colour || NAVY, bottom: DATA.teams.bottom.colour || RED};
 const V = DATA.verdict || {}, R = DATA.result || {};
 const gTop = DATA.goals.top, gBot = DATA.goals.bottom;
 const topY = (0.90 - 0.80 * gTop[1]) * H;        // top goal px (data->canvas)
@@ -64,7 +65,7 @@ function smoothPath(pts){
 }
 
 const flows = [];
-for (const [end, col] of [['top', NAVY], ['bottom', RED]]){
+for (const end of ['top', 'bottom']){ const col = TCOL[end];
   const arr = (DATA.ends[end] || {}).own || [];
   if (!arr.length) continue;
   let maxMS = 0.0001;
@@ -91,9 +92,13 @@ function drawChrome(){
 
 // crisp anchor nodes — target icon: dark centre dot in a team-coloured ring
 function drawAnchors(){
-  for (const [gy, col] of [[topY, NAVY], [botY, RED]]){
+  for (const [gy, col] of [[topY, TCOL.top], [botY, TCOL.bottom]]){
     ctx.beginPath(); ctx.arc(cx, gy, 11, 0, 6.2832);
     ctx.lineWidth = 2.4; ctx.strokeStyle = col; ctx.stroke();
+    if (col === '#FFFFFF' || col === 'white'){
+      ctx.beginPath(); ctx.arc(cx, gy, 11, 0, 6.2832);
+      ctx.lineWidth = 1; ctx.strokeStyle = '#57534A'; ctx.stroke();
+    }
     ctx.beginPath(); ctx.arc(cx, gy, 8.5, 0, 6.2832);
     ctx.fillStyle = CREAM; ctx.fill();
     ctx.beginPath(); ctx.arc(cx, gy, 5.5, 0, 6.2832);
@@ -102,23 +107,43 @@ function drawAnchors(){
 }
 
 // ---- particle drawing -----------------------------------------------------
-function drawStreak(col, hist, w, str){
+function drawStreak(col, hist, w, str, k){
+  // k = concession drain (1 before the subtraction, ->0.45+0.55*s2 after):
+  // BOTH channels reduce together — width thins AND opacity fades on cancelled routes.
   if (hist.length < 2 || str <= 0.01) return;
-  const lw = Math.max(1.0, Math.min(3.4, 1.1 + 2.8 * Math.pow(w, 0.9)));
+  let lw = Math.max(0.7, (Math.max(1.0, Math.min(3.4, 1.1 + 2.8 * Math.pow(w, 0.9)))) * k);
+  const aK = 0.5 + 0.5 * k;
+  const WHITE_RIBBON = col === '#FFFFFF' || col === 'white';
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  ctx.strokeStyle = col;
-  // halo
-  ctx.globalAlpha = Math.min(1, 0.085 * str);
-  ctx.lineWidth = lw * 2.6;
-  ctx.beginPath();
-  for (let i = 0; i < hist.length; i++){ const p = hist[i]; i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); }
-  ctx.stroke();
-  // core
-  ctx.globalAlpha = Math.min(1, 0.38 * str);
-  ctx.lineWidth = lw;
-  ctx.beginPath();
-  for (let i = 0; i < hist.length; i++){ const p = hist[i]; i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); }
-  ctx.stroke();
+  if (!WHITE_RIBBON){
+    ctx.strokeStyle = col;
+    // halo
+    ctx.globalAlpha = Math.min(1, 0.085 * str * aK);
+    ctx.lineWidth = lw * 2.6;
+    ctx.beginPath();
+    for (let i = 0; i < hist.length; i++){ const p = hist[i]; i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); }
+    ctx.stroke();
+    // core
+    ctx.globalAlpha = Math.min(1, 0.38 * str * aK);
+    ctx.lineWidth = lw;
+    ctx.beginPath();
+    for (let i = 0; i < hist.length; i++){ const p = hist[i]; i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); }
+    ctx.stroke();
+  } else {
+    // white clash guernsey: ink under-stroke + white core reads on cream
+    ctx.strokeStyle = '#3A3732';
+    ctx.globalAlpha = Math.min(1, 0.30 * str * aK);
+    ctx.lineWidth = lw * 2.2;
+    ctx.beginPath();
+    for (let i = 0; i < hist.length; i++){ const p = hist[i]; i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); }
+    ctx.stroke();
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.globalAlpha = Math.min(1, 0.85 * str * aK);
+    ctx.lineWidth = Math.max(0.8, lw - 0.4);
+    ctx.beginPath();
+    for (let i = 0; i < hist.length; i++){ const p = hist[i]; i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); }
+    ctx.stroke();
+  }
   ctx.globalAlpha = 1;
 }
 
@@ -179,13 +204,12 @@ function step(){
       else weff = Math.max(0.15, weff);
       const every = spawnEvery(Math.max(0.02, weff));
       if ((frame % every) === ((ci + fi) % every) && rng() < ramp){
-        // hierarchy visible while drawing; the net landing sharpens it, never demolishes
+        // hierarchy visible while drawing (two channels: width from w2, opacity from mS);
+        // the subtraction beat then DRAINS cancelled routes on both channels (see k below)
         const sv = Math.max(0, pth.s2);
-        const sFpre  = 0.90 + 0.10 * sv;
-        const sFpost = 0.72 + 0.28 * sv;
-        const sF = sFpre + (sFpost - sFpre) * morph;
+        const sF = 0.90 + 0.10 * sv;
         const msr = Math.max(0, pth.mS || 0) / GMAX;
-        let str = sF * (0.25 + 0.75 * Math.pow(Math.min(1, msr), 0.6)) * SOFT;
+        let str = sF * (0.18 + 0.82 * Math.pow(Math.min(1, msr), 0.7)) * SOFT;
         let pw = weff;
         if (RECAP || NET){ str *= (0.78 + 0.44 * rng()); pw *= (0.85 + 0.30 * rng()); }
         particles.push({flow: fi, ci, t: 0.002, spd: 0, hist: [], w: Math.max(0.05, pw), str,
@@ -210,7 +234,9 @@ function step(){
     if (p.hist.length > 1){
       if (arrived && p.die == null) p.die = 5;
       const dF = p.die != null ? Math.max(0, p.die / 5) : 1;
-      drawStreak(flow.col, p.hist, p.w, p.str * dF);
+      const damp = 0.45 + 0.55 * Math.max(0, pth.s2);   // survival of this route in the net
+      const k = 1 + (damp - 1) * morph;                 // 1 before the beat -> damp after
+      drawStreak(flow.col, p.hist, p.w, p.str * dF, k);
       if (p.die != null && --p.die <= 0){ particles.splice(i, 1); continue; }
     }
   }
@@ -249,9 +275,24 @@ function step(){
   plate2(botY, 'WHERE ' + BN.toUpperCase() + ' SCORES');
   drawAnchors();
 
-  // legend
-  const own = TN.toUpperCase() + '\u2019s chains  \u00b7  red = ' + BN.toUpperCase() + '\u2019s chains';
-  typeLine('navy = ' + own + '  \u00b7  flow = ' + (NET ? 'the actual net' : 'the model\u2019s net'), cx, 1126, 10.5, FAINT);
+  // legend — colour chips + team names (worn colours from the exporter)
+  const legY = 1126;
+  const p1 = TN.toUpperCase() + '\u2019s chains', p2 = BN.toUpperCase() + '\u2019s chains';
+  const p3 = '\u00b7  flow = ' + (NET ? 'the actual net' : 'the model\u2019s net');
+  ctx.font = '400 10.5px ' + SERIF;
+  const w1 = ctx.measureText(p1).width, w2 = ctx.measureText(p2).width, w3 = ctx.measureText(p3).width;
+  const gap = 14, chip = 8, cg = 7;
+  const total = chip + cg + w1 + gap + chip + cg + w2 + gap + w3;
+  let x = cx - total / 2;
+  function chipAt(xc, col){
+    ctx.beginPath(); ctx.roundRect(xc, legY - chip / 2, chip, chip, 2); ctx.fillStyle = col; ctx.fill();
+    if (col === '#FFFFFF' || col === 'white'){ ctx.lineWidth = 1; ctx.strokeStyle = '#57534A'; ctx.stroke(); }
+  }
+  chipAt(x, TCOL.top); x += chip + cg;
+  typeLine(p1, x + w1 / 2, legY, 10.5, FAINT); x += w1 + gap;
+  chipAt(x, TCOL.bottom); x += chip + cg;
+  typeLine(p2, x + w2 / 2, legY, 10.5, FAINT); x += w2 + gap;
+  typeLine(p3, x + w3 / 2, legY, 10.5, FAINT);
   typeLine(RECAP ? 'the subtraction lands \u2014 routes it cancels drain to a drip'
                  : (NET ? 'every real route weighed against the other end \u2014 the game draws its own verdict'
                         : 'thickness + glow = surviving weight \u00b7 faded = cancelled'),

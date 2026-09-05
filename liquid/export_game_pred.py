@@ -16,7 +16,7 @@ import os
 import sqlite3
 import sys
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = '/mnt/projects/FootyRecord'
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, 'liquid'))
 
@@ -199,10 +199,71 @@ rng = [987654321]
 top = build(sa, pos, delta_top, rng)
 bot = build(sb, pneg, delta_bot, rng)
 
+
+# ------------------------------------------------------------ club colours
+# primary + real clash/alt colours (curated 2026-09-05). WHITE = the club's
+# real away (rendered as white ribbons with an ink outline by the template).
+TEAM_COLOURS = {
+    'CD_T10':  ('#002B5C', ['#E21937', '#F2A900']),   # Adelaide
+    'CD_T20':  ('#730040', ['#FDB813']),              # Brisbane (maroon/gold)
+    'CD_T30':  ('#031A29', ['WHITE']),                # Carlton
+    'CD_T40':  ('#101820', ['WHITE']),                # Collingwood
+    'CD_T50':  ('#CC2031', ['#101820']),              # Essendon (red primary)
+    'CD_T60':  ('#5A2A82', ['WHITE']),                # Fremantle
+    'CD_T70':  ('#1C3C63', ['WHITE']),                # Geelong
+    'CD_T80':  ('#4D2004', ['#FBBC08']),              # Hawthorn
+    'CD_T90':  ('#0F1131', ['#CC2031', '#1A3B8E']),   # Melbourne
+    'CD_T100': ('#1A3B8E', ['WHITE']),                # North Melbourne (royal)
+    'CD_T110': ('#00A5AC', ['#101820']),              # Port Adelaide
+    'CD_T120': ('#101820', ['#FFD200']),              # Richmond
+    'CD_T130': ('#ED0F05', ['#101820']),              # St Kilda
+    'CD_T140': ('#014896', ['#C70136']),              # Western Bulldogs
+    'CD_T150': ('#002B5C', ['#F2AA00']),              # West Coast
+    'CD_T160': ('#ED171F', ['WHITE']),                # Sydney
+    'CD_T1000':('#E11B0A', ['#FFD200']),              # Gold Coast
+    'CD_T1010':('#F15C22', ['#231F20']),              # GWS
+}
+CREAM_RGB = (241, 237, 227)
+
+
+def _rgb(h):
+    h = h.lstrip('#'); return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+
+
+def _dE(h1, h2):
+    def f(t): t /= 255.0; return t / 12.92 if t <= 0.04045 else ((t + 0.055) / 1.055) ** 2.4
+    def lab(h):
+        r, g, b = (f(v) * 100 for v in (_rgb(h) if isinstance(h, str) else h))
+        X, Y, Z = (r*0.4124+g*0.3576+b*0.1805, r*0.2126+g*0.7152+b*0.0722, r*0.0193+g*0.1192+b*0.9505)
+        def g_(t): return t ** (1/3) if t > 0.008856 else 7.787*t + 16/116
+        fx, fy, fz = g_(X/95.047), g_(Y/100.0), g_(Z/108.883)
+        return (116*fy-16, 500*(fx-fy), 200*(fy-fz))
+    La, Aa, Ba = lab(h1); Lb, Ab, Bb = lab(h2)
+    return ((La-Lb)**2 + (Aa-Ab)**2 + (Ba-Bb)**2) ** 0.5
+
+
+def worn_colours(home_id, away_id):
+    """Policy: home always primary; away flips to its real clash colour only
+    when its primary clashes with the home primary (dE < 60)."""
+    hp = TEAM_COLOURS[home_id][0]
+    ap = TEAM_COLOURS[away_id][0]
+    if _dE(hp, ap) >= 60.0:
+        return hp, ap
+    best, best_d = ap, _dE(hp, ap)
+    for a in TEAM_COLOURS[away_id][1]:
+        da = 60.0 if a == 'WHITE' else min(_dE(a, hp), _dE(a, CREAM_RGB))
+        if da > best_d:
+            best, best_d = a, da
+    return hp, best
+
+_home_col, _away_col = worn_colours(HOME, AWAY)
+COLOUR_OF = {HOME: _home_col, AWAY: _away_col}
+
 data = {
     'mode': 'pred',
     'round_label': 'FINALS WEEK 1 \u00b7 PREDICTION',
-    'teams': {'top': {'name': NAMES[A]}, 'bottom': {'name': NAMES[B]}},
+    'teams': {'top': {'name': NAMES[A], 'colour': COLOUR_OF.get(A, TEAM_COLOURS[A][0])},
+              'bottom': {'name': NAMES[B], 'colour': COLOUR_OF.get(B, TEAM_COLOURS[B][0])}},
     'verdict': {'winner': NAMES[winner_id], 'margin': margin},
     'result': {'home_name': NAMES[HOME], 'away_name': NAMES[AWAY],
                'model_winner_name': NAMES[winner_id],
