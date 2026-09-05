@@ -44,6 +44,20 @@ function typeLine(txt, x, y, size, col, weight, ls, face){
   ctx.fillStyle = col; ctx.fillText(txt, x, y);
   ctx.letterSpacing = '0px';
 }
+// ---- motion helpers (animator pass 2026-09-05) ----
+function clamp01(v){ return v < 0 ? 0 : v > 1 ? 1 : v; }
+const eOutQuad  = t => 1 - (1 - t) * (1 - t);
+const eOutCubic = t => 1 - Math.pow(1 - t, 3);
+const eOutQuint = t => 1 - Math.pow(1 - t, 5);
+const eInCubic  = t => t * t * t;
+const eOutExpo  = t => t >= 1 ? 1 : 1 - Math.pow(2, -10 * t);
+function lighten(hex, f){
+  if (hex === '#FFFFFF' || hex === 'white') return hex;
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  const m = c => Math.round(c + (255 - c) * f);
+  return 'rgb(' + m(r) + ',' + m(g) + ',' + m(b) + ')';
+}
 
 // smooth a chain polyline through its own nodes (Catmull-Rom, uniform)
 function smoothPath(pts){
@@ -70,7 +84,7 @@ for (const end of ['top', 'bottom']){ const col = TCOL[end];
   if (!arr.length) continue;
   let maxMS = 0.0001;
   for (const c of arr) maxMS = Math.max(maxMS, c.mS || 0);
-  flows.push({end, col, paths: arr, startFrame: end === 'top' ? B1 : B2, maxMS});
+  flows.push({end, col, paths: arr, startFrame: (end === 'top' ? B1 : B2) + 9, maxMS});
 }
 
 // ---- chrome ---------------------------------------------------------------
@@ -80,7 +94,9 @@ function drawChrome(){
   typeLine('FINGERPRINT', cx, 33, 19, NAVYINK, 'bold', 1);
   typeLine((DATA.round_label || '').toUpperCase(), cx, 68, 10.5, METAL, 'normal', 1, SANS);
   typeLine(TN.toUpperCase() + ' v ' + BN.toUpperCase(), cx, 104, 15, NAVYINK, 'bold');
-  // oval field
+  // oval field — the eye meets the field before the first head (0.7s ease-out)
+  const fa = eOutQuad(clamp01(frame / 21));
+  ctx.globalAlpha = fa;
   ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, 6.2832);
   ctx.fillStyle = '#F1EDE3'; ctx.fill();
   ctx.lineWidth = 1.5; ctx.strokeStyle = '#DDD6C4'; ctx.stroke();
@@ -88,6 +104,7 @@ function drawChrome(){
     ctx.beginPath(); ctx.ellipse(cx, cy, rx*f, ry*f, 0, 0, 6.2832);
     ctx.lineWidth = 0.8; ctx.strokeStyle = '#E0DAC8'; ctx.stroke();
   }
+  ctx.globalAlpha = 1;
 }
 
 // crisp anchor nodes — target icon: dark centre dot in a team-coloured ring
@@ -182,6 +199,28 @@ for (const f of flows){
 let GMAX = 0.0001;                       // global matrix max — the net is between teams
 for (const f of flows) for (const c of f.paths) GMAX = Math.max(GMAX, c.mS || 0);
 
+// per-route activation stagger (channels build organically, not all at once)
+for (const f of flows){
+  const fi = flows.indexOf(f);
+  f.paths.forEach((p, ci) => {
+    p._rs = Math.min(34, Math.floor(ci * 2.6) + ((ci * 13 + fi * 7) % 3)); // ~90-180ms apart
+    const sv = Math.max(0, p.s2 || 0);
+    // staged subtraction: survivors hold, middle routes get a fast 'suck',
+    // the weakest ghosts ease out slowly, staggered by route hash
+    p._kEnd = 0.45 + 0.55 * sv;
+    if (sv >= 0.85) p._dr = {kind: 'hold'};
+    else if (sv >= 0.40) p._dr = {kind: 'suck', t0: B3, dur: 21};
+    else p._dr = {kind: 'ghost', t0: B3 + 21 + ((ci * 7 + fi * 3) % 20), dur: 54};
+  });
+}
+function drainE(pth, fr){
+  const d = pth._dr;
+  if (d.kind === 'hold') return 1;
+  if (fr < d.t0) return 0;
+  const t = clamp01((fr - d.t0) / d.dur);
+  return d.kind === 'suck' ? eOutCubic(t) : eOutQuint(t);
+}
+
 let frame = 0;
 function step(){
   const beat = frame < B2 ? 0 : frame < B3 ? 1 : frame < B4 ? 2 : 3;
@@ -189,30 +228,33 @@ function step(){
   ctx.fillStyle = 'rgba(244,241,234,0.988)';
   ctx.fillRect(0, 0, W, H);
   drawChrome();
-  const morph = frame >= B3 ? Math.min(1, (frame - B3) / 60) : 0;
 
-  // spawn
+  // spawn — routes activate staggered; cadence settles 10-14s so the verdict owns the frame
   for (const flow of flows){
     if (frame < flow.startFrame) continue;
     const ramp = Math.min(1, (frame - flow.startFrame) / 25);
     const fi = flows.indexOf(flow);
+    const settle = frame >= 300 ? 1 + 0.25 * eInCubic(clamp01((frame - 300) / 120)) : 1;
     for (let ci = 0; ci < flow.paths.length; ci++){
       const pth = flow.paths[ci];
       if (pth.w <= 0.001) continue;
+      const routeStart = flow.startFrame + pth._rs;
+      if (frame < routeStart) continue;
+      const dIn = eOutCubic(clamp01((frame - routeStart) / 21));  // ~700ms draw-in
       let weff = pth.w2;                                   // matrix from frame one
       if (RECAP || NET) weff = Math.max(0.05, weff);
       else weff = Math.max(0.15, weff);
-      const every = spawnEvery(Math.max(0.02, weff));
+      const every = Math.max(5, Math.round(spawnEvery(Math.max(0.02, weff)) * settle));
       if ((frame % every) === ((ci + fi) % every) && rng() < ramp){
         // hierarchy visible while drawing (two channels: width from w2, opacity from mS);
-        // the subtraction beat then DRAINS cancelled routes on both channels (see k below)
+        // the subtraction beat then DRAINS cancelled routes on both channels (staged)
         const sv = Math.max(0, pth.s2);
         const sF = 0.90 + 0.10 * sv;
         const msr = Math.max(0, pth.mS || 0) / GMAX;
-        let str = sF * (0.18 + 0.82 * Math.pow(Math.min(1, msr), 0.7)) * SOFT;
+        let str = sF * (0.18 + 0.82 * Math.pow(Math.min(1, msr), 0.7)) * SOFT * dIn;
         let pw = weff;
         if (RECAP || NET){ str *= (0.78 + 0.44 * rng()); pw *= (0.85 + 0.30 * rng()); }
-        particles.push({flow: fi, ci, t: 0.002, spd: 0, hist: [], w: Math.max(0.05, pw), str,
+        particles.push({flow: fi, ci, born: frame, t: 0.002, spd: 0, hist: [], w: Math.max(0.05, pw), str,
                         off: 1.8 + 4.2 * rng(), ph: rng() * 6.2832, fr: 2.0 + 1.8 * rng(), die: null});
       }
     }
@@ -222,7 +264,8 @@ function step(){
     const p = particles[i];
     const flow = flows[p.flow], pth = flow.paths[p.ci];
     if (!p.spd) p.spd = (1 / PFRAMES) * (0.9 + 0.2 * rng());
-    p.t += p.spd;
+    const ageF = clamp01((frame - p.born) / 12);          // spawn at rest, ramp to cruise
+    p.t += p.spd * eOutQuad(ageF);
     const arrived = p.t >= 1;
     const raw = pointAt(pth, arrived ? 1 : p.t);
     // lateral weave — organic brush ribbon instead of a plotted line
@@ -234,9 +277,21 @@ function step(){
     if (p.hist.length > 1){
       if (arrived && p.die == null) p.die = 5;
       const dF = p.die != null ? Math.max(0, p.die / 5) : 1;
-      const damp = 0.45 + 0.55 * Math.max(0, pth.s2);   // survival of this route in the net
-      const k = 1 + (damp - 1) * morph;                 // 1 before the beat -> damp after
+      const k = 1 + (pth._kEnd - 1) * drainE(pth, frame);  // staged subtraction per route
       drawStreak(flow.col, p.hist, p.w, p.str * dF, k);
+      // particle head: brighter leading tip so flow direction is legible
+      if (p.die == null && flow.col !== '#FFFFFF' && flow.col !== 'white'){
+        const H = p.hist;
+        const hlw = Math.max(1.0, Math.min(3.4, 1.1 + 2.8 * Math.pow(p.w, 0.9)));
+        ctx.strokeStyle = lighten(flow.col, 0.45);
+        ctx.globalAlpha = Math.min(1, 0.5 * p.str * (0.5 + 0.5 * k));
+        ctx.lineWidth = Math.max(1.0, hlw * 1.15);
+        ctx.beginPath();
+        const n0 = Math.max(0, H.length - 4);
+        for (let h = n0; h < H.length; h++){ const q = H[h]; h === n0 ? ctx.moveTo(q[0], q[1]) : ctx.lineTo(q[0], q[1]); }
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
       if (p.die != null && --p.die <= 0){ particles.splice(i, 1); continue; }
     }
   }
@@ -244,22 +299,42 @@ function step(){
   while (particles.length > 900) particles.shift();
 
   // caption / verdict -------------------------------------------------------
-  // one narrative slot: phases during the draw, verdict reveal at the end
+  // one narrative slot: phases during the draw (crossfaded, next line leads by ~300ms),
+  // verdict reveal choreographed at the end (ease-out-expo + tracking settle)
   const capY = 138;
   const verdictAt = B4;
   if (frame < verdictAt){
-    if (beat === 0)
-      typeLine(TN + (RECAP || NET ? '\u2019s real chains draw up' : '\u2019s chains draw up'), cx, capY, 12, METAL);
-    else if (beat === 1)
-      typeLine(BN + (RECAP || NET ? '\u2019s real chains draw down' : '\u2019s chains draw down'), cx, capY, 12, METAL);
-    else if (beat === 2)
-      typeLine(NET ? 'the net lands \u2014 routes the other end cancels drain to a drip'
-                   : 'the model\u2019s subtraction \u2014 routes it cancels drain to a drip', cx, capY, 12, METAL);
+    const caps = [
+      TN + (RECAP || NET ? '\u2019s real chains draw up' : '\u2019s chains draw up'),
+      BN + (RECAP || NET ? '\u2019s real chains draw down' : '\u2019s chains draw down'),
+      NET ? 'the net lands \u2014 routes the other end cancels drain to a drip'
+          : 'the model\u2019s subtraction \u2014 routes it cancels drain to a drip'
+    ];
+    const bs = [0, B2, B3][beat], ns = [B2, B3, verdictAt][beat];
+    const aIn = clamp01((frame - Math.max(0, bs - 9)) / 12);
+    const aOut = clamp01(((ns - 9) - frame) / 10);
+    const capA = Math.min(aIn, aOut);
+    if (capA > 0.01){
+      ctx.globalAlpha = capA;
+      typeLine(caps[beat], cx, capY - (1 - capA) * 8, 12, METAL);   // 8px rise on entry
+      ctx.globalAlpha = 1;
+    }
   } else if (V.winner || R.home_name){
     const wName = (V.winner || (R.home_score >= R.away_score ? R.home_name : R.away_name) || '').toUpperCase();
     const wMar = NET ? Math.abs((R.home_score||0) - (R.away_score||0)) : Math.round(V.margin || 0);
-    typeLine(wName, cx, 126, 26, NAVYINK, 'bold');
-    typeLine('BY ' + wMar, cx, 161, 15, '#202020', 'bold', 1);
+    const e1 = eOutExpo(clamp01((frame - verdictAt) / 15));          // name: 500ms ease-out-expo
+    ctx.globalAlpha = e1;
+    ctx.save();
+    ctx.translate(cx, 126); ctx.scale(1.015 - 0.015 * e1, 1.015 - 0.015 * e1);
+    typeLine(wName, 0, 0, 26, NAVYINK, 'bold');
+    ctx.restore();
+    ctx.globalAlpha = 1;
+    const e2 = eOutExpo(clamp01((frame - (verdictAt + 9)) / 12));     // BY line 300ms later
+    if (e2 > 0.01){
+      ctx.globalAlpha = e2;
+      typeLine('BY ' + wMar, cx, 161, 15, '#202020', 'bold', Math.round(7 - 6 * e2));  // tracking settles
+      ctx.globalAlpha = 1;
+    }
   }
 
   // inner end labels — solid cream plates (video layout: label BELOW top node,
