@@ -23,7 +23,11 @@ PATH_LITERALS = ("DataIngestor('CSV_DATA')", '"ROUND_IMAGES_UPDATE"', "'ROUND_IM
 
 
 def _scripts():
-    for path in sorted(glob.glob(os.path.join(REPO, '*.py'))):
+    # top-level scripts + the liquid media module: the same data-access rules
+    # apply everywhere outside Core/ (liquid imports Core; never touches SQL)
+    paths = sorted(glob.glob(os.path.join(REPO, '*.py'))
+                   + glob.glob(os.path.join(REPO, 'liquid', '*.py')))
+    for path in paths:
         name = os.path.basename(path)
         if name.startswith('test_'):
             continue

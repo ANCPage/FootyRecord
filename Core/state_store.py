@@ -352,3 +352,60 @@ def match_result(conn, season: int, round_num: int, team_a: str, team_b: str):
         'FROM predictions WHERE season=? AND round=? '
         'AND ((home=? AND away=?) OR (home=? AND away=?))',
         (season, round_num, team_a, team_b, team_b, team_a)).fetchone()
+
+
+# ---- liquid-card accessors (one-system integration, 2026-09-05) ----------
+# All SQL the card media needs lives here; Core.chains does the pure python.
+
+def match_row(conn, season: int, round_num: int, team_a: str, team_b: str):
+    """Actuals row for a matchup from `matches` (real scores, not projections)."""
+    return conn.execute(
+        'SELECT m_id, home, away, home_score, away_score FROM matches '
+        'WHERE season=? AND round=? '
+        'AND ((home=? AND away=?) OR (home=? AND away=?))',
+        (season, round_num, team_a, team_b, team_b, team_a)).fetchone()
+
+
+def game_chain_rows(conn, m_id: str):
+    """Raw SCORE-outcome chain rows of ONE game, ordered for grouping."""
+    return conn.execute(
+        'SELECT chain_idx, seq, team, grid FROM chains '
+        'WHERE m_id=? AND outcome=? ORDER BY chain_idx, seq',
+        (m_id, 'SCORE')).fetchall()
+
+
+def window_scoring_rows(conn, season: int, up_to_round: int, teams):
+    """SCORE-outcome chain rows for the given teams through a round window.
+
+    Returns [(m_id, chain_idx, seq, team, grid, home, round)] ordered —
+    home lets Core.chains rotate away-game chains into the team's own frame.
+    """
+    marks = ','.join('?' * len(teams))
+    return conn.execute(
+        'SELECT ch.m_id, ch.chain_idx, ch.seq, ch.team, ch.grid, m.home, m.round '
+        'FROM chains ch JOIN matches m ON ch.m_id = m.m_id '
+        "WHERE ch.outcome='SCORE' AND m.season=? AND m.round<=? "
+        'AND ch.team IN (' + marks + ') '
+        'ORDER BY ch.m_id, ch.chain_idx, ch.seq',
+        (season, up_to_round) + tuple(teams)).fetchall()
+
+
+def prediction_row(conn, season: int, round_num: int, team_a: str, team_b: str):
+    """Full stored prediction for a matchup: the shipped decision.
+
+    Returns (home, away, home_score, away_score, margin, correct, winner,
+    delta_json) — delta_json is the exact per-edge model delta that made the
+    call (keys 'A1->A2' / 'A1->SCORE'), the single source for card weights.
+    """
+    return conn.execute(
+        'SELECT home, away, home_score, away_score, margin, correct, winner, delta '
+        'FROM predictions WHERE season=? AND round=? '
+        'AND ((home=? AND away=?) OR (home=? AND away=?))',
+        (season, round_num, team_a, team_b, team_b, team_a)).fetchone()
+
+
+def latest_elo(conn, team: str):
+    """The team's most recent Elo (post last recorded game) — entering-finals."""
+    r = conn.execute('SELECT elo FROM elo_history WHERE team=? '
+                     'ORDER BY m_id DESC LIMIT 1', (team,)).fetchone()
+    return r[0] if r else None
