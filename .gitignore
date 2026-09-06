@@ -37,3 +37,7 @@ desktop.ini
 
 # --- Test cache ---
 .pytest_cache/
+
+# --- Hermes plans / tool caches ---
+.hermes/
+.ruff_cache/
