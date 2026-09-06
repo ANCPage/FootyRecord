@@ -79,12 +79,14 @@ def resample(pts, n=160):
 
 
 def to_px(pts):
-    # vertical margin m=0.913 (was 0.90): the play area sits lower so the top
-    # goal ring (px ~201) clears the verdict detail line (~178-190). The
-    # chrome oval centre (theme field.cy 616) moves with it — keep the two in
+    # vertical margin m=0.913333... (was 0.90): the play area sits lower so
+    # the top goal ring (px ~213) clears the verdict detail line (~178-190),
+    # AND m maps data-y 0.5 -> px 616 exactly ((m-0.4)*1200 = 616), so the
+    # chrome oval (cy 616, theme field.cy) is exactly centred on the data ->
+    # the shared lattice is exactly 180-symmetric. Keep geom + theme in
     # lockstep.
     return [[round((0.05 + 0.90 * x) * 900, 1),
-             round((0.913 - 0.80 * y) * 1200, 1)] for x, y in pts]
+             round((0.9133333333333334 - 0.80 * y) * 1200, 1)] for x, y in pts]
 
 
 def _build_paths(chains_list, pmap, rng_state):
