@@ -148,10 +148,13 @@ function step(){
     }
   }
 
-  // inner end labels — solid cream plates (video layout: label BELOW top node,
-  // ABOVE bottom node, plate blocks the flow, text crisp on top)
+  // inner end labels — solid cream plates hugging the goal RINGS (video
+  // layout: label BELOW top ring, ABOVE bottom ring). They mask ONLY the
+  // converged mouth of the goal (~10px of final approach); the old ±61px
+  // offset sat in wide-web territory and, with the shared web, covered the
+  // mirrored team's defensive-origin band (chains STARTED under the plate).
   function plate2(gy, txt){
-    const y0 = gy > cy ? gy - 74 - 13 : gy + 74 - 13;
+    const y0 = gy > cy ? gy - 36 : gy + 10;
     ctx.beginPath();
     ctx.roundRect(cx - 135, y0, 270, 26, 13);
     ctx.fillStyle = CREAM; ctx.fill();
