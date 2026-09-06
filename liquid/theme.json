@@ -1,0 +1,21 @@
+{
+  "_comment": "Liquid card theme — THE presentation constants (extracted from the template 2026-09-05). The engine reads THEME; no card behaviour lives here, only look/timing values. Values match the pre-extraction template exactly (capture-verified identical).",
+  "canvas": {"w": 900, "h": 1200},
+  "cream": "#F4F1EA",
+  "ink": {
+    "navyink": "#102030",
+    "taupe": "#6B6557",
+    "muted": "#8C8678",
+    "faint": "#A6A292"
+  },
+  "faces": {
+    "serif": "Times New Roman",
+    "display": "Playfair Display",
+    "sans": "Helvetica, Arial, sans-serif"
+  },
+  "beats": {"B1": 0, "B2": 120, "B3": 240, "B4": 420},
+  "frames": {"pframes": 90, "trail": 16},
+  "soft": {"recap": 0.88, "net": 0.55, "pred": 1.0},
+  "field": {"cx": 450, "cy": 600, "rx": 275, "ry": 415},
+  "seed": 20260904
+}
