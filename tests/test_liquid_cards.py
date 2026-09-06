@@ -75,12 +75,13 @@ def test_pred_weights_come_from_the_stored_delta():
 
 
 def test_canonical_recap_chain_counts_golden():
-    # canonical = collapsed; regression guard on the extraction path
+    # canonical = collapsed, len>=1 (single-zone direct shots INCLUDED — the
+    # engine counts their shot edge). Matches the original raw exporter's 20/38.
     conn = _conn()
     gc, home = chains.game_chains(conn, 2026, 24, 'CD_T100', 'CD_T160')
     assert home == 'CD_T160'
-    assert len(gc['CD_T100']) == 17
-    assert len(gc['CD_T160']) == 31
+    assert len(gc['CD_T100']) == 20
+    assert len(gc['CD_T160']) == 38
 
 
 def test_colour_policy():
@@ -95,3 +96,56 @@ def test_mirror_delta_flips_sign_and_rotates():
     from Core.geometry import rotate_node
     assert m[(rotate_node('C2'), rotate_node('D2'))] == -0.5
     assert m[(rotate_node('E2'), 'SCORE')] == 0.2
+
+
+# ---- compute-path tests (need the CSV-fingerprint engine state: SMB repo) --
+def _engine_available():
+    try:
+        from Core.config import DATA_DIR
+        from Core.engine_data import DataIngestor
+        ing = DataIngestor(DATA_DIR)
+        ing.load_all_data(light=True)
+        m = ing.get_team_average_matrix('CD_T160', up_to_season=2026, up_to_round=23)
+        return bool(m)
+    except Exception:
+        return False
+
+
+def test_compute_reproduces_stored_delta():
+    # ONE-SYSTEM pin: the current engine recomputes the STORED delta exactly
+    # (probe: 168/168 keys identical) — compute and shipped views never drift.
+    import pytest
+    if not _engine_available():
+        pytest.skip('needs CSV engine state (run on the SMB repo)')
+    from Core.config import DATA_DIR
+    from Core.engine_data import DataIngestor
+    from Core.prediction import compute_matchup
+    conn = _conn()
+    row = state_store.prediction_row(conn, 2026, 24, 'CD_T160', 'CD_T100')
+    stored = cards.parse_delta(row[7])
+    ing = DataIngestor(DATA_DIR)
+    ing.load_all_data(light=True)
+    p = compute_matchup(ing, 'CD_T160', 'CD_T100', 2026, 24)
+    recomputed = {cards._tup(e): v for e, v in p.delta.items()}
+    keys = set(stored) | set(recomputed)
+    diffs = [k for k in keys if abs(stored.get(k, 0.0) - recomputed.get(k, 0.0)) > 1e-9]
+    assert not diffs, 'compute delta diverges from stored on %d keys' % len(diffs)
+
+
+def test_finals_compute_path_produces_verdict():
+    # Unrecorded fixture (no stored row at slot 25): the compute branch must
+    # produce a sane verdict + non-empty ends (EF: Geelong by ~16).
+    import pytest
+    if not _engine_available():
+        pytest.skip('needs CSV engine state (run on the SMB repo)')
+    from Core.config import DATA_DIR
+    from Core.engine_data import DataIngestor
+    conn = _conn()
+    assert state_store.prediction_row(conn, 2026, 25, 'CD_T70', 'CD_T30') is None
+    ing = DataIngestor(DATA_DIR)
+    ing.load_all_data(light=True)
+    p, st = cards.pred_payload(ing, conn, 'CD_T70', 'CD_T30', 'CD_T70', 2026, 24,
+                               label='FINALS WEEK 1')
+    assert p['verdict']['winner'] == 'Geelong Cats'
+    assert 1 <= p['verdict']['margin'] <= 60
+    assert st['top'] > 0 and st['bottom'] > 0

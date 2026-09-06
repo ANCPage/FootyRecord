@@ -60,7 +60,7 @@ def game_chains(conn, season, round_num, team_a, team_b):
         for cidx in sorted(per.get(tid, {})):
             cells = per[tid][cidx]
             zs = collapse(_own_frame([g for g, _t, _h in cells], tid, cells[0][2]))
-            if len(zs) >= 2:
+            if zs:  # single-zone chains are real scoring chains (direct shots)
                 out[tid].append(zs)
     return out, home
 
@@ -83,7 +83,7 @@ def window_counter(conn, season, up_to_round, team, decay=DECAY):
     for key in sorted(per):
         cells = per[key]
         zs = collapse(_own_frame([g for g, _h, _r in cells], team, cells[0][1]))
-        if len(zs) < 2:
+        if not zs:
             continue
         w = decay ** max(up_to_round - cells[0][2], 0)
         c[tuple(zs)] += w
@@ -114,18 +114,3 @@ def chain_net(path, delta):
     vals = [delta.get((zs[i], zs[i + 1]), 0) for i in range(len(zs) - 1)]
     vals.append(delta.get((zs[-1], 'SCORE'), 0))
     return sum(max(0.0, v) for v in vals) / max(1, len(vals))
-
-
-def weight_chains(paths, delta, mx):
-    """Turn (path, raw_weight) selections into card chains with the model's
-    route weights: w2/s2/mS from the delta, globally scaled by `mx`."""
-    out = []
-    for path, _w in paths:
-        n = chain_net(path, delta) / mx if mx else 0.0
-        out.append({'seq': list(path),
-                    'w': 1.0,
-                    'w2': round(max(0.06, n), 4),
-                    's2': round(max(0.15, n), 3),
-                    'mS': round(n, 4),
-                    'kind': 'own'})
-    return out

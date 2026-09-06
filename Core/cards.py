@@ -74,11 +74,14 @@ def _stored_or_computed(ing, conn, season, round_slot, home, away, up_to,
 
 
 def _weight_end(sel, delta, mx):
-    return [{'seq': list(path), 'w': 1.0,
-             'w2': round(max(0.06, chains.chain_net(path, delta) / mx), 4),
-             's2': round(max(0.15, chains.chain_net(path, delta) / mx), 3),
-             'mS': round(chains.chain_net(path, delta) / mx, 4),
-             'kind': 'own'} for path, _w in sel]
+    out = []
+    for path, _w in sel:
+        n = chains.chain_net(path, delta) / mx if mx else 0.0
+        out.append({'seq': list(path), 'w': 1.0,
+                    'w2': round(max(0.06, n), 4),
+                    's2': round(max(0.15, n), 3),
+                    'mS': round(n, 4), 'kind': 'own'})
+    return out
 
 
 def _colour_hex(c):
@@ -211,11 +214,15 @@ def net_payload(conn, season, round_num, a, b, home, label=None):
              + [max(0, v) for v in net_bot.values()] + [1])
 
     def build(zs_list, netmap):
-        return [{'seq': zs, 'w': 1.0,
-                 'w2': round(max(0.06, chains.chain_net(zs, netmap) / mx), 4),
-                 's2': round(max(0.15, chains.chain_net(zs, netmap) / mx), 3),
-                 'mS': round(chains.chain_net(zs, netmap) / mx, 4),
-                 'kind': 'own'} for zs in zs_list]
+        out = []
+        for zs in zs_list:
+            n = chains.chain_net(zs, netmap) / mx
+            out.append({'seq': zs, 'w': 1.0,
+                        'w2': round(max(0.06, n), 4),
+                        's2': round(max(0.15, n), 3),
+                        'mS': round(n, 4),
+                        'kind': 'own'})
+        return out
 
     top, bot = build(ca, net_top), build(cb, net_bot)
     mrow = state_store.match_row(conn, season, round_num, home, away)
