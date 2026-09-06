@@ -2,8 +2,12 @@
 """CDP frame capturer: one headless-Chromium session, deterministic frames.
 
 Page implements window.__advance() -> draws one frame. Each cycle:
-  Runtime.evaluate('__advance()'); Page.captureScreenshot -> PNG
-Usage: cdp_capture.py <url> <outdir> <nframes> [skip]
+  Runtime.evaluate('__advance()'); Page.captureScreenshot
+Usage: cdp_capture.py <url> <outdir> <nframes> [skip] [png|jpeg]
+
+Format: 'png' (default; lossless — REQUIRED for the framecheck regression
+baselines) or 'jpeg' (~2x faster screenshots, q92 — visually lossless for
+the MP4 path; use for production captures).
 """
 import base64
 import json
@@ -24,6 +28,9 @@ OUT = sys.argv[2]
 N = int(sys.argv[3])
 SKIP = int(sys.argv[4]) if len(sys.argv) > 4 else 0
 URL = sys.argv[1]
+FMT = sys.argv[5] if len(sys.argv) > 5 else 'png'
+assert FMT in ('png', 'jpeg'), 'format must be png or jpeg'
+EXT = 'png' if FMT == 'png' else 'jpg'
 os.makedirs(OUT, exist_ok=True)
 
 P = subprocess.Popen([
@@ -65,12 +72,15 @@ try:
     cmd('Page.navigate', {'url': URL})
     time.sleep(2.0)
     t0 = time.time()
+    shot_params = {'format': FMT}
+    if FMT == 'jpeg':
+        shot_params['quality'] = 92
     for i in range(SKIP):
         cmd('Runtime.evaluate', {'expression': '__advance()'})
     for i in range(N):
         cmd('Runtime.evaluate', {'expression': '__advance()'})
-        shot = cmd('Page.captureScreenshot', {'format': 'png'})
-        with open(f'{OUT}/f{i:05d}.png', 'wb') as fh:
+        shot = cmd('Page.captureScreenshot', shot_params)
+        with open(f'{OUT}/f{i:05d}.{EXT}', 'wb') as fh:
             fh.write(base64.b64decode(shot['data']))
         if i % 50 == 0:
             print(f'frame {i}/{N}  {int(time.time()-t0)}s', flush=True)
