@@ -20,8 +20,12 @@ calculations:
   `compute_matchup`. Chain weights come from the STORED delta (`mirror_delta`
   gives the away frame's view of the same net). Nothing invents arithmetic.
 - **Core/mappings.py** — club colours + `worn_colours(home, away)` policy.
-- **liquid/geom.py** — presentation only: arc/funnel geometry, outward bow,
-  arc-length resample, data→px map, `materialise()` (payload → template JSON).
+- **liquid/geom.py** — presentation only: the SHARED-WEB lattice (one
+  oval-bounded 180-symmetric mesh — the 15 zones are the centres of real
+  ground positions; both teams trace the identical lattice, pinned in
+  tests/test_liquid_geometry.py), outward per-edge bow, arc-length resample,
+  data→px map (projection from theme.json), `materialise()` (payload →
+  template JSON).
 - **liquid/render_card.py** — the ONE CLI entry (imports Core; no SQL).
 - **liquid/schema.py** — payload contract validator (materialised shape;
   version-stamped cards, px goals, chains with weights).
