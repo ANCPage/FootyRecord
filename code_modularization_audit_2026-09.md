@@ -120,3 +120,16 @@ Slices 1-3 done + the contract-drift bug they were designed to catch:
   template.html thin shell + liquid/build_html.py (ONE build step).
 - Verified PIXEL-IDENTICAL to the pre-split baseline (ImageChops diff None).
 Slice 4 (MatchupCanvas in visualize_matchup) + packaging decision: pending.
+
+## Resolutions applied — slice 4 (2026-09-05, commit 117910d)
+visualize_matchup was ALREADY class-shaped (MatchupVisualizer(FieldVisualizer));
+the audit's class proposal overstated the gap. The real duplication: every
+draw_* method re-derived the field layout constants + re-imported the same
+clusters. Fixed: layout computed once in __init__ (self.pos/pos_neg/gx/gy/
+gy2/R/cx/cy); imports hoisted to module top (which also surfaced + fixed a
+latent shadowing bug: the second nested fingerprint_overlay import in
+draw_game_delta made the name function-local and broke the method's earlier
+call). PNGs byte-identical pre/post. Remaining (flagged, not done): the three
+draw_game_* methods are ~300-line near-siblings sharing fig/ax/ring/font
+scaffolding — unifying them is a design project needing a visual-regression
+harness, deliberately deferred. Packaging decision (pyproject) still open.
