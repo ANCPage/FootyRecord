@@ -2,30 +2,62 @@
 
 Presentation-only (no SQL, no model arithmetic): reads a data-space card
 payload from Core.cards and returns the exact JSON the canvas template
-consumes (goals + px chains). Home of the recovered arc/funnel geometry
-(arc_seg), the outward per-edge bow, arc-length resampling, and the
+consumes (goals + px chains). Home of the SHARED-WEB lattice (2026-09-06,
+Austin-approved), the outward per-edge bow, arc-length resampling, and the
 data->px mapping.
+
+Geometry constants (oval, projection) come from theme.json — the same file
+the canvas chrome reads — so the drawn field and the Python lattice can
+never disagree.
 """
+import json
 import math
+import os
 
 from Core.geometry import GRID_NAMES, flip_positions
 
+_THEME = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                     'theme.json')))
+FIELD = _THEME['field']
+CANVAS = _THEME['canvas']
+PROJ = _THEME['projection']
+
 GOAL = (0.5, 0.92)
+FIELD_LEN = 2.0 * GOAL[1] - 1.0          # 0.84: top goal y to bottom goal y
+SPREAD = 0.68                             # wing lanes ~2/3 of the oval width:
+                                          # the CENTRE of the wing corridor
+                                          # (0.85 sat on the boundary line;
+                                          # 0.50 was too thin)
 
 
-def arc_positions():
-    """Goal-centred funnel: 5 depth arcs x 3 lanes radiating from the top goal.
+def _oval_half_width(y):
+    """Data-space half-width of the chrome oval at data-y (single source:
+    theme field + projection)."""
+    py = (PROJ['y']['margin'] - PROJ['y']['scale'] * y) * CANVAS['h']
+    t = 1.0 - ((py - FIELD['cy']) / FIELD['ry']) ** 2
+    px_w = FIELD['rx'] * math.sqrt(max(0.0, t))
+    return px_w / (PROJ['x']['scale'] * CANVAS['w'])
 
-    lane = angular offset, depth = radius from the goal (deep arcs wide at
-    the defensive end, converging at the pole) — the recovered whorl geometry.
+
+def field_positions():
+    """SHARED-WEB lattice (Austin 2026-09-06): one oval-bounded mesh.
+
+    The 15 zones are the CENTRES of real positions on the ground: 5 even
+    depth bands spanning the full field (A = attacking goal square .. E =
+    own defensive goal), 3 lanes at 85% of the oval's width so the wings sit
+    where wingers play (near the boundary at the centre, converging into the
+    pocket arcs at the ends). 180-symmetric by construction: a team's depth
+    c / lane l and its mirror's depth 4-c / lane 4-l land on the SAME nodes,
+    so both teams trace one identical lattice (audit: flip(pos) == pos as a
+    set, 0 gap; every node inside the chrome oval — pinned in tests).
     """
     pos = {}
-    for lane_i, row in enumerate(GRID_NAMES):
-        theta = math.radians((lane_i - 1) * 32)
-        for depth_i, name in enumerate(row):
-            r = 0.13 + 0.45 * depth_i / 4.0
-            pos[name] = (GOAL[0] + r * math.sin(theta),
-                         GOAL[1] - r * math.cos(theta))
+    for lane_i, row in enumerate(GRID_NAMES):        # lane_i 0,1,2 = digits 1,2,3
+        side = lane_i - 1                            # -1, 0, +1 (left/centre/right)
+        for depth_i, name in enumerate(row):         # depth_i 0..4 = letters A..E
+            y = GOAL[1] - FIELD_LEN * (depth_i + 0.5) / 5.0
+            x = 0.5 + side * SPREAD * _oval_half_width(y)
+            pos[name] = (x, y)
     pos['SCORE'] = GOAL
     return pos
 
@@ -79,14 +111,15 @@ def resample(pts, n=160):
 
 
 def to_px(pts):
-    # vertical margin m=0.913333... (was 0.90): the play area sits lower so
-    # the top goal ring (px ~213) clears the verdict detail line (~178-190),
-    # AND m maps data-y 0.5 -> px 616 exactly ((m-0.4)*1200 = 616), so the
-    # chrome oval (cy 616, theme field.cy) is exactly centred on the data ->
-    # the shared lattice is exactly 180-symmetric. Keep geom + theme in
-    # lockstep.
-    return [[round((0.05 + 0.90 * x) * 900, 1),
-             round((0.9133333333333334 - 0.80 * y) * 1200, 1)] for x, y in pts]
+    """Data -> px via theme projection. The y-margin (0.913333... in theme)
+    sits the play area low enough that the top goal ring clears the verdict
+    detail line, AND maps data-y 0.5 to px FIELD.cy exactly — so the chrome
+    oval is exactly centred on the data and the shared lattice is exactly
+    180-symmetric. (Single source: theme.json projection.)"""
+    mx, sx = PROJ['x']['margin'], PROJ['x']['scale']
+    my, sy = PROJ['y']['margin'], PROJ['y']['scale']
+    return [[round((mx + sx * x) * CANVAS['w'], 1),
+             round((my - sy * y) * CANVAS['h'], 1)] for x, y in pts]
 
 
 def _build_paths(chains_list, pmap, rng_state):
@@ -108,7 +141,7 @@ def _build_paths(chains_list, pmap, rng_state):
 
 def materialise(payload, seed=987654321):
     """Data-space card payload -> template JSON (goals + px chains)."""
-    pos = arc_positions()
+    pos = field_positions()
     pneg = flip(pos)
     rng = [seed]
     ends = {}

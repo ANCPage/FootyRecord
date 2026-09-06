@@ -1,6 +1,10 @@
 {
-  "_comment": "Liquid card theme — THE presentation constants (extracted from the template 2026-09-05). The engine reads THEME; no card behaviour lives here, only look/timing values. Values match the pre-extraction template exactly (capture-verified identical).",
+  "_comment": "Liquid card theme — THE presentation constants (extracted from the template 2026-09-05). The engine reads THEME; no card behaviour lives here, only look/timing values. Values match the pre-extraction template exactly (capture-verified identical). projection = the data->px mapping Python geom shares with the chrome oval (keep the two in lockstep).",
   "canvas": {"w": 900, "h": 1200},
+  "projection": {
+    "x": {"margin": 0.05, "scale": 0.90},
+    "y": {"margin": 0.9133333333333334, "scale": 0.80}
+  },
   "cream": "#F4F1EA",
   "ink": {
     "navyink": "#102030",
