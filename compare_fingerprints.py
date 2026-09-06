@@ -79,6 +79,7 @@ def main():
         ta, tb = resolve_team(a.game_a), resolve_team(a.game_b)
         conn = results_db.connect()
         res = state_store.prediction_result_row(conn, a.season, a.round, ta, tb)
+        mrow = state_store.match_row(conn, a.season, a.round, ta, tb)
         conn.close()
         model_winner = None
         if res:
@@ -90,8 +91,16 @@ def main():
             # score. The card's verdict must match the walk-forward record.
             model_winner = home if margin > 0 else away
             pick_n = home_n if margin > 0 else away_n
-            result_line = (f'R{a.round}: {home_n} {hs}–{away_n} {aw} · '
-                           f'model {"correct" if correct else "wrong"} · picked {pick_n}')
+            # honesty (2026-09-05): hs/aw are the PROJECTED scoreline; the
+            # actuals live in matches — print both, labelled, never a
+            # projection disguised as the result.
+            result_line = (f'R{a.round}: model {home_n} {hs}–{away_n} {aw} · '
+                           f'actual ')
+            if mrow:
+                _, h2, a2, hs2, aw2 = mrow
+                result_line += (f'{TEAM_DATA.get(h2, {}).get("name", h2)} {hs2}–'
+                                f'{TEAM_DATA.get(a2, {}).get("name", a2)} {aw2} · ')
+            result_line += f'model {"correct" if correct else "wrong"} · picked {pick_n}'
         else:
             result_line = f'R{a.round} · model prediction pending'
         out = a.out or os.path.join(

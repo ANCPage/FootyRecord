@@ -111,12 +111,38 @@ function step(){
       typeLine('BY ' + wMar, cx, 158, 15, NAVYINK, 'bold', Math.round(7 - 6 * e2));  // tracking settles
       ctx.globalAlpha = 1;
     }
+    // grade (Austin's ruling 2026-09-05): the model's own grade F..A+ always
+    // sits under the BY line on model-call cards (pred + recap; net's margin
+    // is the actual result — no call to grade)
+    const GRADE = (NET || !V.grade) ? null : V.grade;
+    if (GRADE){
+      const eg = eOutExpo(clamp01((frame - (verdictAt + 27)) / 12));
+      if (eg > 0.01){
+        ctx.globalAlpha = 0.85 * eg;
+        typeLine('GRADE ' + GRADE, cx, 170, 9.5, MUTED, 'normal', 1.5, SANS);
+        ctx.globalAlpha = 1;
+      }
+    }
+    // detail line (last, quiet): pred = the projected scoreline; recap = the
+    // ACTUAL result next to the model call (won-by is computed from result,
+    // which carries the real scores; ruling 2026-09-05)
+    const detailY = 184;
     const Vp = V.projected || [];
     if (Vp.length === 2){
-      const e3 = eOutExpo(clamp01((frame - (verdictAt + 33)) / 12));   // scoreline last, quiet
+      const e3 = eOutExpo(clamp01((frame - (verdictAt + 33)) / 12));
       if (e3 > 0.01){
         ctx.globalAlpha = 0.9 * e3;
-        typeLine('projected ' + Vp[0] + ' \u2013 ' + Vp[1], cx, 176, 11.5, TAUPE);
+        typeLine('projected ' + Vp[0] + ' \u2013 ' + Vp[1], cx, detailY, 11.5, TAUPE);
+        ctx.globalAlpha = 1;
+      }
+    } else if (RECAP && R.home_score != null && R.away_score != null){
+      const e3 = eOutExpo(clamp01((frame - (verdictAt + 33)) / 12));
+      if (e3 > 0.01){
+        const actM = Math.abs(R.home_score - R.away_score);
+        const actW = (R.home_score >= R.away_score ? R.home_name : R.away_name).toUpperCase();
+        ctx.globalAlpha = 0.9 * e3;
+        typeLine((actW === wName ? 'won by ' : 'ACTUAL: ' + actW + ' by ') + actM,
+                 cx, detailY, 11.5, TAUPE);
         ctx.globalAlpha = 1;
       }
     }

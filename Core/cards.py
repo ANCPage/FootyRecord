@@ -12,6 +12,7 @@ import json
 
 import Core.chains as chains
 import Core.state_store as state_store
+from Core.calibration import confidence_grade
 from Core.mappings import get_full_name, worn_colours
 
 # Card payload contract version (modularization audit 2026-09-05): the JSON
@@ -141,6 +142,7 @@ def pred_payload(ing, conn, a, b, home, season, up_to, label=None,
         'round_label': (label or f'ROUND {slot}') + ' \u00b7 PREDICTION',
         'teams': _teams(a, b, home),
         'verdict': {'winner': dec['winner'], 'margin': dec['margin'],
+                    'grade': confidence_grade(dec['margin']),
                     'projected': [score_a, score_b]},
         'result': {'home_name': get_full_name(home), 'away_name': get_full_name(away),
                    'home_score': None, 'away_score': None,
@@ -179,7 +181,8 @@ def recap_payload(conn, season, round_num, a, b, home, label=None):
         'mode': 'recap',
         'round_label': (label or f'ROUND {round_num}') + ' \u00b7 RECAP',
         'teams': _teams(a, b, home),
-        'verdict': {'winner': get_full_name(w_id), 'margin': margin},
+        'verdict': {'winner': get_full_name(w_id), 'margin': margin,
+                    'grade': confidence_grade(margin)},
         'result': {'home_name': get_full_name(home), 'away_name': get_full_name(away),
                    'home_score': actual_home, 'away_score': actual_away,
                    'model_winner_name': get_full_name(w_id),

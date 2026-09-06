@@ -42,6 +42,8 @@ def validate_payload(p):
         _err("'verdict.winner' missing")
     if not isinstance(v.get('margin'), (int, float)):
         _err("'verdict.margin' missing")
+    if 'grade' in v and not isinstance(v['grade'], str):
+        _err("'verdict.grade' must be a string like 'D' (got %r)" % (v['grade'],))
     if p['mode'] == 'pred':
         proj = v.get('projected')
         if not (isinstance(proj, list) and len(proj) == 2
