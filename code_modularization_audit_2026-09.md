@@ -133,3 +133,16 @@ call). PNGs byte-identical pre/post. Remaining (flagged, not done): the three
 draw_game_* methods are ~300-line near-siblings sharing fig/ax/ring/font
 scaffolding — unifying them is a design project needing a visual-regression
 harness, deliberately deferred. Packaging decision (pyproject) still open.
+
+## Resolutions applied — rulings + harness (2026-09-05, commit c10ddd2)
+- **Ruling 1 (recap verdict):** model call stays the verdict; the ACTUAL
+  result now appears beneath it ('won by 55' / 'ACTUAL: <team> by <m>' when
+  the model picked wrong) — computed in choreography from result (real
+  scores). Recap R24 now reads: SYDNEY SWANS / BY 23 / GRADE D / won by 55.
+- **Ruling 2 (confidence):** the model's confidence_grade (F..A+) is always
+  stamped on pred + recap verdicts and shown under the BY line (net = actual
+  margin, no call to grade). Tight tips read honestly: GEELONG BY 2 → GRADE F.
+- **Visual regression harness:** liquid/framecheck.py — full-pipeline pixel
+  compare vs committed baselines (--update to re-baseline). The enabler for
+  the pending draw_game_* + geometry unification.
+- **Honesty fix:** compare_fingerprints labels model line vs actual scoreline.
