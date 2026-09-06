@@ -4,9 +4,15 @@ import os
 # Project Root
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Directory Paths
-DATA_DIR = os.path.join(PROJECT_ROOT, 'CSV_DATA')
-OUTPUT_DIR = os.path.join(PROJECT_ROOT, 'ROUND_IMAGES_UPDATE')
+# Directory Paths. DATA_DIR/OUTPUT_DIR default to the repo's data folders but
+# are env-overridable (2026-09-06, GitHub-hub migration): git lives only on
+# GitHub + the Pi mirror; the PC share is a DATA-ONLY volume. Data-bound runs
+# (fingerprint tests, unrecorded-finals predictions) point at the mounted
+# CSV folder via FOOTYRECORD_DATA_DIR — no repo needed on the share.
+DATA_DIR = os.environ.get('FOOTYRECORD_DATA_DIR',
+                          os.path.join(PROJECT_ROOT, 'CSV_DATA'))
+OUTPUT_DIR = os.environ.get('FOOTYRECORD_OUTPUT_DIR',
+                            os.path.join(PROJECT_ROOT, 'ROUND_IMAGES_UPDATE'))
 FONTS_DIR = os.path.join(PROJECT_ROOT, 'downloaded_fonts')
 # Results DB lives OUTSIDE the repo (and off the SMB mount — SQLite needs
 # byte-range locks the share can't provide). Override with FOOTYRECORD_DB.
