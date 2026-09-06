@@ -110,6 +110,7 @@ def materialise(payload, seed=987654321):
         own = payload['ends'][end].get('own', [])
         ends[end] = {'own': _build_paths(own, pmap, rng)}
     return {
+        'version': payload.get('version'),
         'mode': payload['mode'],
         'round_label': payload['round_label'],
         'teams': payload['teams'],

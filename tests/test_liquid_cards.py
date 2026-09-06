@@ -149,3 +149,61 @@ def test_finals_compute_path_produces_verdict():
     assert p['verdict']['winner'] == 'Geelong Cats'
     assert 1 <= p['verdict']['margin'] <= 60
     assert st['top'] > 0 and st['bottom'] > 0
+
+
+# ---- payload contract (modularization audit 2026-09-05) ------------------
+def test_payload_contract_version_stamped():
+    import Core.cards as cards_mod
+    from liquid import schema as _s  # noqa: F401  (importable)
+    conn = _conn()
+    cases = [
+        cards_mod.recap_payload(conn, 2026, 24, 'CD_T100', 'CD_T160', 'CD_T160')[0],
+        cards_mod.net_payload(conn, 2026, 24, 'CD_T100', 'CD_T160', 'CD_T160')[0],
+        cards_mod.pred_payload(None, conn, 'CD_T100', 'CD_T160', 'CD_T160', 2026, 23)[0],
+    ]
+    for p in cases:
+        assert p['version'] == cards_mod.CARD_PAYLOAD_VERSION
+        assert p['version'] == 1
+
+
+def test_payload_schema_validates_golden():
+    from liquid import schema
+    from liquid.geom import materialise
+    conn = _conn()
+    for maker in (cards.recap_payload, cards.net_payload):
+        p, _st = maker(conn, 2026, 24, 'CD_T100', 'CD_T160', 'CD_T160')
+        assert schema.validate_payload(materialise(p)) is True
+    p, _st = cards.pred_payload(None, conn, 'CD_T100', 'CD_T160', 'CD_T160', 2026, 23)
+    assert schema.validate_payload(materialise(p)) is True
+
+
+def test_payload_schema_catches_drift():
+    from liquid import schema
+    from liquid.geom import materialise
+    import pytest
+    conn = _conn()
+    p, _st = cards.recap_payload(conn, 2026, 24, 'CD_T100', 'CD_T160', 'CD_T160')
+    out = materialise(p)
+    bad = json.loads(json.dumps(out))          # deep copy
+    del bad['goals']['top']
+    with pytest.raises(ValueError):
+        schema.validate_payload(bad)
+    bad2 = json.loads(json.dumps(out))
+    bad2['teams']['top']['colour'] = 'royal blue'
+    with pytest.raises(ValueError):
+        schema.validate_payload(bad2)
+    bad3 = json.loads(json.dumps(out))
+    bad3['version'] = None
+    with pytest.raises(ValueError):
+        schema.validate_payload(bad3)
+
+
+def test_build_html_assembles_all_parts():
+    from liquid import build_html, geom
+    conn = _conn()
+    p, _st = cards.recap_payload(conn, 2026, 24, 'CD_T100', 'CD_T160', 'CD_T160')
+    html = build_html.assemble(geom.materialise(p))
+    for leftover in ('__THEME__', '__DATA__', '__ENGINE__', '__CHOREO__'):
+        assert leftover not in html
+    for needed in ('function step()', 'function drawChrome', '"beats"', 'format(\'truetype\')'):
+        assert needed in html

@@ -23,6 +23,7 @@ sys.path.insert(0, ROOT)
 import Core.cards as cards          # noqa: E402  (payload assembly — one system)
 import Core.chains as chains        # noqa: E402
 import Core.state_store as state_store  # noqa: E402
+from liquid import schema           # noqa: E402  (payload contract guard)
 from liquid.geom import materialise  # noqa: E402  (presentation only)
 
 
@@ -76,6 +77,7 @@ def main():
             payload['verdict'], stats))
         return 0
     out = materialise(payload)
+    schema.validate_payload(out)      # contract guard before anything consumes it
     json.dump(out, open(args.out, 'w'))
     v = payload['verdict']
     print('%s: %s by %d (ends %s) -> %s' % (

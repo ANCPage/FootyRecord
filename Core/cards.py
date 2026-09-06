@@ -14,6 +14,12 @@ import Core.chains as chains
 import Core.state_store as state_store
 from Core.mappings import get_full_name, worn_colours
 
+# Card payload contract version (modularization audit 2026-09-05): the JSON
+# between Core.cards and the liquid engine is versioned so drift (like the
+# px-vs-data-space goals bug) is caught by the schema validator, never by
+# eyeballing frames.
+CARD_PAYLOAD_VERSION = 1
+
 
 def _edge_tuple(k):
     return tuple(k.split('->'))
@@ -130,6 +136,7 @@ def pred_payload(ing, conn, a, b, home, season, up_to, label=None,
     score_a = dec['proj_home'] if a == home else dec['proj_away']
     score_b = dec['proj_away'] if a == home else dec['proj_home']
     payload = {
+        'version': CARD_PAYLOAD_VERSION,
         'mode': 'pred',
         'round_label': (label or f'ROUND {slot}') + ' \u00b7 PREDICTION',
         'teams': _teams(a, b, home),
@@ -168,6 +175,7 @@ def recap_payload(conn, season, round_num, a, b, home, label=None):
         margin = abs((actual_home or 0) - (actual_away or 0))
         correct = None
     payload = {
+        'version': CARD_PAYLOAD_VERSION,
         'mode': 'recap',
         'round_label': (label or f'ROUND {round_num}') + ' \u00b7 RECAP',
         'teams': _teams(a, b, home),
@@ -232,6 +240,7 @@ def net_payload(conn, season, round_num, a, b, home, label=None):
     model_winner = get_full_name(prow[6]) if prow else None
     pred_margin = round(abs(prow[4])) if prow else None
     payload = {
+        'version': CARD_PAYLOAD_VERSION,
         'mode': 'net',
         'round_label': (label or f'ROUND {round_num}') + ' \u00b7 THE ACTUAL NET',
         'teams': _teams(a, b, home),
