@@ -104,3 +104,19 @@ the template + fonts committed. /tmp retains only session scratch.
 
 Rule for the whole programme: **no render output changes** — every step is
 verifiable by identical frames from the capture harness.
+
+## Resolutions applied (2026-09-05, commits 6ff + 37e2aef)
+Slices 1-3 done + the contract-drift bug they were designed to catch:
+- **Bug found first**: materialise emits goals in PX but the template
+  re-projected them as data-space -> anchors + score plates ~188k px off-
+  canvas since the one-system switch. Fixed; plates/anchors restored.
+- **Slice 1**: CARD_PAYLOAD_VERSION stamped by cards, passed through geom,
+  liquid/schema.validate_payload() guards materialised shape in render_card
+  + build_html + tests (golden validate; tampered raises).
+- **Slice 2**: liquid/theme.json (canvas/cream/ink/faces/beats/SOFT/field/
+  seed); template reads THEME; stale NAVY/RED fallbacks removed; decay fill
+  derived from CREAM.
+- **Slice 3**: engine.js (reusable core) + choreography.js (story layer) +
+  template.html thin shell + liquid/build_html.py (ONE build step).
+- Verified PIXEL-IDENTICAL to the pre-split baseline (ImageChops diff None).
+Slice 4 (MatchupCanvas in visualize_matchup) + packaging decision: pending.
