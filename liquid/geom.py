@@ -43,19 +43,28 @@ def field_positions():
     """SHARED-WEB lattice (Austin 2026-09-06): one oval-bounded mesh.
 
     The 15 zones are the CENTRES of real positions on the ground: 5 even
-    depth bands spanning the full field (A = attacking goal square .. E =
-    own defensive goal), 3 lanes at 85% of the oval's width so the wings sit
-    where wingers play (near the boundary at the centre, converging into the
-    pocket arcs at the ends). 180-symmetric by construction: a team's depth
-    c / lane l and its mirror's depth 4-c / lane 4-l land on the SAME nodes,
-    so both teams trace one identical lattice (audit: flip(pos) == pos as a
-    set, 0 gap; every node inside the chrome oval — pinned in tests).
+    depth bands spanning the full field (A = own DEFENSIVE end / back pocket
+    .. E = the ATTACKING goal square — the model's letter semantics,
+    fingerprint_field "A bottom .. E near the goal"; raw chains ascend
+    A->E toward the shot), 3 lanes at 85% of the oval's width so the wings
+    sit where wingers play (near the boundary at the centre, converging into
+    the pocket arcs at the ends). 180-symmetric by construction: a team's
+    depth c / lane l and its mirror's depth 4-c / lane 4-l land on the SAME
+    nodes, so both teams trace one identical lattice (audit: flip(pos) ==
+    pos as a set, 0 gap; every node inside the chrome oval — pinned in
+    tests).
     """
     pos = {}
     for lane_i, row in enumerate(GRID_NAMES):        # lane_i 0,1,2 = digits 1,2,3
         side = lane_i - 1                            # -1, 0, +1 (left/centre/right)
         for depth_i, name in enumerate(row):         # depth_i 0..4 = letters A..E
-            y = GOAL[1] - FIELD_LEN * (depth_i + 0.5) / 5.0
+            # DEPTH SEMANTICS (2026-09-06, Austin caught the inversion): the
+            # model's letters run A = DEFENSIVE end (back pocket) .. E =
+            # ATTACKING end (goal square) — see Core/fingerprint_field.py
+            # ("A bottom .. E near the goal") + raw chains ascend A->E toward
+            # the shot. Band index is mirrored so A sits at the team's own
+            # defensive end and E just below its attacking goal.
+            y = GOAL[1] - FIELD_LEN * ((4 - depth_i) + 0.5) / 5.0
             x = 0.5 + side * SPREAD * _oval_half_width(y)
             pos[name] = (x, y)
     pos['SCORE'] = GOAL

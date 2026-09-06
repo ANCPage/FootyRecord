@@ -32,17 +32,12 @@ def collapse(zs):
     return out
 
 
-def _own_frame(grids, team, home):
-    """Rotate a chain into its team's own (top-attacking) frame if the team
-    was the away side in its game (DB stores chains in the home frame)."""
-    if home != team:
-        return [rotate_node(g) for g in grids]
-    return grids
-
-
 def game_chains(conn, season, round_num, team_a, team_b):
     """{team_a: [seq,...], team_b: [seq,...]} — the ONE game's scoring
-    chains, collapsed, both teams normalised to team_a's top-attacking frame.
+    chains, collapsed. Chains are stored in EACH team's own attacking-up
+    frame already (raw chains ascend A->E toward the shot for home AND away
+    teams; the engine's profiler also takes own chains as-is) — NO rotation
+    here. The card's ends map them: top team -> pos, bottom team -> flip.
 
     Returns ({}, None) when the matchup has no row in `matches`.
     """
@@ -54,12 +49,11 @@ def game_chains(conn, season, round_num, team_a, team_b):
     for cidx, _seq, team, grid in state_store.game_chain_rows(conn, mid):
         if grid in (None, ''):
             continue
-        per.setdefault(team, {}).setdefault(cidx, []).append((grid, team, home))
+        per.setdefault(team, {}).setdefault(cidx, []).append(grid)
     out = {team_a: [], team_b: []}
     for tid in (team_a, team_b):
         for cidx in sorted(per.get(tid, {})):
-            cells = per[tid][cidx]
-            zs = collapse(_own_frame([g for g, _t, _h in cells], tid, cells[0][2]))
+            zs = collapse(per[tid][cidx])
             if zs:  # single-zone chains are real scoring chains (direct shots)
                 out[tid].append(zs)
     return out, home
@@ -82,7 +76,7 @@ def window_counter(conn, season, up_to_round, team, decay=DECAY):
         per.setdefault((mid, cidx), []).append((grid, home, rnd))
     for key in sorted(per):
         cells = per[key]
-        zs = collapse(_own_frame([g for g, _h, _r in cells], team, cells[0][1]))
+        zs = collapse([g for g, _h, _r in cells])   # own-frame already, no rotation
         if not zs:
             continue
         w = decay ** max(up_to_round - cells[0][2], 0)
