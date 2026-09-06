@@ -22,6 +22,13 @@ TEAM_DATA = {
 # Legacy mapping for backwards compatibility
 TEAM_MAP = {k: v['name'] for k, v in TEAM_DATA.items()}
 
+
+def get_full_name(team_id: str) -> str:
+    """Team id -> full name ('Geelong Cats'). THE id->name lookup (dedup
+    audit 2026-09-05, item 5) — callers used to rebuild TEAM_DATA dicts."""
+    return TEAM_DATA.get(team_id, {}).get('name', team_id)
+
+
 def get_short_name(name: str) -> str:
     """
     Abbreviates long team names for visualization purposes.

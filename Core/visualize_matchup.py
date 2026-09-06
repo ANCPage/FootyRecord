@@ -12,6 +12,7 @@ import numpy as np
 
 from Core.engine_core import home_favored
 from Core.field_visualizer import FieldVisualizer
+from Core.geometry import flip_positions
 from Core.mappings import TEAM_DATA
 from Core.theme import get_ordinal
 from Core.vector_renderer import VectorRenderer
@@ -326,7 +327,7 @@ class MatchupVisualizer(FieldVisualizer):
             # 180-degree rotation is un-done (positions mirrored x AND y),
             # and the conceded field is traced to the bottom goal.
             gy2 = 0.08
-            pos_neg = {k: (1.0 - x, 1.0 - y) for k, (x, y) in pos.items()}
+            pos_neg = flip_positions(pos)
             neg_edges = {k: v for k, v in matrix_a.items() if v < 0}
             if neg_edges:
                 neg_field = build_field(neg_edges, pos_neg)
@@ -602,7 +603,7 @@ class MatchupVisualizer(FieldVisualizer):
         gx, gy, gy2 = 0.5, 0.92, 0.08
         R = 0.42
         cx, cy = 0.5, 0.5
-        pos_neg = {k: (1.0 - x, 1.0 - y) for k, (x, y) in pos.items()}
+        pos_neg = flip_positions(pos)
 
         # GLOBAL normalisation (2026-09-01): ink is split by each team's
         # actual scoring-chain volume, so the team that scored more in the
@@ -740,7 +741,7 @@ class MatchupVisualizer(FieldVisualizer):
         winner = a_name if win_a else b_name
 
         pos = node_positions()
-        pos_neg = {k: (1.0 - x, 1.0 - y) for k, (x, y) in pos.items()}
+        pos_neg = flip_positions(pos)
         gx, gy, gy2 = 0.5, 0.92, 0.08
         R = 0.42
         cx, cy = 0.5, 0.5
@@ -895,7 +896,7 @@ class MatchupVisualizer(FieldVisualizer):
         winner = a_name if win_a else b_name
 
         pos = node_positions()
-        pos_neg = {k: (1.0 - x, 1.0 - y) for k, (x, y) in pos.items()}
+        pos_neg = flip_positions(pos)
         gx, gy, gy2 = 0.5, 0.92, 0.08
         R = 0.42
         cx, cy = 0.5, 0.5

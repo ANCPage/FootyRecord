@@ -8,7 +8,7 @@ data->px mapping.
 """
 import math
 
-from Core.geometry import GRID_NAMES
+from Core.geometry import GRID_NAMES, flip_positions
 
 GOAL = (0.5, 0.92)
 
@@ -31,7 +31,8 @@ def arc_positions():
 
 
 def flip(pos_map):
-    return {k: (1.0 - x, 1.0 - y) for k, (x, y) in pos_map.items()}
+    """Away-frame projection mirror (delegates — one spelling, Core.geometry)."""
+    return flip_positions(pos_map)
 
 
 def bow(pts, amount=0.16, samples=6):

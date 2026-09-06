@@ -12,6 +12,7 @@ import sqlite3
 
 import Core.config as _cfg
 from Core.calibration import confidence_grade
+from Core.models import TransitionEdge
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS predictions (
@@ -134,12 +135,21 @@ def serialize_delta(delta: dict) -> str:
         return None
     return json.dumps({f"{k.source}->{k.target}": float(v) for k, v in delta.items()})
 
+
+def deserialize_delta_dict(d: dict) -> dict:
+    """Parsed {str edge: weight} -> {TransitionEdge: weight}.
+
+    The ONE parse of the edge-JSON format; deserialize_delta and
+    state_store.edge_dict_from_json delegate here (dedup audit 2026-09-05).
+    """
+    return {TransitionEdge(*k.split('->')): v for k, v in d.items()}
+
+
 def deserialize_delta(s: str) -> dict:
     """JSON string -> {TransitionEdge: weight}."""
     if not s:
         return {}
-    from Core.engine_core import TransitionEdge
-    return {TransitionEdge(*k.split('->')): v for k, v in json.loads(s).items()}
+    return deserialize_delta_dict(json.loads(s))
 
 
 def upsert_prediction(conn, g: dict):

@@ -78,7 +78,7 @@ def main():
     if a.game_a and a.game_b:
         ta, tb = resolve_team(a.game_a), resolve_team(a.game_b)
         conn = results_db.connect()
-        res = state_store.match_result(conn, a.season, a.round, ta, tb)
+        res = state_store.prediction_result_row(conn, a.season, a.round, ta, tb)
         conn.close()
         model_winner = None
         if res:

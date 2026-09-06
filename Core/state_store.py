@@ -14,7 +14,7 @@ import os
 import sqlite3
 
 import Core.results_db  # noqa: F401  (DB_PATH lives here — one constant for both stores)
-from Core.models import MatchInfo, TransitionEdge
+from Core.models import MatchInfo
 from Core.results_db import DB_PATH
 
 SCHEMA = """
@@ -60,6 +60,16 @@ def connect(db_path: str = None) -> sqlite3.Connection:
     return conn
 
 
+def _matchup_clause(team_a: str, team_b: str):
+    """(WHERE-suffix, args) matching a matchup in either home order.
+
+    The ONE spelling of the matchup normalisation (dedup audit 2026-09-05,
+    item 4) — was copy-pasted into every accessor.
+    """
+    return ('AND ((home=? AND away=?) OR (home=? AND away=?))',
+            (team_a, team_b, team_b, team_a))
+
+
 def edge_str(k) -> str:
     """TransitionEdge or plain (start, end) tuple -> 'start->end'."""
     if hasattr(k, 'source'):
@@ -68,14 +78,17 @@ def edge_str(k) -> str:
 
 
 def edge_dict_from_json(s) -> dict:
-    """'start->end': weight JSON -> {TransitionEdge: weight}."""
-    if not s:
-        return {}
-    return {TransitionEdge(*k.split('->')): v for k, v in json.loads(s).items()}
+    """'start->end': weight JSON -> {TransitionEdge: weight}.
+
+    Canonical impl lives in results_db.deserialize_delta (dedup audit
+    2026-09-05) — state_store delegates.
+    """
+    return Core.results_db.deserialize_delta(s)
 
 
 def edge_dict_to_json(d) -> str:
-    return json.dumps({edge_str(k): float(v) for k, v in d.items()}) if d else None
+    """Delta dict -> edge-JSON string (canonical impl: results_db.serialize_delta)."""
+    return Core.results_db.serialize_delta(d)
 
 
 def scoring_chains(conn) -> dict:
@@ -193,7 +206,7 @@ def load_state(conn, skip_chains: bool = False) -> dict:
     match_positions = {}
     for m_id, team, pos_json in c.execute(
             "SELECT m_id, team, pos FROM match_positions"):
-        buckets = [{TransitionEdge(*k.split('->')): v for k, v in b.items()}
+        buckets = [Core.results_db.deserialize_delta_dict(b)
                    for b in json.loads(pos_json)]
         h, a = match_positions.get(m_id, (None, None))
         if team == 'H':
@@ -305,10 +318,10 @@ def match_scoring_chains(conn, season: int, round_num: int,
     Pass team_a/team_b to pick the specific matchup in the round.
     """
     if team_a and team_b:
+        clause, margs = _matchup_clause(team_a, team_b)
         m = conn.execute(
-            'SELECT m_id FROM matches WHERE season=? AND round=? '
-            'AND ((home=? AND away=?) OR (home=? AND away=?))',
-            (season, round_num, team_a, team_b, team_b, team_a)).fetchone()
+            'SELECT m_id FROM matches WHERE season=? AND round=? ' + clause,
+            (season, round_num) + margs).fetchone()
     else:
         m = conn.execute(
             'SELECT m_id FROM matches WHERE season=? AND round=?',
@@ -345,13 +358,19 @@ def match_scoring_chains(conn, season: int, round_num: int,
     return out
 
 
-def match_result(conn, season: int, round_num: int, team_a: str, team_b: str):
-    """Prediction + actual result row for a specific matchup."""
+def prediction_result_row(conn, season: int, round_num: int, team_a: str, team_b: str):
+    """The SHIPPED predictions row for a matchup: PROJECTED home/away scores +
+    margin + correct flag — NOT actuals (those live in match_row / matches).
+
+    Renamed from match_result (dedup audit 2026-09-05, item 6): the old name
+    read as actuals but queries predictions — a future caller could grab the
+    wrong table.
+    """
+    clause, margs = _matchup_clause(team_a, team_b)
     return conn.execute(
         'SELECT home, away, home_score, away_score, margin, correct '
-        'FROM predictions WHERE season=? AND round=? '
-        'AND ((home=? AND away=?) OR (home=? AND away=?))',
-        (season, round_num, team_a, team_b, team_b, team_a)).fetchone()
+        'FROM predictions WHERE season=? AND round=? ' + clause,
+        (season, round_num) + margs).fetchone()
 
 
 # ---- liquid-card accessors (one-system integration, 2026-09-05) ----------
@@ -359,11 +378,11 @@ def match_result(conn, season: int, round_num: int, team_a: str, team_b: str):
 
 def match_row(conn, season: int, round_num: int, team_a: str, team_b: str):
     """Actuals row for a matchup from `matches` (real scores, not projections)."""
+    clause, margs = _matchup_clause(team_a, team_b)
     return conn.execute(
         'SELECT m_id, home, away, home_score, away_score FROM matches '
-        'WHERE season=? AND round=? '
-        'AND ((home=? AND away=?) OR (home=? AND away=?))',
-        (season, round_num, team_a, team_b, team_b, team_a)).fetchone()
+        'WHERE season=? AND round=? ' + clause,
+        (season, round_num) + margs).fetchone()
 
 
 def game_chain_rows(conn, m_id: str):
@@ -397,11 +416,11 @@ def prediction_row(conn, season: int, round_num: int, team_a: str, team_b: str):
     delta_json) — delta_json is the exact per-edge model delta that made the
     call (keys 'A1->A2' / 'A1->SCORE'), the single source for card weights.
     """
+    clause, margs = _matchup_clause(team_a, team_b)
     return conn.execute(
         'SELECT home, away, home_score, away_score, margin, correct, winner, delta '
-        'FROM predictions WHERE season=? AND round=? '
-        'AND ((home=? AND away=?) OR (home=? AND away=?))',
-        (season, round_num, team_a, team_b, team_b, team_a)).fetchone()
+        'FROM predictions WHERE season=? AND round=? ' + clause,
+        (season, round_num) + margs).fetchone()
 
 
 def latest_elo(conn, team: str):

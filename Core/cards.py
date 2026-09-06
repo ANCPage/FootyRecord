@@ -12,9 +12,7 @@ import json
 
 import Core.chains as chains
 import Core.state_store as state_store
-from Core.mappings import TEAM_DATA, worn_colours
-
-NAMES = {k: v['name'] for k, v in TEAM_DATA.items()}
+from Core.mappings import get_full_name, worn_colours
 
 
 def _edge_tuple(k):
@@ -55,7 +53,7 @@ def _stored_or_computed(ing, conn, season, round_slot, home, away, up_to,
     row = state_store.prediction_row(conn, season, round_slot, home, away)
     if row:
         h, a, hs, aw, margin, correct, winner, delta_json = row
-        return {'winner': NAMES.get(winner, winner),
+        return {'winner': get_full_name(winner),
                 'margin': round(abs(margin)),
                 'proj_home': hs, 'proj_away': aw,
                 'correct': correct,
@@ -68,7 +66,7 @@ def _stored_or_computed(ing, conn, season, round_slot, home, away, up_to,
                         elo_overrides=elo_overrides)
     if p is None:
         raise ValueError('compute_matchup returned None')
-    return {'winner': NAMES[p.winner_id], 'margin': round(abs(p.margin_pred)),
+    return {'winner': get_full_name(p.winner_id), 'margin': round(abs(p.margin_pred)),
             'proj_home': p.home_score, 'proj_away': p.away_score,
             'correct': None, 'delta': None, 'stored': False}
 
@@ -92,8 +90,8 @@ def _teams(a, b, home):
     hw, aw = worn_colours(home, b if a == home else a)
     top_col = hw if a == home else aw
     bot_col = aw if a == home else hw
-    return {'top': {'name': NAMES[a], 'colour': _colour_hex(top_col)},
-            'bottom': {'name': NAMES[b], 'colour': _colour_hex(bot_col)}}
+    return {'top': {'name': get_full_name(a), 'colour': _colour_hex(top_col)},
+            'bottom': {'name': get_full_name(b), 'colour': _colour_hex(bot_col)}}
 
 
 def pred_payload(ing, conn, a, b, home, season, up_to, label=None,
@@ -137,7 +135,7 @@ def pred_payload(ing, conn, a, b, home, season, up_to, label=None,
         'teams': _teams(a, b, home),
         'verdict': {'winner': dec['winner'], 'margin': dec['margin'],
                     'projected': [score_a, score_b]},
-        'result': {'home_name': NAMES[home], 'away_name': NAMES[away],
+        'result': {'home_name': get_full_name(home), 'away_name': get_full_name(away),
                    'home_score': None, 'away_score': None,
                    'model_winner_name': dec['winner'],
                    'pred_margin': dec['margin'], 'correct': dec['correct']},
@@ -173,10 +171,10 @@ def recap_payload(conn, season, round_num, a, b, home, label=None):
         'mode': 'recap',
         'round_label': (label or f'ROUND {round_num}') + ' \u00b7 RECAP',
         'teams': _teams(a, b, home),
-        'verdict': {'winner': NAMES.get(w_id, w_id), 'margin': margin},
-        'result': {'home_name': NAMES[home], 'away_name': NAMES[away],
+        'verdict': {'winner': get_full_name(w_id), 'margin': margin},
+        'result': {'home_name': get_full_name(home), 'away_name': get_full_name(away),
                    'home_score': actual_home, 'away_score': actual_away,
-                   'model_winner_name': NAMES.get(w_id, w_id),
+                   'model_winner_name': get_full_name(w_id),
                    'pred_margin': margin, 'correct': correct},
         'ends': {'top': {'own': uniform}, 'bottom': {'own': bottom}},
     }
@@ -231,15 +229,15 @@ def net_payload(conn, season, round_num, a, b, home, label=None):
     actual_home, actual_away = mrow[3], mrow[4]
     w_id = home if actual_home >= actual_away else away
     prow = state_store.prediction_row(conn, season, round_num, home, away)
-    model_winner = NAMES.get(prow[6]) if prow else None
+    model_winner = get_full_name(prow[6]) if prow else None
     pred_margin = round(abs(prow[4])) if prow else None
     payload = {
         'mode': 'net',
         'round_label': (label or f'ROUND {round_num}') + ' \u00b7 THE ACTUAL NET',
         'teams': _teams(a, b, home),
-        'verdict': {'winner': NAMES[w_id],
+        'verdict': {'winner': get_full_name(w_id),
                     'margin': abs(actual_home - actual_away)},
-        'result': {'home_name': NAMES[home], 'away_name': NAMES[away],
+        'result': {'home_name': get_full_name(home), 'away_name': get_full_name(away),
                    'home_score': actual_home, 'away_score': actual_away,
                    'model_winner_name': model_winner,
                    'pred_margin': pred_margin, 'correct': prow[5] if prow else None},

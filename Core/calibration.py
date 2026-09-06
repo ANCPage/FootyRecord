@@ -28,6 +28,7 @@ from typing import List, Tuple
 import numpy as np
 
 import Core.config as _config
+from Core.engine_core import home_favored
 
 MIN_FIT_MATCHES = 60
 WINDOW_SEASONS = 2  # production default: rolling last N seasons
@@ -125,11 +126,14 @@ def compute_tier_cutoffs(team_elos: List[float]) -> Tuple:
 def align_margin(margin: float, net_delta: float, elo_diff_hundreds: float) -> float:
     """Direction comes from the RAW signal, never from the fit (2026-08-11:
     the Elo blend sets the SIZE only — the fitted margin can never flip the
-    raw delta's direction). Dead-even delta -> Elo side, matching
-    home_favored()."""
-    if net_delta > 0 or (net_delta == 0 and elo_diff_hundreds >= 0):
-        return abs(margin)
-    return -abs(margin)
+    raw delta's direction). Dead-even delta -> Elo side.
+
+    ONE winner rule: delegates to engine_core.home_favored (dedup audit
+    2026-09-05, item 1). The elo args are passed as (diff, 0.0) because only
+    the h_elo >= a_elo comparison matters.
+    """
+    home = home_favored(net_delta, elo_diff_hundreds, 0.0)
+    return abs(margin) if home else -abs(margin)
 
 
 def confidence_grade(margin: float) -> str:

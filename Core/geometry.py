@@ -69,3 +69,10 @@ def rotate_node(name: str) -> str:
         return name
     r, c = POS_MAP[name]
     return GRID_NAMES[MAX_R - r][MAX_C - c]
+
+
+def flip_positions(pos_map: dict) -> dict:
+    """Mirror a zone->(x, y) map across the centre (1-x, 1-y): the away
+    frame's view of the same geometry. THE one spelling of the projection
+    flip (dedup audit 2026-09-05, item 3)."""
+    return {k: (1.0 - x, 1.0 - y) for k, (x, y) in pos_map.items()}
