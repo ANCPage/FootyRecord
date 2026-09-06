@@ -79,3 +79,18 @@ pipeline. Question: where does the same logic live twice?
 ## Suggested order
 1 → (winner rule; the only load-bearing one) then 2/3 (mechanical),
 5/6 quick, 4 optional.
+
+## Resolutions applied (2026-09-05, commit d871758)
+All six items fixed. Every change verified byte-identical before commit:
+align_margin delegation sweep (175 combos), accessor row equality
+(reverse-order lookups included), delta serde round-trip, card payload
+golden numbers. 3 local-mirror failures in test_fingerprint_overlay are the
+known CSV-absence ZeroDivisionError (same with the fixes stashed) — full
+suite green on the canonical SMB repo.
+- 1: align_margin -> home_favored (calibration imports engine_core; no cycle)
+- 2: results_db owns deserialize_delta_dict/deserialize_delta/serialize_delta;
+  state_store delegates (it already imports results_db for DB_PATH)
+- 3: Core.geometry.flip_positions; visualize_matchup x4 + liquid/geom.flip
+- 4: state_store._matchup_clause(); 4 accessors
+- 5: mappings.get_full_name(); cards NAMES dict deleted (14 call sites)
+- 6: match_result -> prediction_result_row + explicit docstring
