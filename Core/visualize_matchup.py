@@ -10,12 +10,14 @@ import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 import numpy as np
 
-from Core.engine_core import home_favored
+from Core.engine_core import fingerprint_overlay, home_favored
 from Core.field_visualizer import FieldVisualizer
+from Core.fingerprint_field import GOAL_RING, build_field, node_positions, trace_streamlines
 from Core.geometry import flip_positions
 from Core.mappings import TEAM_DATA
 from Core.theme import get_ordinal
 from Core.vector_renderer import VectorRenderer
+from matplotlib.animation import FuncAnimation
 
 
 def _fallback_cal():
@@ -35,6 +37,13 @@ class MatchupVisualizer(FieldVisualizer):
             sub_text_color=self.sub_text_color,
             prop_body=self.prop_body
         )
+        # THE one field layout for the two-ended cards (dedup audit
+        # 2026-09-05, slice 4): was re-derived in every draw_* method.
+        self.pos = node_positions()
+        self.pos_neg = flip_positions(self.pos)
+        self.gx, self.gy, self.gy2 = 0.5, 0.92, 0.08
+        self.R = 0.42
+        self.cx, self.cy = 0.5, 0.5
 
     def _draw_field_on_ax(self, ax, title: str, matrix: Dict, target_edges: List, is_delta: bool, c_a: str, c_b: str, apply_blur: bool = False, frame: str = 'home', active_zones: bool = False):
         self.draw_pitch(ax)
@@ -302,7 +311,7 @@ class MatchupVisualizer(FieldVisualizer):
         TERRA = col_b if not single else '#8C8474'
         a_name = TEAM_DATA.get(team_a, {}).get('name', team_a)
         b_name = TEAM_DATA.get(team_b, {}).get('name', team_b) if team_b else None
-        pos = node_positions()
+        pos = self.pos
         cx, cy, R = 0.5, 0.5, 0.42   # whorl frame centred at MIDFIELD
         gx, gy = 0.5, 0.92           # the GOAL: top of the circle (true field)
 
@@ -327,7 +336,7 @@ class MatchupVisualizer(FieldVisualizer):
             # 180-degree rotation is un-done (positions mirrored x AND y),
             # and the conceded field is traced to the bottom goal.
             gy2 = 0.08
-            pos_neg = flip_positions(pos)
+            pos_neg = self.pos_neg
             neg_edges = {k: v for k, v in matrix_a.items() if v < 0}
             if neg_edges:
                 neg_field = build_field(neg_edges, pos_neg)
@@ -351,7 +360,6 @@ class MatchupVisualizer(FieldVisualizer):
             # made every card a 50/50 tangle regardless of who was winning.
             # teal = A wins the flow here, red = B wins, cream = equal.
             if delta is None:
-                from Core.engine_core import fingerprint_overlay
                 delta, net_a, net_b = fingerprint_overlay(matrix_a, matrix_b)
             dfield = build_delta_field(delta, pos)
             seeds = _whorl_seeds(56, rings=2, jitter=1.4)  # shared seed grid
@@ -573,14 +581,8 @@ class MatchupVisualizer(FieldVisualizer):
         colours, in the whorl style. No delta: each team's own chains at
         their true orientation.
         """
-        from collections import Counter
 
-        from matplotlib.animation import FuncAnimation
-
-        from Core.fingerprint_field import GOAL_RING, build_field, node_positions, trace_streamlines
-        from Core.mappings import TEAM_DATA
-
-        pos = node_positions()
+        pos = self.pos
         TEAL = TEAM_DATA.get(a_id, {}).get('primary', '#1F6F6B')
         TERRA = TEAM_DATA.get(b_id, {}).get('primary', '#C1553A')
         a_name = TEAM_DATA.get(a_id, {}).get('name', a_id)
@@ -600,10 +602,9 @@ class MatchupVisualizer(FieldVisualizer):
         def starts_of(chains):
             return Counter(c[0] for c in chains if c)
 
-        gx, gy, gy2 = 0.5, 0.92, 0.08
-        R = 0.42
-        cx, cy = 0.5, 0.5
-        pos_neg = flip_positions(pos)
+        gx, gy, gy2 = self.gx, self.gy, self.gy2
+        R, cx, cy = self.R, self.cx, self.cy
+        pos_neg = self.pos_neg
 
         # GLOBAL normalisation (2026-09-01): ink is split by each team's
         # actual scoring-chain volume, so the team that scored more in the
@@ -723,13 +724,6 @@ class MatchupVisualizer(FieldVisualizer):
         GOAL. The banner is sign(delta) — the video and the model arrive
         at the same conclusion BY CONSTRUCTION.
         """
-        from collections import Counter
-
-        from matplotlib.animation import FuncAnimation
-
-        from Core.engine_core import fingerprint_overlay
-        from Core.fingerprint_field import GOAL_RING, build_field, node_positions, trace_streamlines
-        from Core.mappings import TEAM_DATA
 
         delta, net_a, net_b = fingerprint_overlay(mat_a, mat_b)
         net = net_a - net_b
@@ -740,11 +734,9 @@ class MatchupVisualizer(FieldVisualizer):
         b_name = TEAM_DATA.get(b_id, {}).get('name', b_id)
         winner = a_name if win_a else b_name
 
-        pos = node_positions()
-        pos_neg = flip_positions(pos)
-        gx, gy, gy2 = 0.5, 0.92, 0.08
-        R = 0.42
-        cx, cy = 0.5, 0.5
+        pos, pos_neg = self.pos, self.pos_neg
+        gx, gy, gy2 = self.gx, self.gy, self.gy2
+        R, cx, cy = self.R, self.cx, self.cy
 
         pos_edges = {k: v for k, v in delta.items() if v > 0}
         neg_edges = {k: v for k, v in delta.items() if v < 0}
@@ -874,13 +866,6 @@ class MatchupVisualizer(FieldVisualizer):
         The top end's blue-vs-grey and the bottom end's red-vs-grey ARE
         the delta, composed. Banner stays sign(delta) — the engine.
         """
-        from collections import Counter
-
-        from matplotlib.animation import FuncAnimation
-
-        from Core.engine_core import fingerprint_overlay
-        from Core.fingerprint_field import GOAL_RING, build_field, node_positions, trace_streamlines
-        from Core.mappings import TEAM_DATA
 
         delta, net_a, net_b = fingerprint_overlay(mat_a, mat_b)
         net = net_a - net_b
@@ -895,11 +880,9 @@ class MatchupVisualizer(FieldVisualizer):
         b_name = TEAM_DATA.get(b_id, {}).get('name', b_id)
         winner = a_name if win_a else b_name
 
-        pos = node_positions()
-        pos_neg = flip_positions(pos)
-        gx, gy, gy2 = 0.5, 0.92, 0.08
-        R = 0.42
-        cx, cy = 0.5, 0.5
+        pos, pos_neg = self.pos, self.pos_neg
+        gx, gy, gy2 = self.gx, self.gy, self.gy2
+        R, cx, cy = self.R, self.cx, self.cy
 
         # the four constituents
         a_own = {k: v for k, v in mat_a.items() if v > 0}
@@ -956,7 +939,6 @@ class MatchupVisualizer(FieldVisualizer):
                  f'SEASON {season} · {(label or f"R{round_num}")} PREDICTION · {a_name.upper()} vs {b_name.upper()}',
                  ha='center', fontsize=11.5, color=self.sub_text_color)
 
-        from Core.engine_core import fingerprint_overlay
         d, _, _ = fingerprint_overlay(mat_a, mat_b)
         d_pos = {e: v for e, v in d.items() if v > 0}
         d_neg = {e: -v for e, v in d.items() if v < 0}
