@@ -26,9 +26,19 @@ def json_get(url):
 PORT = 9333
 OUT = sys.argv[2]
 N = int(sys.argv[3])
-SKIP = int(sys.argv[4]) if len(sys.argv) > 4 else 0
 URL = sys.argv[1]
-FMT = sys.argv[5] if len(sys.argv) > 5 else 'png'
+# positional [skip] [png|jpeg] — tolerant of either being omitted/elided:
+# a non-integer 4th arg is treated as the format
+SKIP = 0
+FMT = 'png'
+for a in sys.argv[4:]:
+    if a in ('png', 'jpeg'):
+        FMT = a
+    else:
+        try:
+            SKIP = int(a)
+        except ValueError:
+            pass
 assert FMT in ('png', 'jpeg'), 'format must be png or jpeg'
 EXT = 'png' if FMT == 'png' else 'jpg'
 os.makedirs(OUT, exist_ok=True)
