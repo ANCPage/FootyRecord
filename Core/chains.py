@@ -59,28 +59,33 @@ def game_chains(conn, season, round_num, team_a, team_b):
     return out, home
 
 
-def window_counter(conn, season, up_to_round, team, decay=DECAY):
-    """Counter of the team's distinct scoring paths through the window.
+def window_counter(conn, season, up_to_round, team, window=None):
+    """Counter of the team's distinct scoring paths over the MODEL's memory.
 
-    path = collapsed zone tuple in the team's own frame; weight = decayed
-    occurrence count (decay ** (up_to_round - game_round)). Used by the
-    prediction card's top80 route selection.
+    Aligned to queries.average_matrix (2026-09-07, Austin: "align it
+    properly"): the team's scoring chains come ONLY from its last `window`
+    (30) matches strictly before the slot, cross-season — flat counts, NO
+    per-round decay (the engine flat-averages its window; re-weighting by
+    round age was an approximation and is gone). path = collapsed zone tuple
+    in the team's own frame. Used by the prediction card's top80 selection.
     """
     from collections import defaultdict
-    c = defaultdict(float)
-    rows = state_store.window_scoring_rows(conn, season, up_to_round, [team])
-    per = {}
-    for mid, cidx, _seq, team_r, grid, home, rnd in rows:
+    window = window or config.config.window_size
+    hist = state_store.team_match_history(conn, team, season, up_to_round)
+    mids = {m_id for (m_id, _s, _r) in hist[:window]}
+    if not mids:
+        return defaultdict(float)
+    rows = state_store.chains_for_matches(conn, mids, team)
+    per = defaultdict(list)
+    for mid, cidx, grid in rows:
         if grid in (None, ''):
             continue
-        per.setdefault((mid, cidx), []).append((grid, home, rnd))
+        per[(mid, cidx)].append(grid)
+    c = defaultdict(float)
     for key in sorted(per):
-        cells = per[key]
-        zs = collapse([g for g, _h, _r in cells])   # own-frame already, no rotation
-        if not zs:
-            continue
-        w = decay ** max(up_to_round - cells[0][2], 0)
-        c[tuple(zs)] += w
+        zs = collapse(per[key])          # own-frame already, no rotation
+        if zs:
+            c[tuple(zs)] += 1.0
     return c
 
 

@@ -393,12 +393,38 @@ def game_chain_rows(conn, m_id: str):
         (m_id, 'SCORE')).fetchall()
 
 
-def window_scoring_rows(conn, season: int, up_to_round: int, teams):
-    """SCORE-outcome chain rows for the given teams through a round window.
+def team_match_history(conn, team: str, up_to_season: int, up_to_round: int):
+    """The team's matches STRICTLY BEFORE (up_to_season, up_to_round),
+    most recent first — the same filter queries.average_matrix applies
+    (info.season > s or (season == s and round >= r) excluded), so window
+    selection mirrors the model's memory exactly. Returns
+    [(m_id, season, round)] recent-first (cross-season)."""
+    return conn.execute(
+        'SELECT m_id, season, round FROM matches '
+        'WHERE (home=? OR away=?) '
+        'AND (season < ? OR (season = ? AND round < ?)) '
+        'ORDER BY season DESC, round DESC',
+        (team, team, up_to_season, up_to_season, up_to_round)).fetchall()
 
-    Returns [(m_id, chain_idx, seq, team, grid, home, round)] ordered —
-    home lets Core.chains rotate away-game chains into the team's own frame.
+
+def chains_for_matches(conn, m_ids, team: str):
+    """SCORE-outcome chain rows of `team` across the given match ids.
+
+    Returns [(m_id, chain_idx, grid)] — the chains feeding window_counter.
     """
+    marks = ','.join('?' * len(m_ids))
+    return conn.execute(
+        'SELECT ch.m_id, ch.chain_idx, ch.grid FROM chains ch '
+        'WHERE ch.outcome=? AND ch.team=? AND ch.m_id IN (' + marks + ') '
+        'ORDER BY ch.m_id, ch.chain_idx, ch.seq',
+        ('SCORE', team) + tuple(m_ids)).fetchall()
+
+
+def window_scoring_rows(conn, season: int, up_to_round: int, teams):
+    """(Deprecated 2026-09-07 — kept for history: season-scoped per-round
+    windowing was replaced by team_match_history + chains_for_matches, which
+    mirror the engine's cross-season last-30 window. Remove when the audit
+    trail no longer references it.)"""
     marks = ','.join('?' * len(teams))
     return conn.execute(
         'SELECT ch.m_id, ch.chain_idx, ch.seq, ch.team, ch.grid, m.home, m.round '
