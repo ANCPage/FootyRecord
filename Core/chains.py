@@ -89,6 +89,51 @@ def window_counter(conn, season, up_to_round, team, window=None):
     return c
 
 
+def window_edges(conn, season, up_to_round, team, window=None):
+    """The team's EDGE histogram over the model's memory window — collapse-
+    counted transitions incl. the shot edge, flat over the last `window`
+    matches before the slot. This is the unsigned shape of the matrix the
+    model aggregates (its unit is the edge, never the whole path)."""
+    from collections import defaultdict
+    window = window or config.config.window_size
+    hist = state_store.team_match_history(conn, team, season, up_to_round)
+    mids = {m_id for (m_id, _s, _r) in hist[:window]}
+    if not mids:
+        return defaultdict(float)
+    rows = state_store.chains_for_matches(conn, mids, team)
+    per = defaultdict(list)
+    for mid, cidx, grid in rows:
+        if grid in (None, ''):
+            continue
+        per[(mid, cidx)].append(grid)
+    e = defaultdict(float)
+    for key in per:
+        zs = collapse(per[key])          # own-frame already, no rotation
+        for u, v in zip(zs, zs[1:] + ['SCORE']):
+            e[(u, v)] += 1.0
+    return e
+
+
+def edge_scored_routes(paths, edge_hist, cap=60):
+    """Routes by EDGE recurrence — the model's unit. A chain's score = mean
+    frequency of its edges in the window, so a diverse deep-origin chain that
+    uses the common corridor edges ranks beside the recurring shots (whole-
+    path recurrence alone would keep only square shots and hide the field).
+    `paths` = the window's distinct collapsed chains with their counts;
+    returns the top `cap` by edge score, count as a tie-break."""
+    scored = []
+    for path, cnt in paths:
+        zs = list(path)
+        edges = [(zs[i], zs[i + 1]) for i in range(len(zs) - 1)]
+        edges.append((zs[-1], 'SCORE'))
+        if not edges:
+            continue
+        score = sum(edge_hist.get(e, 0) for e in edges) / len(edges)
+        scored.append((score, cnt, path))
+    scored.sort(key=lambda t: (-t[0], -t[1], t[2]))
+    return [(t[2], t[1]) for t in scored[:cap]]
+
+
 def recurring_routes(counter, min_count=4, cap=60):
     """Routes the model has actually SEEN in its window: distinct paths
     occurring >= min_count times over the team's last-30 matches, heaviest
