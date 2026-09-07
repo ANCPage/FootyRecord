@@ -36,6 +36,9 @@ def main():
     ap.add_argument('--season', type=int, default=2026)
     ap.add_argument('--round', type=int, default=None, help='recap/net game round')
     ap.add_argument('--up-to', type=int, default=None, help='pred data window')
+    ap.add_argument('--export', default=None,
+                    help='season mode: Core.fingerprint_export sidecar JSON '
+                         '(the model\'s own per-round matrices)')
     ap.add_argument('--label', default=None, help='round label prefix')
     ap.add_argument('--out', default='/tmp/liquid_data.json')
     ap.add_argument('--summary-only', action='store_true')
@@ -66,8 +69,11 @@ def main():
             conn, args.season, args.round, args.a, args.b, args.home,
             label=args.label)
     elif args.mode == 'season':
+        if not args.export:
+            ap.error('--mode season requires --export (run Core/fingerprint_export.py first)')
         payload, stats = cards.season_payload(
-            conn, args.a, args.season, label=args.label)
+            conn, args.a, args.season,
+            frames_data=json.load(open(args.export)), label=args.label)
     else:
         payload, stats = cards.net_payload(
             conn, args.season, args.round, args.a, args.b, args.home,

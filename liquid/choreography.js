@@ -161,13 +161,17 @@ function integrate(){
   for (let i = particles.length - 1; i >= 0; i--){
     const p = particles[i];
     const flow = flows[p.flow], pth = flow.paths[p.ci];
+    // season particles may run the conceded-shot variant (ptsNeg) — p.neg
+    // is set at spawn; matchup particles never set it (framecheck proves
+    // the matchup path is unchanged).
+    const pp = (p.neg && pth.ptsNeg) ? {pts: pth.ptsNeg, _L: pth._Lneg} : pth;
     if (!p.spd) p.spd = (1 / PFRAMES) * (0.9 + 0.2 * rng());
     const ageF = clamp01((frame - p.born) / 12);          // spawn at rest, ramp to cruise
     p.t += p.spd * eOutQuad(ageF);
     const arrived = p.t >= 1;
-    const raw = pointAt(pth, arrived ? 1 : p.t);
+    const raw = pointAt(pp, arrived ? 1 : p.t);
     // lateral weave — organic brush ribbon instead of a plotted line
-    const tan = tangentAt(pth, Math.min(0.999, p.t));
+    const tan = tangentAt(pp, Math.min(0.999, p.t));
     const wob = Math.sin(p.ph + p.t * p.fr * 6.2832);
     const pos = [raw[0] - tan[1] * p.off * wob, raw[1] + tan[0] * p.off * wob];
     p.hist.push(pos);
@@ -195,20 +199,26 @@ function integrate(){
   }
 }
 
-// ---- season mode: one team's fingerprint morphing round by round ----------
-// Option B (Austin 2026-09-07): particles never stop; per-round edge weights
-// cross-fade live. Each 60-frame window absorbs one round: weights blend from
-// the state BEFORE round r to the state AFTER it while 'ROUND r' pops in.
+// ---- season mode: the model's view of one team, morphing round by round ----
+// Option A (Austin 2026-09-07): ONE signed web from the engine's own per-round
+// matrices. Positive edges (routes the team scores down more than it leaks)
+// flow thick + bright into the TOP goal; negative edges (routes it leaks)
+// draw as a throttled drip toward the defensive end. Each 60-frame window
+// absorbs one round: signed weights cross-fade from the state before to the
+// state after it while 'ROUND r' pops in. Particles never stop.
 const S_FRAMES = 60;                       // 2 s per round at 30 fps -> 48 s for 24
+const LEAK_A = 0.45, LEAK_W = 0.55;        // the drip: alpha + width caps
 function seasonStep(){
   ctx.fillStyle = hexToRgba(CREAM, 0.988);
   ctx.fillRect(0, 0, W, H);
   drawChrome();
-  // top goal anchor — where the team scores (single-end card)
-  ctx.beginPath(); ctx.arc(cx, topY, 11, 0, 6.2832);
-  ctx.lineWidth = 2.4; ctx.strokeStyle = TCOL.top; ctx.stroke();
-  ctx.beginPath(); ctx.arc(cx, topY, 8.5, 0, 6.2832);
-  ctx.fillStyle = CREAM; ctx.fill();
+  // both goal rings: top = where the team scores, bottom = where it leaks
+  for (const [gy, wdt] of [[topY, 2.4], [botY, 2.4]]){
+    ctx.beginPath(); ctx.arc(cx, gy, 11, 0, 6.2832);
+    ctx.lineWidth = wdt; ctx.strokeStyle = TCOL.top; ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, gy, 8.5, 0, 6.2832);
+    ctx.fillStyle = CREAM; ctx.fill();
+  }
 
   const nf = DATA.frames.length;
   const j = Math.min(nf - 1, Math.floor(frame / S_FRAMES));
@@ -218,15 +228,21 @@ function seasonStep(){
   const flow = flows[0];
   const S = SOFT * 1.15;
   for (let i = 0; i < flow.paths.length; i++){
-    const w = A.w[i] * (1 - b) + B.w[i] * b;             // live cross-fade
-    if (w <= 0.02) continue;
+    const w = A.w[i] * (1 - b) + B.w[i] * b;             // signed cross-fade
     const pth = flow.paths[i];
-    const every = Math.max(5, Math.round(spawnEvery(Math.max(0.02, w))));
+    const neg = w < 0;
+    const t = neg ? Math.min(1, -w / Math.max(1e-9, B.nmax))
+                  : Math.min(1, w / Math.max(1e-9, B.pmax));
+    if (t <= 0.02) continue;
+    const every = Math.max(5, Math.round(spawnEvery(Math.max(0.02, t))));
     if ((frame % every) === (i % every) && rng() < 0.9){
-      // two channels from the same weight: width (p.w) + opacity (p.str)
-      const str = (0.18 + 0.82 * Math.pow(w, 0.7)) * S;
+      // two channels from the same strength: width (p.w) + opacity (p.str);
+      // leak routes run the conceded-shot variant toward the defensive goal
+      const dA = neg ? LEAK_A : 1.0, dW = neg ? LEAK_W : 1.0;
+      const str = (0.18 + 0.82 * Math.pow(t, 0.7)) * S * dA;
       particles.push({flow: 0, ci: i, born: frame, t: 0.002, spd: 0, hist: [],
-                      w: Math.max(0.05, w), str, off: 1.8 + 4.2 * rng(),
+                      w: Math.max(0.05, t * dW), str, neg,
+                      off: 1.8 + 4.2 * rng(),
                       ph: rng() * 6.2832, fr: 2.0 + 1.8 * rng(), die: null});
     }
   }
@@ -238,7 +254,7 @@ function seasonStep(){
   ctx.globalAlpha = Math.min(1, pop) * 0.95;
   typeLine('ROUND ' + shown, cx, 138, 22, NAVYINK, 'bold', 1, DISPLAY);
   ctx.globalAlpha = 1;
-  typeLine('how ' + TN.toUpperCase() + ' moved the ball to score',
+  typeLine('the model\u2019s net \u00b7 thick = scores \u00b7 drip = leaks',
            cx, 162, 10.5, TAUPE);
   frame++;
 }

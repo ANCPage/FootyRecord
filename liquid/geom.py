@@ -154,17 +154,28 @@ def materialise(payload, seed=987654321):
     pneg = flip(pos)
     rng = [seed]
     if payload['mode'] == 'season':
-        # Seasonal fingerprint: union edges (data-space zone pairs, SCORE =
-        # the team's attacking goal) -> one px path each; frames carry the
-        # per-round weights aligned to edges[]. Straight web segments get a
-        # light outward bow so adjacent lattice edges read as one fabric.
+        # Seasonal fingerprint (engine-exact, 2026-09-07): union edges from
+        # the model's own per-round matrices. Non-terminal edges = static
+        # zone->zone segments (keys run in the model's frame; descending
+        # concession keys naturally fall toward the defensive end). Terminal
+        # edges (a -> SCORE) carry BOTH goal variants: positive weight = the
+        # team's shot into the TOP goal, negative = the conceded shot into
+        # the BOTTOM goal — seasonStep picks by the live signed weight.
         edges = []
+        g_pos = pos['SCORE']           # the attacking (top) goal
+        g_neg = pneg['SCORE']          # the defensive (bottom) goal
         for e in payload['edges']:
             a, b = e['a'], e['b']
-            if a not in pos or b not in pos:
+            if a not in pos:
                 continue
-            sp = resample(bow([pos[a], pos[b]], amount=0.10), n=24)
-            edges.append({'id': '%s->%s' % (a, b), 'pts': to_px(sp)})
+            if b == 'SCORE':
+                sp = resample(bow([pos[a], g_pos], amount=0.10), n=24)
+                sn = resample(bow([pos[a], g_neg], amount=0.10), n=24)
+                edges.append({'id': '%s->%s' % (a, b), 'pts': to_px(sp),
+                              'ptsNeg': to_px(sn), 'terminal': True})
+            elif b in pos:
+                sp = resample(bow([pos[a], pos[b]], amount=0.10), n=24)
+                edges.append({'id': '%s->%s' % (a, b), 'pts': to_px(sp)})
         return {
             'version': payload.get('version'),
             'mode': payload['mode'],

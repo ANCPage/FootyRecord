@@ -258,62 +258,40 @@ def net_payload(conn, season, round_num, a, b, home, label=None):
     return payload, {'top': len(top), 'bottom': len(bot)}
 
 
-def season_payload(conn, team, season, label=None, decay=0.3):
-    """Single-team seasonal fingerprint (2026-09-07, Austin: option B morph).
+def season_payload(conn, team, season, frames_data, label=None):
+    """Single-team seasonal fingerprint, 100% engine-aligned (2026-09-07).
 
-    State r = the team's own scoring edges over season R1..r, decayed by round
-    age (decay ** (r - rnd)), collapse-counted incl. the terminal ->SCORE edge
-    - the engine's matrix semantics for ONE team's movement. Weights are
-    normalised to each state's max so the morph shows SHAPE (where scoring
-    shifts), not raw volume growth. Union edge universe across states: edges
-    absent early carry 0 and fade in as the season adds them.
+    `frames_data` = Core.fingerprint_export sidecar: [{round, matrix}] where
+    matrix = the model's OWN per-round profile (get_team_average_matrix:
+    attack-minus-concede, per-game decay, 30-game window, E2-normalised).
+    NOTHING is re-derived here — no SQL window, no chain counting. The card
+    renders exactly what the model sees each round.
 
-    Returns (payload, {'rounds': 24, 'edges': len(union)}). payload keeps
-    DATA-space edges (zone pairs) - geom.materialise maps them to px.
+    Signed weights: positive edges = routes the team scores down more than it
+    leaks (draw to the TOP goal); negative = routes it leaks (draw to the
+    defensive end). Payload keeps raw signed weights + per-state pmax/nmax so
+    the visual normalises attack and leak on their own scales.
     """
-    rows = state_store.window_scoring_rows(conn, season, 24, (team,))
-    by_round = {}
-    for m_id, cidx, _seq, _t, grid, _h, rnd in rows:
-        if grid in (None, ''):
-            continue
-        by_round.setdefault(rnd, {}).setdefault((m_id, cidx), []).append(grid)
-
-    def collapse(zs):
-        out = []
-        for z in zs:
-            if not out or out[-1] != z:
-                out.append(z)
-        return out
-
-    def state_edges(up_to):
-        edges = {}
-        for rnd, games in by_round.items():
-            if rnd > up_to:
-                continue
-            w = decay ** (up_to - rnd)
-            for grids in games.values():
-                zs = collapse(grids)
-                for u, v in zip(zs, zs[1:] + ['SCORE']):
-                    edges[(u, v)] = edges.get((u, v), 0) + w
-        return edges
-
-    states = {r: state_edges(r) for r in range(1, 25)}
-    union = sorted({e for s in states.values() for e in s}, key=lambda e: (e[0], e[1]))
+    frames_in = frames_data['frames'] if isinstance(frames_data, dict) else frames_data
+    mats = [f['matrix'] for f in frames_in]
+    union = sorted({k for m in mats for k in m})
     frames = []
-    for r in range(1, 25):
-        es = states[r]
-        mx = max(es.values()) if es else 1.0
-        frames.append({'round': r, 'w': [round(es.get((u, v), 0) / mx, 4)
-                                         for u, v in union]})
+    for f, m in zip(frames_in, mats):
+        ws = [m.get(k, 0.0) for k in union]
+        pm = max([w for w in ws if w > 0] or [1e-9])
+        nm = max([-w for w in ws if w < 0] or [1e-9])
+        frames.append({'round': f['round'], 'w': [round(w, 6) for w in ws],
+                       'pmax': round(pm, 6), 'nmax': round(nm, 6)})
     name = get_full_name(team)
+    season_lbl = frames_data.get('season') if isinstance(frames_data, dict) else ''
     payload = {
         'version': CARD_PAYLOAD_VERSION,
         'mode': 'season',
-        'round_label': (label or '%s %s' % (name, season)) + ' \u00b7 FINGERPRINT',
+        'round_label': (label or '%s %s' % (name, season_lbl)) + ' \u00b7 FINGERPRINT',
         'teams': {'top': {'name': name, 'colour': _colour_hex(worn_colours(team, team)[0])}},
         'verdict': {'winner': name, 'margin': 0,
-                    'detail': 'how %s scored, round by round' % name},
-        'edges': [{'a': u, 'b': v} for u, v in union],
+                    'detail': 'the model\u2019s view of %s, round by round' % name},
+        'edges': [{'a': k.split('->')[0], 'b': k.split('->')[1]} for k in union],
         'frames': frames,
     }
     return payload, {'rounds': len(frames), 'edges': len(union)}

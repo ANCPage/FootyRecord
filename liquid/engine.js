@@ -52,10 +52,13 @@ function smoothPath(pts){
 
 const flows = [];
 if (SEASON){
-  // seasonal fingerprint: ONE flow — every union edge is a path; per-round
-  // weights live in DATA.frames (aligned to DATA.edges), read by seasonStep.
+  // seasonal fingerprint: ONE flow — every union edge is a path; signed
+  // per-round weights live in DATA.frames (aligned to DATA.edges), read by
+  // seasonStep. Terminal edges carry ptsNeg (the conceded-shot variant).
   flows.push({end: 'top', col: TCOL.top, startFrame: 0,
-              paths: DATA.edges.map(e => ({pts: e.pts, id: e.id, w: 1, w2: 1,
+              paths: DATA.edges.map(e => ({pts: e.pts, ptsNeg: e.ptsNeg,
+                                           terminal: e.terminal === true,
+                                           id: e.id, w: 1, w2: 1,
                                            s2: 1, mS: 1, kind: 'own'}))});
 }
 for (const end of ['top', 'bottom']){ const col = TCOL[end];
@@ -173,6 +176,14 @@ for (const f of flows){
     for (let i = 1; i < pts.length; i++)
       L.push(L[i-1] + Math.hypot(pts[i][0]-pts[i-1][0], pts[i][1]-pts[i-1][1]));
     p._L = L;
+    if (p.ptsNeg){                      // season terminal: the conceded-shot variant
+      p.ptsNeg = smoothPath(p.ptsNeg);
+      const Ln = [0];
+      for (let i = 1; i < p.ptsNeg.length; i++)
+        Ln.push(Ln[i-1] + Math.hypot(p.ptsNeg[i][0]-p.ptsNeg[i-1][0],
+                                     p.ptsNeg[i][1]-p.ptsNeg[i-1][1]));
+      p._Lneg = Ln;
+    }
   });
 }
 
