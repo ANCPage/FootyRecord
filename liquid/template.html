@@ -15,10 +15,11 @@ const THEME = __THEME__;
 const DATA = __DATA__;
 const W = THEME.canvas.w, H = THEME.canvas.h, CREAM = THEME.cream;
 const MODE = DATA.mode || 'pred';
-const RECAP = MODE === 'recap', NET = MODE === 'net';
-const SOFT = RECAP ? THEME.soft.recap : (NET ? THEME.soft.net : THEME.soft.pred);
-const TN = DATA.teams.top.name, BN = DATA.teams.bottom.name;
-const TCOL = {top: DATA.teams.top.colour, bottom: DATA.teams.bottom.colour};
+const RECAP = MODE === 'recap', NET = MODE === 'net', SEASON = MODE === 'season';
+const SOFT = SEASON ? THEME.soft.pred : (RECAP ? THEME.soft.recap : (NET ? THEME.soft.net : THEME.soft.pred));
+const TN = (DATA.teams.top || {}).name || '';
+const BN = ((DATA.teams.bottom || {}).name) || '';
+const TCOL = {top: DATA.teams.top.colour, bottom: (DATA.teams.bottom || {}).colour};
 const V = DATA.verdict || {}, R = DATA.result || {};
 const gTop = DATA.goals.top, gBot = DATA.goals.bottom;
 // geom.materialise emits goals in PX ([x, y]); anchors + plates key off these.

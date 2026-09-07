@@ -1,4 +1,5 @@
 function step(){
+  if (SEASON) return seasonStep();
   const beat = frame < B2 ? 0 : frame < B3 ? 1 : frame < B4 ? 2 : 3;
   // long-exposure decay
   ctx.fillStyle = hexToRgba(CREAM, 0.988);   // cream-derived long-exposure decay
@@ -35,42 +36,8 @@ function step(){
       }
     }
   }
-  // move + draw
-  for (let i = particles.length - 1; i >= 0; i--){
-    const p = particles[i];
-    const flow = flows[p.flow], pth = flow.paths[p.ci];
-    if (!p.spd) p.spd = (1 / PFRAMES) * (0.9 + 0.2 * rng());
-    const ageF = clamp01((frame - p.born) / 12);          // spawn at rest, ramp to cruise
-    p.t += p.spd * eOutQuad(ageF);
-    const arrived = p.t >= 1;
-    const raw = pointAt(pth, arrived ? 1 : p.t);
-    // lateral weave — organic brush ribbon instead of a plotted line
-    const tan = tangentAt(pth, Math.min(0.999, p.t));
-    const wob = Math.sin(p.ph + p.t * p.fr * 6.2832);
-    const pos = [raw[0] - tan[1] * p.off * wob, raw[1] + tan[0] * p.off * wob];
-    p.hist.push(pos);
-    if (p.hist.length > TRAIL) p.hist.shift();
-    if (p.hist.length > 1){
-      if (arrived && p.die == null) p.die = 5;
-      const dF = p.die != null ? Math.max(0, p.die / 5) : 1;
-      const k = 1 + (pth._kEnd - 1) * drainE(pth, frame);  // staged subtraction per route
-      drawStreak(flow.col, p.hist, p.w, p.str * dF, k);
-      // particle head: brighter leading tip so flow direction is legible
-      if (p.die == null && flow.col !== '#FFFFFF' && flow.col !== 'white'){
-        const H = p.hist;
-        const hlw = Math.max(1.0, Math.min(3.4, 1.1 + 2.8 * Math.pow(p.w, 0.9)));
-        ctx.strokeStyle = lighten(flow.col, 0.45);
-        ctx.globalAlpha = Math.min(1, 0.5 * p.str * (0.5 + 0.5 * k));
-        ctx.lineWidth = Math.max(1.0, hlw * 1.15);
-        ctx.beginPath();
-        const n0 = Math.max(0, H.length - 4);
-        for (let h = n0; h < H.length; h++){ const q = H[h]; h === n0 ? ctx.moveTo(q[0], q[1]) : ctx.lineTo(q[0], q[1]); }
-        ctx.stroke();
-        ctx.globalAlpha = 1;
-      }
-      if (p.die != null && --p.die <= 0){ particles.splice(i, 1); continue; }
-    }
-  }
+  // move + draw (shared integrator — seasonStep uses the same particle maths)
+  integrate();
   // trim runaway particles
   while (particles.length > 900) particles.shift();
 
@@ -189,5 +156,92 @@ function step(){
 
   frame++;
 }
+// shared particle integrator (matchup step + seasonStep) — move + draw
+function integrate(){
+  for (let i = particles.length - 1; i >= 0; i--){
+    const p = particles[i];
+    const flow = flows[p.flow], pth = flow.paths[p.ci];
+    if (!p.spd) p.spd = (1 / PFRAMES) * (0.9 + 0.2 * rng());
+    const ageF = clamp01((frame - p.born) / 12);          // spawn at rest, ramp to cruise
+    p.t += p.spd * eOutQuad(ageF);
+    const arrived = p.t >= 1;
+    const raw = pointAt(pth, arrived ? 1 : p.t);
+    // lateral weave — organic brush ribbon instead of a plotted line
+    const tan = tangentAt(pth, Math.min(0.999, p.t));
+    const wob = Math.sin(p.ph + p.t * p.fr * 6.2832);
+    const pos = [raw[0] - tan[1] * p.off * wob, raw[1] + tan[0] * p.off * wob];
+    p.hist.push(pos);
+    if (p.hist.length > TRAIL) p.hist.shift();
+    if (p.hist.length > 1){
+      if (arrived && p.die == null) p.die = 5;
+      const dF = p.die != null ? Math.max(0, p.die / 5) : 1;
+      const k = 1 + (pth._kEnd - 1) * drainE(pth, frame);  // staged subtraction per route
+      drawStreak(flow.col, p.hist, p.w, p.str * dF, k);
+      // particle head: brighter leading tip so flow direction is legible
+      if (p.die == null && flow.col !== '#FFFFFF' && flow.col !== 'white'){
+        const H = p.hist;
+        const hlw = Math.max(1.0, Math.min(3.4, 1.1 + 2.8 * Math.pow(p.w, 0.9)));
+        ctx.strokeStyle = lighten(flow.col, 0.45);
+        ctx.globalAlpha = Math.min(1, 0.5 * p.str * (0.5 + 0.5 * k));
+        ctx.lineWidth = Math.max(1.0, hlw * 1.15);
+        ctx.beginPath();
+        const n0 = Math.max(0, H.length - 4);
+        for (let h = n0; h < H.length; h++){ const q = H[h]; h === n0 ? ctx.moveTo(q[0], q[1]) : ctx.lineTo(q[0], q[1]); }
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      if (p.die != null && --p.die <= 0){ particles.splice(i, 1); continue; }
+    }
+  }
+}
+
+// ---- season mode: one team's fingerprint morphing round by round ----------
+// Option B (Austin 2026-09-07): particles never stop; per-round edge weights
+// cross-fade live. Each 60-frame window absorbs one round: weights blend from
+// the state BEFORE round r to the state AFTER it while 'ROUND r' pops in.
+const S_FRAMES = 60;                       // 2 s per round at 30 fps -> 48 s for 24
+function seasonStep(){
+  ctx.fillStyle = hexToRgba(CREAM, 0.988);
+  ctx.fillRect(0, 0, W, H);
+  drawChrome();
+  // top goal anchor — where the team scores (single-end card)
+  ctx.beginPath(); ctx.arc(cx, topY, 11, 0, 6.2832);
+  ctx.lineWidth = 2.4; ctx.strokeStyle = TCOL.top; ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx, topY, 8.5, 0, 6.2832);
+  ctx.fillStyle = CREAM; ctx.fill();
+
+  const nf = DATA.frames.length;
+  const j = Math.min(nf - 1, Math.floor(frame / S_FRAMES));
+  const b = Math.min(1, (frame % S_FRAMES) / S_FRAMES);
+  const A = DATA.frames[j], B = DATA.frames[Math.min(nf - 1, j + 1)];
+  const shown = j + 1;
+  const flow = flows[0];
+  const S = SOFT * 1.15;
+  for (let i = 0; i < flow.paths.length; i++){
+    const w = A.w[i] * (1 - b) + B.w[i] * b;             // live cross-fade
+    if (w <= 0.02) continue;
+    const pth = flow.paths[i];
+    const every = Math.max(5, Math.round(spawnEvery(Math.max(0.02, w))));
+    if ((frame % every) === (i % every) && rng() < 0.9){
+      // two channels from the same weight: width (p.w) + opacity (p.str)
+      const str = (0.18 + 0.82 * Math.pow(w, 0.7)) * S;
+      particles.push({flow: 0, ci: i, born: frame, t: 0.002, spd: 0, hist: [],
+                      w: Math.max(0.05, w), str, off: 1.8 + 4.2 * rng(),
+                      ph: rng() * 6.2832, fr: 2.0 + 1.8 * rng(), die: null});
+    }
+  }
+  integrate();
+  while (particles.length > 900) particles.shift();
+
+  // round ticker — claims each round as its structure forms
+  const pop = eOutQuint(clamp01((frame % S_FRAMES) / 14));
+  ctx.globalAlpha = Math.min(1, pop) * 0.95;
+  typeLine('ROUND ' + shown, cx, 138, 22, NAVYINK, 'bold', 1, DISPLAY);
+  ctx.globalAlpha = 1;
+  typeLine('how ' + TN.toUpperCase() + ' moved the ball to score',
+           cx, 162, 10.5, TAUPE);
+  frame++;
+}
+
 window.__advance = step;
 step();

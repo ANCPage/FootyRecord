@@ -29,8 +29,8 @@ from liquid.geom import materialise  # noqa: E402  (presentation only)
 
 def main():
     ap = argparse.ArgumentParser(description='Liquid card JSON (one-system)')
-    ap.add_argument('--mode', required=True, choices=['pred', 'recap', 'net'])
-    ap.add_argument('--a', required=True, help='team attacking the TOP goal')
+    ap.add_argument('--mode', required=True, choices=['pred', 'recap', 'net', 'season'])
+    ap.add_argument('--a', required=True, help='team attacking the TOP goal (season: the team)')
     ap.add_argument('--b', required=True, help='team attacking the BOTTOM goal')
     ap.add_argument('--home', required=True, help='fixture home team')
     ap.add_argument('--season', type=int, default=2026)
@@ -65,6 +65,9 @@ def main():
         payload, stats = cards.recap_payload(
             conn, args.season, args.round, args.a, args.b, args.home,
             label=args.label)
+    elif args.mode == 'season':
+        payload, stats = cards.season_payload(
+            conn, args.a, args.season, label=args.label)
     else:
         payload, stats = cards.net_payload(
             conn, args.season, args.round, args.a, args.b, args.home,

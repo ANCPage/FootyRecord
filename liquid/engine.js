@@ -51,6 +51,13 @@ function smoothPath(pts){
 }
 
 const flows = [];
+if (SEASON){
+  // seasonal fingerprint: ONE flow — every union edge is a path; per-round
+  // weights live in DATA.frames (aligned to DATA.edges), read by seasonStep.
+  flows.push({end: 'top', col: TCOL.top, startFrame: 0,
+              paths: DATA.edges.map(e => ({pts: e.pts, id: e.id, w: 1, w2: 1,
+                                           s2: 1, mS: 1, kind: 'own'}))});
+}
 for (const end of ['top', 'bottom']){ const col = TCOL[end];
   const arr = (DATA.ends[end] || {}).own || [];
   if (!arr.length) continue;
@@ -65,7 +72,8 @@ function drawChrome(){
   // editorial serif masthead stack — matches the reference grammar
   typeLine('FINGERPRINT', cx, 33, 19, NAVYINK, 'bold', 2, DISPLAY);
   typeLine((DATA.round_label || '').toUpperCase(), cx, 68, 10.5, MUTED, 'normal', 1, SANS);
-  typeLine(TN.toUpperCase() + ' v ' + BN.toUpperCase(), cx, 106, 16, NAVYINK, 'bold');
+  if (SEASON) typeLine(TN.toUpperCase(), cx, 106, 16, NAVYINK, 'bold');
+  else typeLine(TN.toUpperCase() + ' v ' + BN.toUpperCase(), cx, 106, 16, NAVYINK, 'bold');
   // oval field — the eye meets the field before the first head (0.7s ease-out)
   const fa = eOutQuad(clamp01(frame / 21));
   ctx.globalAlpha = fa;

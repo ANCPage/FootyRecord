@@ -153,6 +153,31 @@ def materialise(payload, seed=987654321):
     pos = field_positions()
     pneg = flip(pos)
     rng = [seed]
+    if payload['mode'] == 'season':
+        # Seasonal fingerprint: union edges (data-space zone pairs, SCORE =
+        # the team's attacking goal) -> one px path each; frames carry the
+        # per-round weights aligned to edges[]. Straight web segments get a
+        # light outward bow so adjacent lattice edges read as one fabric.
+        edges = []
+        for e in payload['edges']:
+            a, b = e['a'], e['b']
+            if a not in pos or b not in pos:
+                continue
+            sp = resample(bow([pos[a], pos[b]], amount=0.10), n=24)
+            edges.append({'id': '%s->%s' % (a, b), 'pts': to_px(sp)})
+        return {
+            'version': payload.get('version'),
+            'mode': payload['mode'],
+            'round_label': payload['round_label'],
+            'teams': payload['teams'],
+            'verdict': payload['verdict'],
+            'result': payload.get('result', {}),
+            'goals': {'top': to_px([pos['SCORE']])[0],
+                      'bottom': to_px([pneg['SCORE']])[0]},
+            'edges': edges,
+            'frames': payload['frames'],
+            'ends': {},
+        }
     ends = {}
     for end, pmap in (('top', pos), ('bottom', pneg)):
         own = payload['ends'][end].get('own', [])

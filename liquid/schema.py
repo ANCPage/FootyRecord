@@ -11,7 +11,7 @@ The template is the contract's other half: every key it reads must exist.
 """
 import re
 
-MODES = ('pred', 'recap', 'net')
+MODES = ('pred', 'recap', 'net', 'season')
 HEX = re.compile(r'^#[0-9A-Fa-f]{6}$')
 
 
@@ -30,7 +30,8 @@ def validate_payload(p):
         _err("'mode' not in %s" % (MODES,))
     if not isinstance(p.get('round_label'), str) or not p['round_label']:
         _err("'round_label' missing")
-    for end in ('top', 'bottom'):
+    ends_needed = ('top',) if p.get('mode') == 'season' else ('top', 'bottom')
+    for end in ends_needed:
         t = p.get('teams', {}).get(end)
         if not isinstance(t, dict) or not isinstance(t.get('name'), str) or not t['name']:
             _err("'teams.%s.name' missing" % end)
@@ -40,6 +41,22 @@ def validate_payload(p):
     v = p.get('verdict') or {}
     if not isinstance(v.get('winner'), str) or not v['winner']:
         _err("'verdict.winner' missing")
+    if p['mode'] == 'season':
+        edges = p.get('edges')
+        if not isinstance(edges, list) or not edges:
+            _err("season cards need non-empty 'edges'")
+        for e in edges:
+            pts = e.get('pts')
+            if not (isinstance(pts, list) and len(pts) >= 2
+                    and all(isinstance(q, list) and len(q) == 2 for q in pts)):
+                _err("season edge %r has no >=2-point px path" % e.get('id'))
+        frames = p.get('frames')
+        if not (isinstance(frames, list) and frames
+                and all(isinstance(f.get('round'), int)
+                        and isinstance(f.get('w'), list)
+                        and len(f['w']) == len(edges) for f in frames)):
+            _err("season cards need frames[{round, w[]}] aligned to edges")
+        return True
     if not isinstance(v.get('margin'), (int, float)):
         _err("'verdict.margin' missing")
     if 'grade' in v and not isinstance(v['grade'], str):

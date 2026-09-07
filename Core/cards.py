@@ -256,3 +256,64 @@ def net_payload(conn, season, round_num, a, b, home, label=None):
         'ends': {'top': {'own': top}, 'bottom': {'own': bot}},
     }
     return payload, {'top': len(top), 'bottom': len(bot)}
+
+
+def season_payload(conn, team, season, label=None, decay=0.3):
+    """Single-team seasonal fingerprint (2026-09-07, Austin: option B morph).
+
+    State r = the team's own scoring edges over season R1..r, decayed by round
+    age (decay ** (r - rnd)), collapse-counted incl. the terminal ->SCORE edge
+    - the engine's matrix semantics for ONE team's movement. Weights are
+    normalised to each state's max so the morph shows SHAPE (where scoring
+    shifts), not raw volume growth. Union edge universe across states: edges
+    absent early carry 0 and fade in as the season adds them.
+
+    Returns (payload, {'rounds': 24, 'edges': len(union)}). payload keeps
+    DATA-space edges (zone pairs) - geom.materialise maps them to px.
+    """
+    rows = state_store.window_scoring_rows(conn, season, 24, (team,))
+    by_round = {}
+    for m_id, cidx, _seq, _t, grid, _h, rnd in rows:
+        if grid in (None, ''):
+            continue
+        by_round.setdefault(rnd, {}).setdefault((m_id, cidx), []).append(grid)
+
+    def collapse(zs):
+        out = []
+        for z in zs:
+            if not out or out[-1] != z:
+                out.append(z)
+        return out
+
+    def state_edges(up_to):
+        edges = {}
+        for rnd, games in by_round.items():
+            if rnd > up_to:
+                continue
+            w = decay ** (up_to - rnd)
+            for grids in games.values():
+                zs = collapse(grids)
+                for u, v in zip(zs, zs[1:] + ['SCORE']):
+                    edges[(u, v)] = edges.get((u, v), 0) + w
+        return edges
+
+    states = {r: state_edges(r) for r in range(1, 25)}
+    union = sorted({e for s in states.values() for e in s}, key=lambda e: (e[0], e[1]))
+    frames = []
+    for r in range(1, 25):
+        es = states[r]
+        mx = max(es.values()) if es else 1.0
+        frames.append({'round': r, 'w': [round(es.get((u, v), 0) / mx, 4)
+                                         for u, v in union]})
+    name = get_full_name(team)
+    payload = {
+        'version': CARD_PAYLOAD_VERSION,
+        'mode': 'season',
+        'round_label': (label or '%s %s' % (name, season)) + ' \u00b7 FINGERPRINT',
+        'teams': {'top': {'name': name, 'colour': _colour_hex(worn_colours(team, team)[0])}},
+        'verdict': {'winner': name, 'margin': 0,
+                    'detail': 'how %s scored, round by round' % name},
+        'edges': [{'a': u, 'b': v} for u, v in union],
+        'frames': frames,
+    }
+    return payload, {'rounds': len(frames), 'edges': len(union)}
