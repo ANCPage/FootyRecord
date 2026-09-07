@@ -89,6 +89,18 @@ def window_counter(conn, season, up_to_round, team, window=None):
     return c
 
 
+def recurring_routes(counter, min_count=4, cap=60):
+    """Routes the model has actually SEEN in its window: distinct paths
+    occurring >= min_count times over the team's last-30 matches, heaviest
+    first, capped at `cap` (visual budget). The flat window's mass is a long
+    tail (no route dominates — top90 covers ~56%), so an 80%-mass cut would
+    return hundreds of once-off routes; recurrence is the honest selector.
+    The prediction card weights each returned route by the delta regardless.
+    """
+    items = sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
+    return [(path, w) for path, w in items if w >= min_count][:cap]
+
+
 def top80(counter, frac=0.80, floor=12):
     """Paths covering `frac` of the counter's total weight (>= floor items),
     heaviest first — the prediction card's route selection (recorded logic)."""

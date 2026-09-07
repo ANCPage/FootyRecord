@@ -113,8 +113,8 @@ def pred_payload(ing, conn, a, b, home, season, up_to, label=None,
     slot = up_to + 1
     dec = _stored_or_computed(ing, conn, season, slot, home, away, up_to,
                               elo_overrides)
-    sa = chains.top80(chains.window_counter(conn, season, up_to, a))
-    sb = chains.top80(chains.window_counter(conn, season, up_to, b))
+    sa = chains.recurring_routes(chains.window_counter(conn, season, up_to, a))
+    sb = chains.recurring_routes(chains.window_counter(conn, season, up_to, b))
     if dec['stored']:
         d_home = dec['delta']
         if a == home:
