@@ -150,8 +150,10 @@ def update_all_data(output_dir, year=2026, force_rebuild=False, target_round=Non
 
     mode = 'w' if force_rebuild or not os.path.exists(csv_f) else 'a'
 
-    # Target specific round if requested, otherwise check rounds 0 to 24
-    r_range = [target_round] if target_round is not None else range(0, 25)
+    # Target specific round if requested, otherwise check rounds 0 to 29.
+    # (2026-09-07: finals use rounds 25+ — the old 0..24 range silently never
+    # fetched played finals; round 25 has QFs/EFs, 26+ the rest.)
+    r_range = [target_round] if target_round is not None else range(0, 30)
     cands = [(r, g, f'CD_M{year}{seg}{r:02d}{g:02d}') for r in r_range for g in range(1, 12)]
     cands = [c for c in cands if c[2] not in existing_matches]
 
