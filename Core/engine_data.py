@@ -153,7 +153,7 @@ class DataIngestor:
                         m_id = row['matchId']
                         if not m_id: continue
                         r_num = int(row['round'])
-                        if r_num > config.MAX_ROUNDS: continue
+                        if r_num > config.INGEST_MAX_ROUND: continue
                         if m_id not in self.match_info:
                             self.match_info[m_id] = MatchInfo(season=int(row['season']), round=r_num, home=row['homeTeamId'], away=row['awayTeamId'])
                         stat_key = (row['chain_period'], row['stat_periodSeconds'], row['x'], row['y'], row['stat_playerId'])

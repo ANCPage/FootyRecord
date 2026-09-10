@@ -79,5 +79,9 @@ AFL_HEADERS = {
 
 MAX_RETRIES = 3
 MAX_ROUNDS = 24
+# Ingest cap incl. FINALS rounds (2026-09-07): the AFL numbers finals weeks
+# 25+ in the source data; the old single cap of 24 silently dropped every
+# finals match of every season from the engine (no finals ever ingested).
+INGEST_MAX_ROUND = 29
 
 SEASONS = list(range(2021, datetime.datetime.now().year + 1))
