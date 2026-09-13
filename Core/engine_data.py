@@ -112,8 +112,11 @@ class DataIngestor:
         if saved_fp == fp and saved_csv_fp == csv_fp:
             logger.info('Loading state from one-store DB (fingerprint match)...')
             state = state_store.load_state(conn, skip_chains=light)
-            conn.close()
             self.__dict__.update(state)
+            # State-sync gate (2026-09-12, verification only): provenance of
+            # the stored fit vs the data in use. Never changes values.
+            state_store.verify_state(conn, self, csv_fingerprint=csv_fp)
+            conn.close()
             self.elo_engine = EloEngine()
             # The engine's per-round index is not persisted — rebuild it from
             # the stored history (2026-08-25: without this, get_team_elo
@@ -144,6 +147,7 @@ class DataIngestor:
         logger.info(f'Loading {len(files)} seasonal data files...')
         chains_raw = defaultdict(lambda: {'team': '', 'outcome': '', 'grids': [], 'players': [], 'matchId': ''})
         match_scores = defaultdict(lambda: defaultdict(int))
+        csv_match_ids = set()   # RAW ids read from the CSVs (coverage check)
         for f_path in files:
             with open(f_path, 'r', encoding='utf-8') as f:
                 reader = csv.DictReader(f)
@@ -152,6 +156,7 @@ class DataIngestor:
                     try:
                         m_id = row['matchId']
                         if not m_id: continue
+                        csv_match_ids.add(m_id)
                         r_num = int(row['round'])
                         if r_num > config.INGEST_MAX_ROUND: continue
                         if m_id not in self.match_info:
@@ -254,6 +259,15 @@ class DataIngestor:
         # window. Becomes the active calibration for all decision paths.
         self.calibration = self._fit_calibration(cal.WINDOW_SEASONS)
         self.calibration.decay_factor = fitted_decay
+        # Provenance (2026-09-12, metadata only — no effect on the numbers):
+        # record the data identity this fit was made from so a stale fit can
+        # never masquerade as current (verified on every load).
+        _files = [f for f in glob.glob(os.path.join(self.csv_dir, 'flattened_stats_202*.csv'))
+                  if 'simple' not in f]
+        _csv_fp = self._csv_fingerprint(_files)
+        self.calibration.fit_fingerprint = _csv_fp
+        self.calibration.fit_n_matches = len(self.match_info)
+        self.calibration.source = 'fitted'
 
         import Core.state_store as state_store
         conn = state_store.connect(self.db_path)
@@ -262,6 +276,10 @@ class DataIngestor:
         files = glob.glob(os.path.join(self.csv_dir, 'flattened_stats_202*.csv'))
         files = [f for f in files if 'simple' not in f]
         state_store.meta_set(conn, 'csv_fingerprint', self._csv_fingerprint(files))
+        # Coverage gate: every RAW match id we just read must be in the state.
+        # (This is the check that would have caught the finals round cap.)
+        state_store.verify_state(conn, self, csv_fingerprint=_csv_fp,
+                                 csv_match_ids=csv_match_ids)
         conn.close()
         logger.info("Saving state to one-store DB...")
 

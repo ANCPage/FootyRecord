@@ -50,10 +50,17 @@ class Calibration:
     tier_cutoffs: tuple = ()          # (elite_min, contender_min, mid_min) — dynamic percentiles
     n_matches: int = 0
     window: str = 'fallback'
+    # Provenance (2026-09-12): the data identity this fit was made from, so a
+    # stale fit can never masquerade as current. Written at ingest, verified on
+    # every load (state_store.verify_state). Metadata only — never affects the
+    # fitted numbers themselves.
+    fit_fingerprint: str = ''         # csv fingerprint the coefficients were fitted on
+    fit_n_matches: int = 0            # matches in the fitted state at fit time
+    source: str = 'fitted'            # 'fitted' | 'fallback' (fallback = constants)
 
     @classmethod
     def fallback(cls) -> "Calibration":
-        return cls()
+        return cls(window='fallback', source='fallback')
 
     def margin(self, net_delta: float, elo_diff100: float) -> float:
         return self.margin_b1 * net_delta + self.margin_b2 * elo_diff100

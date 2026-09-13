@@ -10,12 +10,15 @@ match_performance, actual_matrices, elo_history, player_history, calibration.
 Results tables (predictions, calibration_log) are owned by results_db.
 """
 import json
+import logging
 import os
 import sqlite3
 
 import Core.results_db  # noqa: F401  (DB_PATH lives here — one constant for both stores)
 from Core.models import MatchInfo
 from Core.results_db import DB_PATH
+
+logger = logging.getLogger(__name__)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS matches (
@@ -45,10 +48,27 @@ CREATE TABLE IF NOT EXISTS calibration (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     decay REAL, margin_b1 REAL, margin_b2 REAL, total_mean REAL,
     divisor REAL, window TEXT, n_matches INTEGER, tier_cutoffs TEXT,
-    fitted_at TEXT);
+    fitted_at TEXT, fit_fingerprint TEXT DEFAULT '', fit_n_matches INTEGER DEFAULT 0,
+    source TEXT DEFAULT 'fitted');
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY, value TEXT);
 """
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Idempotent ADDITIVE migrations (2026-09-12).
+
+    CREATE TABLE IF NOT EXISTS does not touch an existing table, so new
+    provenance columns need explicit ALTERs. Additive only — never rewrites or
+    drops — so older readers keep working against a migrated DB.
+    """
+    cols = {r[1] for r in conn.execute('PRAGMA table_info(calibration)')}
+    for name, decl in (('fit_fingerprint', "TEXT DEFAULT ''"),
+                       ('fit_n_matches', 'INTEGER DEFAULT 0'),
+                       ('source', "TEXT DEFAULT 'fitted'")):
+        if name not in cols:
+            conn.execute('ALTER TABLE calibration ADD COLUMN %s %s' % (name, decl))
+    conn.commit()
 
 
 def connect(db_path: str = None) -> sqlite3.Connection:
@@ -57,6 +77,7 @@ def connect(db_path: str = None) -> sqlite3.Connection:
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     conn = sqlite3.connect(db_path)
     conn.executescript(SCHEMA)
+    _migrate(conn)
     return conn
 
 
@@ -153,11 +174,15 @@ def save_state(conn, ing) -> None:
                           (team, m_id, player, edge_dict_to_json(edges)))
     cal = ing.calibration
     c.execute("INSERT OR REPLACE INTO calibration (id, decay, margin_b1, margin_b2,"
-              " total_mean, divisor, window, n_matches, tier_cutoffs, fitted_at)"
-              " VALUES (1,?,?,?,?,?,?,?,?,?)",
+              " total_mean, divisor, window, n_matches, tier_cutoffs, fitted_at,"
+              " fit_fingerprint, fit_n_matches, source)"
+              " VALUES (1,?,?,?,?,?,?,?,?,?,?,?,?)",
               (cal.decay_factor, cal.margin_b1, cal.margin_b2, cal.total_mean,
                cal.margin_divisor, cal.window, cal.n_matches,
-               json.dumps(list(cal.tier_cutoffs)), 'state-save'))
+               json.dumps(list(cal.tier_cutoffs)), 'state-save',
+               getattr(cal, 'fit_fingerprint', ''),
+               getattr(cal, 'fit_n_matches', 0),
+               getattr(cal, 'source', 'fitted')))
     conn.commit()
 
 
@@ -266,15 +291,86 @@ def load_state(conn, skip_chains: bool = False) -> dict:
 
     # calibration
     row = c.execute("SELECT decay, margin_b1, margin_b2, total_mean, divisor,"
-                    " window, n_matches, tier_cutoffs FROM calibration WHERE id=1").fetchone()
+                    " window, n_matches, tier_cutoffs, fit_fingerprint,"
+                    " fit_n_matches, source FROM calibration WHERE id=1").fetchone()
     if row:
         from Core.calibration import Calibration
         state['calibration'] = Calibration(
             margin_b1=row[1], margin_b2=row[2], total_mean=row[3],
             margin_divisor=row[4], window=row[5], n_matches=row[6],
             tier_cutoffs=tuple(json.loads(row[7])) if row[7] else (),
-            decay_factor=row[0])
+            decay_factor=row[0],
+            fit_fingerprint=row[8] or '', fit_n_matches=row[9] or 0,
+            source=row[10] or 'fitted')
     return state
+
+
+def verify_state(conn, ing, csv_fingerprint: str = None,
+                 csv_match_ids=None, strict: bool = None) -> dict:
+    """THE state-sync gate (2026-09-12). Verification only: it never changes a
+    fitted value or an output — it makes drift LOUD instead of silent.
+
+    Three checks, three failure modes:
+
+    1. COVERAGE  — every match id read from the raw CSVs made it into the
+       loaded state. This is the class of bug that silently dropped six
+       seasons of finals (a round cap at ingest) while every other check
+       still reported success.
+    2. PROVENANCE — the stored calibration was fitted on the SAME data
+       fingerprint in use now, so a fit can never masquerade as current.
+    3. SOURCE — the active coefficients are a real fit ('fitted'), not the
+       built-in constants ('fallback').
+
+    Returns {'ok', 'coverage_ok', 'provenance_ok', 'source', 'warnings', ...}.
+    Warnings are logged; `strict=True` (or env FOOTYRECORD_STRICT_STATE=1)
+    raises instead — for CI and cron, where a mismatch must stop the line.
+    """
+    import os as _os
+    if strict is None:
+        strict = _os.environ.get('FOOTYRECORD_STRICT_STATE') == '1'
+    warnings = []
+
+    # --- 1. coverage -----------------------------------------------------
+    coverage_ok, missing = True, []
+    if csv_match_ids is not None:
+        have = set(ing.match_info.keys())
+        missing = sorted(set(csv_match_ids) - have)
+        coverage_ok = not missing
+        if missing:
+            warnings.append(
+                'COVERAGE: %d match(es) present in the CSVs are missing from '
+                'the loaded state (e.g. %s) — data was dropped at ingest'
+                % (len(missing), ', '.join(missing[:3])))
+
+    # --- 2. provenance ---------------------------------------------------
+    row = conn.execute('SELECT fit_fingerprint, fit_n_matches, source '
+                       'FROM calibration WHERE id=1').fetchone()
+    stored_fp = (row[0] if row else '') or ''
+    provenance_ok = bool(stored_fp) and bool(csv_fingerprint) \
+        and stored_fp == csv_fingerprint
+    if not provenance_ok:
+        warnings.append(
+            'PROVENANCE: calibration fitted on data %r but the data in use is '
+            '%r — the fit is stale (rounds scored since the last ingest are '
+            'seen by the matrices but not by the coefficients)'
+            % (stored_fp or 'unknown', csv_fingerprint or 'unknown'))
+
+    # --- 3. source -------------------------------------------------------
+    source = getattr(ing.calibration, 'source', 'fitted') \
+        if getattr(ing, 'calibration', None) is not None else 'none'
+    if source == 'fallback':
+        warnings.append('SOURCE: built-in fallback constants are active (no '
+                        'fit yet) — outputs are not data-fitted')
+
+    for w in warnings:
+        logger.warning(w)
+    if warnings and strict:
+        raise ValueError('state sync check failed: ' + ' | '.join(warnings))
+
+    return {'ok': not warnings, 'coverage_ok': coverage_ok,
+            'provenance_ok': provenance_ok, 'source': source,
+            'missing': missing[:20], 'fit_n_matches': row[1] if row else None,
+            'warnings': warnings}
 
 
 def meta_get(conn, key: str) -> str:
