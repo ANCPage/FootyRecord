@@ -107,9 +107,20 @@ def build_rows(conn, goals, seasons=None, lineup_filter=False, limit_rounds=None
     lineup_hits = lineup_misses = 0
     for key in sorted(preds):
         season, rnd = key
-        if seasons and season not in seasons:
-            continue
-        if limit_rounds and rnd > limit_rounds:
+        # `seasons` filters which rows are EMITTED. History must keep
+        # accumulating regardless, or a filtered run silently loses the
+        # walk-forward past and every prior-share number shifts (2026-09-14).
+        emit = (not seasons or season in seasons)
+        if not emit or (limit_rounds and rnd > limit_rounds):
+            for m2, h2, a2, hs2, as2 in matches_by_round.get((season, rnd), []):
+                for t2 in (h2, a2):
+                    team_games[t2] += 1
+                    g2 = side_goals[(m2, t2)]['g']
+                    team_goals[t2] += g2
+                    team_points[t2] += 6 * g2 + side_goals[(m2, t2)]['b']
+                    for pid, rec in sorted(goals.get(m2, {}).items()):
+                        if p2t.get((m2, pid)) == t2:
+                            player_goals[(pid, t2)] += rec['g']
             continue
         for home, away, hs, as_, dj in sorted(preds[key]):
             entry = by_key.get((season, rnd, frozenset((home, away))))
@@ -218,8 +229,7 @@ def gate_table(rows, volumes=VOLUMES):
                 sp.append(spv)
             best_est = max(sorted(est), key=lambda p: (est[p], p))
             best_act = max(sorted(act), key=lambda p: (act[p], p))
-            tops += 1 if est[best_est] == est[max(sorted(act), key=lambda p: (est[p], p))] and \
-                est[best_est] == est[best_act] else 0
+            tops += 1 if best_est == best_act else 0
             for i in range(len(ps)):
                 for j in range(i + 1, len(ps)):
                     a, ra = ps[i]
@@ -251,8 +261,11 @@ def leverage_analysis(rows, fit_max=2024, test_seasons=(2025, 2026), market=1):
             if rec['leverage'] is None or rec['m'] <= 0 or rec['h'] <= 0:
                 continue
             y = (1 if rec['act'] >= market else 0)
-            data.append((r['season'], rec['leverage'],
-                         logloss(rec['h'] * vg, y) - logloss(rec['m'] * vg, y)))
+            # expected goals are a MEAN, not a probability: put them through the
+            # Poisson first, or every log-loss is a clamped garbage number.
+            ll_h = logloss(poisson_ge(market, rec['h'] * vg), y)
+            ll_m = logloss(poisson_ge(market, rec['m'] * vg), y)
+            data.append((r['season'], rec['leverage'], ll_h - ll_m))
 
     def slope(pts):
         if len(pts) < 50:
@@ -340,10 +353,17 @@ def main(argv=None):
     ap.add_argument('--fit-max', type=int, default=2024)
     ap.add_argument('--selftest', action='store_true',
                     help='run on synthetic rows (determinism check, no DB)')
+    ap.add_argument('--from-rows', action='store_true',
+                    help='reuse the cached rows file instead of recomputing it')
     args = ap.parse_args(argv)
 
     if args.selftest:
         rows = _selftest()
+    elif args.from_rows:
+        if not os.path.exists(args.out):
+            raise SystemExit('row cache missing: %s' % args.out)
+        with open(args.out) as fh:
+            rows = json.load(fh)
     else:
         if not os.path.exists(args.goals):
             raise SystemExit('goals file missing: %s (run Core.tools.goals_extract first)' % args.goals)
