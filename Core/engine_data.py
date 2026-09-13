@@ -148,6 +148,7 @@ class DataIngestor:
         chains_raw = defaultdict(lambda: {'team': '', 'outcome': '', 'grids': [], 'players': [], 'matchId': ''})
         match_scores = defaultdict(lambda: defaultdict(int))
         csv_match_ids = set()   # RAW ids read from the CSVs (coverage check)
+        self.csv_match_ids = csv_match_ids   # stashed for profile_all_teams
         for f_path in files:
             with open(f_path, 'r', encoding='utf-8') as f:
                 reader = csv.DictReader(f)
@@ -279,7 +280,7 @@ class DataIngestor:
         # Coverage gate: every RAW match id we just read must be in the state.
         # (This is the check that would have caught the finals round cap.)
         state_store.verify_state(conn, self, csv_fingerprint=_csv_fp,
-                                 csv_match_ids=csv_match_ids)
+                                 csv_match_ids=getattr(self, 'csv_match_ids', None))
         conn.close()
         logger.info("Saving state to one-store DB...")
 
