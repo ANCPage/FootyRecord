@@ -24,8 +24,46 @@ import Core.chains as chains
 import Core.state_store as state_store
 
 CACHE_PATH = os.path.expanduser('~/.cache/footyrecord_players.json')
+LINEUP_CACHE_PATH = os.path.expanduser('~/.cache/footyrecord_lineups.json')
 _TOKEN_URL = 'https://api.afl.com.au/cfs/afl/WMCTok'
 _ROSTER_URL = 'https://api.afl.com.au/cfs/afl/matchRoster/full/%s'
+
+
+def load_lineups():
+    try:
+        with open(LINEUP_CACHE_PATH) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def save_lineups(cache):
+    os.makedirs(os.path.dirname(LINEUP_CACHE_PATH), exist_ok=True)
+    tmp = LINEUP_CACHE_PATH + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(cache, f, indent=0, sort_keys=True)
+    os.replace(tmp, LINEUP_CACHE_PATH)
+
+
+def lineup_ids(m_id, token=None):
+    """The selected side for one match: [player_id, ...] (cached).
+
+    Used by the player-markets work so suspended / omitted players are not
+    nominated by the attribution layer (2026-09-14).
+    """
+    cache = load_lineups()
+    if m_id in cache:
+        return cache[m_id]
+    try:
+        tok = token or _token()
+        names = roster_names(m_id, tok)
+    except Exception:
+        return []
+    ids = sorted(names)
+    if ids:
+        cache[m_id] = ids
+        save_lineups(cache)
+    return ids
 
 
 def load_cache():
