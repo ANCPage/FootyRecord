@@ -167,6 +167,15 @@ def save_state(conn, ing) -> None:
     c.executemany("INSERT OR REPLACE INTO elo_history VALUES (?,?,?)",
                   [(team, m_id, elo) for team, hist in ing.team_elo_history.items()
                    for m_id, elo in hist])
+    # SEMANTICS (audit 2026-09-14, finding 5): a player's credits are filed under
+    # the KEY OF THE CHAIN HE APPEARS IN, and the feed lists players inside the
+    # opposition's chains too (turnovers, contests, spoils). The same (m_id,
+    # player) therefore exists under BOTH team ids in 5,734 pairs (9.7% of rows,
+    # 1,206 matches); the mislabelled side carries tiny mass (e.g. {"D3->C2":
+    # 0.0625}) against his real profile on his own side. Consequences: any
+    # consumer keyed on (team, player) silently includes opposition possessions,
+    # and the side must NEVER be inferred from this table — use the feed's own
+    # stat_teamId (see Core/tools/goals_extract.py).
     for team, hist in ing.team_player_history.items():
         for m_id, players in hist:
             for player, edges in players.items():

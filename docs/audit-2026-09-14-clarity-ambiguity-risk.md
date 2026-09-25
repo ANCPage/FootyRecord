@@ -6,6 +6,44 @@ so the report shows what was checked rather than only what was hunted.
 
 ---
 
+## Status of each finding (updated 2026-09-14, same session)
+
+| # | Severity | Status |
+|---|---|---|
+| 1 | 🔴 | **OPEN — needs your decision** (commit the gate, or stop claiming it) |
+| 2 | 🔴 | **FIXED** — extraction now uses the feed's `stat_teamId`; gate re-run below |
+| 3 | 🔴 | **FIXED** — fails fast on an empty dir *and* on files that parse to zero matches, with the path and the env var named |
+| 4 | 🔴 | **FIXED** — both sides use the same slot; a new test asserts consecutive windows differ by the games played |
+| 5 | 🟠 | **FIXED (documentation)** — semantics written at the write site in `state_store.py`; the deeper question (do cross-team credits belong in a player profile?) is a decision |
+| 6 | 🟠 | **OPEN** — 18 vs 26 call sites; needs one accessor and a sweep |
+| 7 | 🟠 | **CLOSED as lost → durable versions live in `Core/tools/`** |
+| 8 | 🟠 | **OPEN** — seeds should come from the ladder |
+| 9 | 🟡 | **FIXED (mechanical)** — 10 bare `except:` → `except Exception:`; drawing an error state instead of a blank image is still open |
+| 10 | 🟡 | **OPEN, with a live example** — a concurrent DB write made 6 `test_player_props` tests silently skip mid-suite; they pass alone |
+| 11 | 🟡 | **PARTIAL** — the goals cache is now schema-versioned and refuses old files; code-level fingerprints still missing |
+| 12 | 🟡 | **OPEN** — documented cross-project coupling |
+
+### Effect of fixing finding 2 (feed-side team attribution)
+
+Volume held at the actual team score, 2025–26, 828 team-games / 20,080 player-games:
+
+| | before (inferred side) | after (feed `stat_teamId`) |
+|---|---|---|
+| model allocation, 1+ goals | 0.1975 | **0.1963** |
+| player-history allocation, 1+ | 0.2236 | **0.2214** |
+| model allocation, 2+ goals | 0.0917 | **0.0911** |
+| player-history allocation, 2+ | 0.1015 | **0.1011** |
+
+Both sides improve slightly and the gap barely moves (11.7% → 11.3% at 1+, 9.7% → 9.9% at 2+),
+so **the conclusions are robust to the bug** — but the numbers quoted earlier carried the error
+and these are the ones to use. The leverage diagnostic still passes on both markets
+(2025 slope +0.0606 [+0.0429, +0.0781], 2026 +0.0699 [+0.0464, +0.0931]; quartiles rising
++0.079 → +0.118 → +0.140 → +0.206).
+
+---
+
+## Original findings (detail)
+
 ## 🔴 HIGH — findings that can produce a wrong answer or a silent dead end
 
 ### 1. `tests/persistent/` (the state-sync gate) does not exist and was never committed

@@ -73,18 +73,13 @@ def build_rows(conn, goals, seasons=None, lineup_filter=False, limit_rounds=None
     for m_id, s, rnd, h, a, hs, as_ in matches:
         matches_by_round[(s, rnd)].append((m_id, h, a, hs, as_))
 
-    p2t = {}
-    for m_id, team, player in conn.execute('SELECT m_id, team, player FROM player_history'):
-        if player and player not in ('', '0'):
-            p2t[(m_id, player)] = team
-
-    side_goals = defaultdict(lambda: {'g': 0, 'b': 0})
-    for m_id, per_player in goals.items():
-        for pid, rec in per_player.items():
-            t = p2t.get((m_id, pid))
-            if t:
-                side_goals[(m_id, t)]['g'] += rec['g']
-                side_goals[(m_id, t)]['b'] += rec['b']
+    # Team attribution comes from the FEED's own stat_teamId (schema v2). It used
+    # to be inferred from player_history, whose (match, player) rows carry two
+    # teams when a player appears in the opposition's chains — that put ~4% of
+    # goals on the wrong side (audit 2026-09-14, finding 2).
+    def feed_goals(m_id, team):
+        rec = (goals.get(m_id) or {}).get('teams', {}).get(team) or {}
+        return rec.get('g', 0), rec.get('b', 0)
 
     team_games, team_goals, team_points = defaultdict(int), defaultdict(int), defaultdict(int)
     player_goals = defaultdict(int)
@@ -103,6 +98,19 @@ def build_rows(conn, goals, seasons=None, lineup_filter=False, limit_rounds=None
         if dj:
             preds[(season, rnd)].append((home, away, hs, as_, dj))
 
+    def fold_round(season, rnd):
+        """Advance the walk-forward past this round."""
+        for m2, h2, a2, _hs, _as in matches_by_round.get((season, rnd), []):
+            for t2 in (h2, a2):
+                team_games[t2] += 1
+                g2, b2 = feed_goals(m2, t2)
+                team_goals[t2] += g2
+                team_points[t2] += 6 * g2 + b2
+            for pid, rec in sorted(((goals.get(m2) or {}).get('players') or {}).items()):
+                t2 = rec.get('team')
+                if t2:
+                    player_goals[(pid, t2)] += rec.get('g', 0)
+
     rows = []
     lineup_hits = lineup_misses = 0
     for key in sorted(preds):
@@ -112,15 +120,7 @@ def build_rows(conn, goals, seasons=None, lineup_filter=False, limit_rounds=None
         # walk-forward past and every prior-share number shifts (2026-09-14).
         emit = (not seasons or season in seasons)
         if not emit or (limit_rounds and rnd > limit_rounds):
-            for m2, h2, a2, hs2, as2 in matches_by_round.get((season, rnd), []):
-                for t2 in (h2, a2):
-                    team_games[t2] += 1
-                    g2 = side_goals[(m2, t2)]['g']
-                    team_goals[t2] += g2
-                    team_points[t2] += 6 * g2 + side_goals[(m2, t2)]['b']
-                    for pid, rec in sorted(goals.get(m2, {}).items()):
-                        if p2t.get((m2, pid)) == t2:
-                            player_goals[(pid, t2)] += rec['g']
+            fold_round(season, rnd)
             continue
         for home, away, hs, as_, dj in sorted(preds[key]):
             entry = by_key.get((season, rnd, frozenset((home, away))))
@@ -165,25 +165,18 @@ def build_rows(conn, goals, seasons=None, lineup_filter=False, limit_rounds=None
                     recs[p] = {
                         'm': wt, 'h': (player_goals[(p, team)] + N_SMOOTH) / (tg + N_SMOOTH * n),
                         'u': 1.0 / n, 'plain': pn, 'weight': wt, 'leverage': lev,
-                        'act': goals.get(m_id, {}).get(p, {}).get('g', 0),
+                        'act': ((goals.get(m_id) or {}).get('players') or {}).get(p, {}).get('g', 0),
                     }
+                g_act, b_act = feed_goals(m_id, team)
                 rows.append({
                     'season': season, 'round': rnd, 'team': team, 'm_id': m_id,
                     'opp': away if team == home else home,
-                    'vol_actual': 6 * side_goals[(m_id, team)]['g'] + side_goals[(m_id, team)]['b'],
+                    'vol_actual': 6 * g_act + b_act,
                     'vol_prior': team_points[team] / team_games[team],
                     'vol_model': proj or 0,
                     'players': recs,
                 })
-        for m2, h2, a2, hs2, as2 in matches_by_round.get((season, rnd), []):
-            for t2 in (h2, a2):
-                team_games[t2] += 1
-                g2 = side_goals[(m2, t2)]['g']
-                team_goals[t2] += g2
-                team_points[t2] += 6 * g2 + side_goals[(m2, t2)]['b']
-                for pid, rec in sorted(goals.get(m2, {}).items()):
-                    if p2t.get((m2, pid)) == t2:
-                        player_goals[(pid, t2)] += rec['g']
+        fold_round(season, rnd)
     if lineup_filter:
         print('lineup filter: %d players excluded as not selected, %d games kept unfiltered '
               '(roster unavailable)' % (lineup_hits, lineup_misses))
@@ -367,8 +360,8 @@ def main(argv=None):
     else:
         if not os.path.exists(args.goals):
             raise SystemExit('goals file missing: %s (run Core.tools.goals_extract first)' % args.goals)
-        with open(args.goals) as fh:
-            goals = json.load(fh)
+        from Core.tools.goals_extract import load as load_goals
+        goals = load_goals(args.goals)
         rows = build_rows(chains.connect(), goals, seasons=args.seasons,
                           lineup_filter=args.lineup_filter, limit_rounds=args.limit_rounds)
         os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)

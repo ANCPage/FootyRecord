@@ -103,6 +103,16 @@ class DataIngestor:
         import Core.state_store as state_store
         files = glob.glob(os.path.join(self.csv_dir, 'flattened_stats_202*.csv'))
         files = [f for f in files if 'simple' not in f]
+        # Fail fast, loudly (audit 2026-09-14, finding 3): an empty data dir used
+        # to load an EMPTY engine and only surface much later as a confusing
+        # downstream error ("no profile for CD_T80 v CD_T20"). The default
+        # csv_dir is the repo's CSV_DATA, which does not exist on the code
+        # mirror, so this is an easy mistake to make and a cheap one to catch.
+        if not files:
+            raise RuntimeError(
+                'no seasonal CSV data in %r — set FOOTYRECORD_DATA_DIR to the CSV '
+                'folder for data-bound runs (e.g. /mnt/projects/FootyRecord/CSV_DATA). '
+                'Refusing to continue with an empty engine.' % self.csv_dir)
 
         conn = state_store.connect(self.db_path)
         fp = self._cache_fingerprint()
@@ -184,6 +194,13 @@ class DataIngestor:
                         continue
         for c_id, chain in chains_raw.items():
             if chain['grids']: self.match_chains[chain['matchId']].append(chain)
+        if not match_scores:
+            # Files existed but carried no match data (truncated download, wrong
+            # export, empty placeholder). Same silent-empty-engine trap as an
+            # empty directory, so it fails the same way (audit finding 3).
+            raise RuntimeError(
+                'the CSV files in %r parsed to ZERO matches — the data is empty or '
+                'malformed; refusing to continue with an empty engine.' % self.csv_dir)
         for m_id, scores in match_scores.items():
             h_team = self.match_info[m_id].home; a_team = self.match_info[m_id].away
             h_s, a_s = scores.get(h_team, 0), scores.get(a_team, 0)

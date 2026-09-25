@@ -161,7 +161,7 @@ class MatchupVisualizer(FieldVisualizer):
                     plt.figtext(0.5, 0.02, f'PREDICTED MARGIN: {margin:+.0f} PTS  |  PREDICTED WINNER: {winner_name.upper()}', ha='center', fontsize=18, color=self.bg_color, bbox={'facecolor':self.text_color, 'alpha':1.0, 'pad':12}, fontproperties=self.prop_sub)
 
                     self.save_and_close(fig, f'{save_prefix}{suffix}.png', dpi=100)
-                except:
+                except Exception:
                     plt.close(fig)
                     raise
             else:
@@ -191,7 +191,7 @@ class MatchupVisualizer(FieldVisualizer):
                     fig_m.text(0.5, 0.047, f'MARGIN {margin:+.0f} PTS  ·  NET DELTA {net_delta:+.2f}', ha='center', va='center', fontsize=10, color=self.bg_color, zorder=6)
 
                     self.save_and_close(fig_m, f'{save_prefix}{suffix}.png', dpi=100)
-                except:
+                except Exception:
                     plt.close(fig_m)
                     raise
 
@@ -228,7 +228,7 @@ class MatchupVisualizer(FieldVisualizer):
                     plt.figtext(0.7, 0.02, f'ACTUAL MARGIN: {actual_margin:+.0f}', ha='center', fontsize=18, color=self.bg_color, bbox={'facecolor':self.text_color, 'alpha':1.0, 'pad':12}, fontproperties=self.prop_sub)
 
                     self.save_and_close(fig, f'{save_prefix}_expectation_vs_actual{suffix}.png', dpi=100)
-                except:
+                except Exception:
                     plt.close(fig)
                     raise
             else:
@@ -257,7 +257,7 @@ class MatchupVisualizer(FieldVisualizer):
                     fig_m.text(0.5, 0.047, f'ACTUAL MARGIN {actual_margin:+.0f}', ha='center', va='center', fontsize=10.5, color=self.bg_color, zorder=6)
 
                     self.save_and_close(fig_m, f'{save_prefix}_expectation_vs_actual{suffix}.png', dpi=100)
-                except:
+                except Exception:
                     plt.close(fig_m)
                     raise
 

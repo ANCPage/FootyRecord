@@ -219,7 +219,7 @@ class StoryVisualizer(FieldVisualizer):
                 self.save_and_close(fig, save_path, dpi=100, bbox_inches=None)
             else:
                 self.save_and_close(fig, save_path, dpi=100, bbox_inches='tight')
-        except:
+        except Exception:
             plt.close(fig)
             raise
 
@@ -327,6 +327,6 @@ class StoryVisualizer(FieldVisualizer):
                 fig.text(0.5, 0.93, "Actual Tactical Output vs 25-Game Baseline", color=self.sub_text_color, fontsize=sub_size2, ha='center', fontproperties=sub_font2)
                 plt.tight_layout(rect=[0.05, 0.05, 0.95, 0.92])
                 self.save_and_close(fig, save_path, dpi=100, bbox_inches='tight')
-        except:
+        except Exception:
             plt.close(fig)
             raise

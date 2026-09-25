@@ -61,12 +61,24 @@ def test_sql_window_equals_engine_window(ing, conn, r):
 
 
 def test_window_counter_uses_only_window_games(conn):
-    # flat counts over the model window: never more games than the window
-    hist = ss.team_match_history(conn, 'CD_T100', 2026, 24)[:30]
-    c = chains.window_counter(conn, 2026, 23, 'CD_T100')
+    # Both sides must use the SAME slot. This test compared a round-23 counter
+    # against the round-24 window (673 chains vs 679) and had been failing for
+    # that reason alone — the engine was correct (audit 2026-09-14, finding 4).
+    SLOT = 24
+    hist = ss.team_match_history(conn, 'CD_T100', 2026, SLOT)[:30]
+    c = chains.window_counter(conn, 2026, SLOT, 'CD_T100')
     assert c  # the model's window yields scoring paths for a seasoned team
     # spot-check: total weighted mass equals the chain count in-window
     mids = {m for (m, _s, _r) in hist}
     rows = ss.chains_for_matches(conn, mids, 'CD_T100')
     n_chains = len({(m, ci) for (m, ci, _g) in rows})
     assert abs(sum(c.values()) - n_chains) < 1e-6
+
+
+def test_consecutive_windows_differ_by_the_games_played(conn):
+    """Guards the thing the broken test was reaching for: the counter follows the
+    slot, so a later slot's window is a different set of games."""
+    prev = {m for (m, _s, _r) in ss.team_match_history(conn, 'CD_T100', 2026, 23)[:30]}
+    nxt = {m for (m, _s, _r) in ss.team_match_history(conn, 'CD_T100', 2026, 24)[:30]}
+    assert prev != nxt
+    assert len(prev) == len(nxt) == 30          # a 30-game window, rolling

@@ -175,7 +175,7 @@ class LadderVisualizer(BaseVisualizer):
 
             plt.tight_layout()
             self.save_and_close(fig, save_path, dpi=120 if not is_mobile else 100, bbox_inches=None)  # fixed aspect — no tight-crop (was collapsing heights)
-        except:
+        except Exception:
             plt.close(fig)
             raise
 
@@ -244,7 +244,7 @@ class LadderVisualizer(BaseVisualizer):
             fig.text(0.5, 0.047, f'BEST R{best[0]} {best[1]}/{best[2]}  ·  WORST R{worst[0]} {worst[1]}/{worst[2]}', ha='center', va='center', fontsize=10, color=self.bg_color, zorder=6)
 
             self.save_and_close(fig, save_path, dpi=100, bbox_inches=None)
-        except:
+        except Exception:
             plt.close(fig)
             raise
 
@@ -400,6 +400,6 @@ class LadderVisualizer(BaseVisualizer):
             if not is_mobile:
                 plt.tight_layout()  # mobile uses the fixed add_axes layout
             self.save_and_close(fig, save_path, dpi=120 if not is_mobile else 100, bbox_inches=None)  # fixed aspect — no tight-crop (was collapsing heights)
-        except:
+        except Exception:
             plt.close(fig)
             raise

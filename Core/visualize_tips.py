@@ -124,6 +124,6 @@ class TipsVisualizer(BaseVisualizer):
 
             plt.tight_layout()
             self.save_and_close(fig, save_path, dpi=120 if not is_mobile else 100, bbox_inches=None)  # fixed aspect — no tight-crop (was 890px wide vs 900)
-        except:
+        except Exception:
             plt.close(fig)
             raise
