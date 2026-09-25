@@ -170,7 +170,9 @@ def project(verbose=True):
     # (audit finding 8). resolve_seeds warns loudly if it must fall back.
     seeds = resolve_seeds(conn)
     if verbose:
-        print('seeds (ladder-derived): ' + ', '.join(
+        # Say WHERE the seeds came from — the label used to claim "ladder-derived"
+        # while the resolved value was the explicit snapshot (2026-09-14).
+        print('seeds used (explicit snapshot, ladder-checked): ' + ', '.join(
             '%d:%s' % (k, get_full_name(v)) for k, v in sorted(seeds.items())))
 
     # --- week 1: wildcard (7v10, 8v9) ------------------------------------
