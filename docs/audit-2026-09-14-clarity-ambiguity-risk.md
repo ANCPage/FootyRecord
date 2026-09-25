@@ -113,9 +113,9 @@ so the report shows what was checked rather than only what was hunted.
 
 ## ✅ Verified correct (checked, not assumed)
 
-- **Determinism of the played-finals path:** two runs under `PYTHONHASHSEED=0` and `=1` produced
-  byte-identical output. (The projection path determinism re-run with the data mounted is in
-  progress; the first attempt was invalid because I omitted the data dir — see finding 3.)
+- **Determinism, including the projection path:** two runs under `PYTHONHASHSEED=0` and `=1`
+  produced byte-identical bracket output, both with the data mounted (PF1 Hawthorn 85–80,
+  PF2 Fremantle 79–85, Grand Final Fremantle 82–83) and on the played-results path.
 - **Engine window convention:** `chains.window_counter(2026, 23, 'CD_T100')` = 673 chains,
   exactly equal to the chains in that team's round-23 window. The docstring ("strictly before
   the slot") matches behaviour.
