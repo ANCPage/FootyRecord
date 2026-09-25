@@ -10,6 +10,8 @@ Covered:
 """
 import json
 
+import pytest
+
 import Core.cards as cards
 import Core.chains as chains
 import Core.state_store as state_store
@@ -90,6 +92,7 @@ def test_colour_policy():
     assert worn_colours('CD_T160', 'CD_T20') == ('#ED171F', '#730040')  # no clash flip
 
 
+@pytest.mark.needs_data
 def test_mirror_delta_flips_sign_and_rotates():
     d = {('C2', 'D2'): 0.5, ('E2', 'SCORE'): -0.2}
     m = cards.mirror_delta(d)
@@ -111,12 +114,12 @@ def _engine_available():
         return False
 
 
+@pytest.mark.needs_data
 def test_compute_reproduces_stored_delta():
     # ONE-SYSTEM pin: the current engine recomputes the STORED delta exactly
     # (probe: 168/168 keys identical) — compute and shipped views never drift.
-    import pytest
-    if not _engine_available():
-        pytest.skip('needs CSV engine state (run on the SMB repo)')
+    import _guards
+    _guards.require(_engine_available(), 'needs CSV engine state')
     from Core.config import DATA_DIR
     from Core.engine_data import DataIngestor
     from Core.prediction import compute_matchup
@@ -132,12 +135,12 @@ def test_compute_reproduces_stored_delta():
     assert not diffs, 'compute delta diverges from stored on %d keys' % len(diffs)
 
 
+@pytest.mark.needs_data
 def test_finals_compute_path_produces_verdict():
     # Unrecorded fixture (no stored row at slot 25): the compute branch must
     # produce a sane verdict + non-empty ends (EF: Geelong by ~16).
-    import pytest
-    if not _engine_available():
-        pytest.skip('needs CSV engine state (run on the SMB repo)')
+    import _guards
+    _guards.require(_engine_available(), 'needs CSV engine state')
     from Core.config import DATA_DIR
     from Core.engine_data import DataIngestor
     conn = _conn()

@@ -13,7 +13,10 @@ import os
 
 import pytest
 
+import _guards
 from Core.tools.props_backtest import gate_table, leverage_analysis
+
+pytestmark = pytest.mark.needs_data
 
 ROWS = os.path.expanduser('~/.cache/footy-props/rows.json')
 TEST_SEASONS = (2025, 2026)
@@ -21,12 +24,12 @@ TEST_SEASONS = (2025, 2026)
 
 def _rows():
     if not os.path.exists(ROWS):
-        pytest.skip('row cache missing: run Core.tools.props_backtest first')
+        _guards.require(False, 'row cache missing: run Core.tools.props_backtest first')
     with open(ROWS) as fh:
         rows = json.load(fh)
     rows = [r for r in rows if r['season'] in TEST_SEASONS]
     if len(rows) < 100:
-        pytest.skip('row cache too small')
+        _guards.require(False, 'row cache too small')
     return rows
 
 
@@ -64,11 +67,11 @@ def test_gate_a_equal_shares_are_the_worst_option():
 def _all_rows():
     """Every season: the leverage fit needs 2021-2024 rows as well."""
     if not os.path.exists(ROWS):
-        pytest.skip('row cache missing: run Core.tools.props_backtest first')
+        _guards.require(False, 'row cache missing: run Core.tools.props_backtest first')
     with open(ROWS) as fh:
         rows = json.load(fh)
     if len(rows) < 100:
-        pytest.skip('row cache too small')
+        _guards.require(False, 'row cache too small')
     return rows
 
 

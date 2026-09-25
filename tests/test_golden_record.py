@@ -13,6 +13,10 @@ on a hyperparameter refit), update GOLDEN in the same commit and say why.
 """
 import pytest
 
+import _guards
+
+pytestmark = pytest.mark.needs_data
+
 from Core import results_db
 
 GOLDEN_ALL = (813, 1222)
@@ -29,8 +33,7 @@ def _record(conn, where_extra: str = "") -> tuple:
 
 @pytest.fixture()
 def conn():
-    if not results_db.db_exists():
-        pytest.skip("results DB not present on this host")
+    _guards.require(results_db.db_exists(), 'results DB not present on this host')
     c = results_db.connect()
     yield c
     c.close()

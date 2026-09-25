@@ -30,3 +30,36 @@ def test_selftest_is_deterministic_across_hash_seeds():
 def test_selftest_reports_both_allocations():
     out = _run(0)
     assert 'history allocation' in out and 'equal shares' in out
+
+
+def test_row_cache_fingerprint_tracks_the_code_and_the_constants():
+    """A cached row file must not outlive the code that made it (audit finding 11)."""
+    from Core.tools import props_backtest as pb
+    base = pb.code_fingerprint()
+    assert base == pb.code_fingerprint()                       # stable
+    original = pb.PPG
+    try:
+        pb.PPG = original + 1.0
+        assert pb.code_fingerprint() != base                   # constants count
+    finally:
+        pb.PPG = original
+    assert pb.code_fingerprint() == base
+
+
+def test_stale_row_cache_warns_loudly(tmp_path):
+    import json
+    import os
+    from Core.tools import props_backtest as pb
+    rows = tmp_path / 'rows.json'
+    rows.write_text(json.dumps([{'season': 2025, 'round': 1, 'team': 'T',
+                                 'players': {}, 'vol_actual': 60, 'vol_prior': 70,
+                                 'vol_model': 84, 'm_id': 'M'}]))
+    (tmp_path / 'rows.json.meta.json').write_text(json.dumps({'fingerprint': 'deadbeef'}))
+    import subprocess
+    import sys
+    out = subprocess.run(
+        [sys.executable, '-m', 'Core.tools.props_backtest', '--from-rows',
+         '--out', str(rows), '--gate'],
+        cwd=pb.os.path.dirname(pb.os.path.dirname(pb.os.path.dirname(pb.__file__))),
+        capture_output=True, text=True, timeout=300)
+    assert 'WARNING' in out.stdout and 'regenerate' in out.stdout

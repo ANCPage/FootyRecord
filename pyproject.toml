@@ -26,6 +26,12 @@ packages = ["Core"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+# Data-dependent tests FAIL (not skip) when the DB or CSV dir is missing; the
+# marker exists so they can be deselected deliberately: pytest -m "not needs_data"
+# (Austin 2026-09-14, audit finding 10).
+markers = [
+    "needs_data: requires the results DB and/or the CSV data dir",
+]
 
 [tool.ruff]
 line-length = 100

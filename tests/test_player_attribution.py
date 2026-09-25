@@ -16,6 +16,10 @@ import sys
 
 import pytest
 
+import _guards
+
+pytestmark = pytest.mark.needs_data
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
@@ -31,7 +35,7 @@ def test_shares_sum_to_one_per_edge():
     conn = _conn()
     pe = pa.window_player_edges(conn, 'CD_T100', 2026, 24)
     if not pe:
-        pytest.skip('no player history available')
+        _guards.require(False, 'no player history available')
     shares = pa.edge_shares(pe)
     per_edge = {}
     for (_player, edge), s in shares.items():
@@ -48,7 +52,7 @@ def test_attribution_conserves_and_does_not_mutate():
     conn = _conn()
     pe = pa.window_player_edges(conn, 'CD_T100', 2026, 24)
     if not pe:
-        pytest.skip('no player history available')
+        _guards.require(False, 'no player history available')
     shares = pa.edge_shares(pe)
     delta = {('E2', 'SCORE'): 0.21, ('D2', 'E2'): 0.03,
              ('A2', 'SCORE'): -0.20, ('C2', 'D2'): 0.02}
@@ -67,7 +71,7 @@ def test_favoured_side_attributes_and_exposure_is_the_opponent():
     conn = _conn()
     pe = pa.window_player_edges(conn, 'CD_T100', 2026, 24)
     if not pe:
-        pytest.skip('no player history available')
+        _guards.require(False, 'no player history available')
     shares = pa.edge_shares(pe)
     delta = {('E2', 'SCORE'): 0.21, ('D2', 'E2'): 0.03}
     res = pa.attribute_edges(delta, shares)
@@ -86,10 +90,10 @@ def test_layer_uses_the_model_window():
     conn = _conn()
     hist = chains.state_store.team_match_history(conn, 'CD_T100', 2026, 24)
     if not hist:
-        pytest.skip('no match history')
+        _guards.require(False, 'no match history')
     pe = pa.window_player_edges(conn, 'CD_T100', 2026, 24, window=30)
     if not pe:
-        pytest.skip('no player history available')
+        _guards.require(False, 'no player history available')
     # the layer must not have written anything
     rows = conn.execute('SELECT COUNT(*) FROM player_history').fetchone()[0]
     pe2 = pa.window_player_edges(conn, 'CD_T100', 2026, 24, window=30)

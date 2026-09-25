@@ -10,18 +10,18 @@ so the report shows what was checked rather than only what was hunted.
 
 | # | Severity | Status |
 |---|---|---|
-| 1 | 🔴 | **OPEN — needs your decision** (commit the gate, or stop claiming it) |
+| 1 | 🔴 | **CLOSED by decision** — claim dropped; the real function (`state_store.verify_state`) stays |
 | 2 | 🔴 | **FIXED** — extraction now uses the feed's `stat_teamId`; gate re-run below |
 | 3 | 🔴 | **FIXED** — fails fast on an empty dir *and* on files that parse to zero matches, with the path and the env var named |
 | 4 | 🔴 | **FIXED** — both sides use the same slot; a new test asserts consecutive windows differ by the games played |
 | 5 | 🟠 | **FIXED (documentation)** — semantics written at the write site in `state_store.py`; the deeper question (do cross-team credits belong in a player profile?) is a decision |
-| 6 | 🟠 | **OPEN** — 18 vs 26 call sites; needs one accessor and a sweep |
+| 6 | 🟠 | **FIXED** — `Settings.__setattr__` mirrors every assignment to the module constant, so the two reads can no longer disagree |
 | 7 | 🟠 | **CLOSED as lost → durable versions live in `Core/tools/`** |
-| 8 | 🟠 | **OPEN** — seeds should come from the ladder |
-| 9 | 🟡 | **FIXED (mechanical)** — 10 bare `except:` → `except Exception:`; drawing an error state instead of a blank image is still open |
-| 10 | 🟡 | **OPEN, with a live example** — a concurrent DB write made 6 `test_player_props` tests silently skip mid-suite; they pass alone |
-| 11 | 🟡 | **PARTIAL** — the goals cache is now schema-versioned and refuses old files; code-level fingerprints still missing |
-| 12 | 🟡 | **OPEN** — documented cross-project coupling |
+| 8 | 🟠 | **PARTIAL → reverted to a CHECK** — deriving seeds from the DB ladder turned out to corrupt the bracket (new finding 13), so the snapshot stays authoritative and a mismatch now warns instead |
+| 9 | 🟡 | **FIXED — and the premise was WRONG** (see below): the blocks close the figure and **re-raise**, so nothing was ever silently blank. The bare-except fix is the whole fix |
+| 10 | 🟡 | **FIXED** — data-dependent tests now FAIL with instructions instead of skipping, and carry a `needs_data` marker for deliberate deselection (`-m "not needs_data"`) |
+| 11 | 🟡 | **FIXED** — goals cache is schema-versioned; `rows.json` now has a sidecar fingerprint and warns loudly when the code has moved on |
+| 12 | 🟡 | **CLOSED by decision** — leave the `~/racing-model` coupling as documented |
 
 ### Effect of fixing finding 2 (feed-side team attribution)
 
@@ -46,15 +46,18 @@ and these are the ones to use. The leverage diagnostic still passes on both mark
 
 ## 🔴 HIGH — findings that can produce a wrong answer or a silent dead end
 
-### 1. `tests/persistent/` (the state-sync gate) does not exist and was never committed
+### 1. The promised persistent state-sync test module does not exist — CLOSED by decision
 - **Evidence:** `tests/persistent/` is absent; `git log --all -- tests/persistent` is empty;
   `git ls-files | grep -i 'persistent\|hidden'` is empty; no stash; no reference to
   `hidden_test` anywhere in the repo.
-- **Impact:** the calibration/state-sync protection that earlier work in this session
-  described as written and committed **is not in the repository**. Anyone reading the
-  session history would believe the gate exists. It does not.
-- **Fix:** either commit the gate as a normal (not hidden) module, or delete the claim.
-  A gate nobody can find is worse than no gate, because it stops other work.
+- **Precision (important, so nothing real is thrown away):** the state-sync *function* is real
+  and is called on every load — `Core/state_store.verify_state()` (state_store.py:319), invoked
+  from `engine_data.py` with the CSV fingerprint. What never existed is the *persistent hidden
+  test module* that earlier notes described as written and committed.
+- **Decision (Austin, 2026-09-14):** **drop the claim.** Do not rebuild it as a hidden module.
+  If state-sync coverage is wanted later, it goes in as a normal, visible test.
+- **Impact:** anyone reading the session history would have believed a gate existed that did not.
+  The audit doc is now the record of what is real.
 
 ### 2. Per-player goal attribution in `Core/tools/goals_extract.py` can put goals on the wrong side
 - **Evidence:** `player_history` contains **5,734 (match, player) pairs carrying two teams**
@@ -133,9 +136,13 @@ and these are the ones to use. The leverage diagnostic still passes on both mark
 
 ## 🟡 LOW — housekeeping / decisions to make explicit
 
-9. **Ten bare `except:` clauses**, all in `Core/visualize_*.py`. Rendering failures are
-   swallowed to a blank or partial image. Visuals are model output, so a silent failure here
-   is a trust problem: catch the specific exception and draw an error state instead.
+9. **Ten bare `except:` clauses**, all in `Core/visualize_*.py`. **CORRECTION (verified after
+   the first pass): the premise of this finding was wrong.** Every one of those blocks does
+   `plt.close(fig); raise` — the figure is closed and the exception propagates, so no visual was
+   ever silently blank. The real (smaller) issue was only that a bare `except` also catches
+   `KeyboardInterrupt`/`SystemExit`; that is fixed by narrowing them to `except Exception:`.
+   No error-state drawing is needed. A repo-wide scan found **zero** swallow-and-pass sites in
+   `Core/`.
 10. **17 `pytest.skip` calls** across the suite. Most are legitimate environment guards, but
     each one is an untested claim that can go stale unnoticed (the gate tests skip when the
     row cache is missing).
@@ -143,6 +150,20 @@ and these are the ones to use. The leverage diagnostic still passes on both mark
     have no version or input fingerprint, so they survive code changes — the exact failure mode
     this project was already bitten by with pickle caches. Add a fingerprint (source hash +
     engine settings) or regenerate unconditionally in CI.
+13. **🔴 The DB's 2026 ladder does not reproduce the finals seeding** (found while trying to make
+    finding 8 dynamic; 2026-09-14). Ranking the 207 home-and-away matches in `matches` gives
+    Geelong **17W → 3rd** and Brisbane **15W → 4th**, but the played finals were seeded
+    Brisbane 3rd and Geelong 5th (QF1 Fremantle v Hawthorn, QF2 Sydney v Brisbane). Same for
+    Hawthorn (5th vs seeded 4th), Melbourne (6th vs 7th), Adelaide (7th vs 6th), Carlton
+    (9th vs 10th). No ordering of the DB's numbers — wins or percentage — reproduces the
+    seeding the games imply, so either the 2026 H&A scores in the DB are not the real ones or
+    the seeding rule is not plain ladder order. **This matters well beyond the bracket:** the
+    2026 accuracy numbers (71% tipping, the margin/edge analysis, the props backtest) are all
+    measured against these same results. Needs explaining before 2026 numbers are quoted as
+    fact. Attempting the dynamic switch silently re-projected played games (PF1 became
+    Fremantle v Sydney, premier flipped from Fremantle to Geelong) — which is exactly why the
+    change was reverted.
+
 12. **Cross-project coupling for odds credentials:** `Core/tools/odds_fetch.py` reads the
     Betfair cert, key and creds from `~/racing-model/`. Documented in the file, but this repo
     now depends on another project's config living where it does.

@@ -5,6 +5,8 @@ Uses the same synthetic two-team fixture as test_integration — no real data.
 import csv
 import os
 
+import pytest
+
 from Core.engine_data import DataIngestor
 from Core.prediction import compute_matchup
 
@@ -57,9 +59,15 @@ def test_compute_matchup_elo_overrides(tmp_path):
     assert pred.h_elo == 1800.0
 
 
+def test_empty_data_dir_is_refused(tmp_path):
+    """Contract (audit finding 3): an empty data dir must NOT load a silent empty
+    engine — it raises, naming the directory."""
+    ing = DataIngestor(str(tmp_path), db_path=str(tmp_path / 'test.db'))
+    with pytest.raises(RuntimeError, match='no seasonal CSV data'):
+        ing.load_all_data()
+
+
 def test_compute_matchup_missing_profiles_returns_none(tmp_path):
-    csv_dir = str(tmp_path)
-    ing = DataIngestor(csv_dir, db_path=str(tmp_path / 'test.db'))  # no data at all
-    ing.load_all_data()
-    ing.profile_all_teams()
+    """Unknown teams have no profiles even when the engine holds real data."""
+    ing = _make_ingestor(tmp_path)
     assert compute_matchup(ing, 'X', 'Y', 2026, 1) is None

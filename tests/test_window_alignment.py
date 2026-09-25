@@ -3,13 +3,16 @@
 The prediction card's chain selection must use the MODEL's own memory: the
 last `window` (30) of the team's matches strictly before the slot,
 cross-season, flat — the same filter + slice queries.average_matrix locks.
-Needs engine state (CSV data); skips cleanly where absent (mirror).
+Needs engine state (CSV data). A missing data dir FAILS with instructions rather
+than skipping (Austin 2026-09-14, audit finding 10).
 """
 import glob
 import os
 import sys
 
 import pytest
+
+import _guards
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -24,14 +27,14 @@ def _have_data():
     return bool(glob.glob(os.path.join(DATA_DIR, 'flattened_stats_202*.csv')))
 
 
-pytestmark = pytest.mark.skipif(
-    not _have_data(), reason='engine CSVs not present (mirror has no data)')
+pytestmark = pytest.mark.needs_data
 
 
 @pytest.fixture(scope='module')
 def ing():
+    _guards.require(_have_data(), 'engine CSVs not present')
     i = DataIngestor(DATA_DIR)
-    i.load_all_data(light=True)
+    i.load_all_data(light=True)      # load_all_data also guards the empty dir
     return i
 
 

@@ -40,6 +40,24 @@ DEFAULT_GOALS = os.path.expanduser('~/.cache/footy-props/goals.json')
 BOOTSTRAP = 1000
 BOOTSTRAP_SEED = 20260914
 
+# The row cache is code-dependent: change a constant or the maths and the cached
+# rows describe a tool that no longer exists. Fingerprint it and say so loudly
+# rather than silently reporting yesterday's numbers (audit 2026-09-14, finding 11).
+FINGERPRINT_CONSTANTS = ('PPG', 'N_SMOOTH', 'BOOTSTRAP', 'BOOTSTRAP_SEED')
+
+
+def code_fingerprint(constants=None):
+    import hashlib
+    h = hashlib.sha256()
+    for name in ('goals_extract.py', 'props_backtest.py'):
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), name)
+        with open(path, 'rb') as fh:
+            h.update(fh.read())
+    for name in FINGERPRINT_CONSTANTS:
+        h.update(('%s=%s' % (name, globals().get(name))).encode())
+    h.update(('constants=%s' % (constants,)).encode())
+    return h.hexdigest()[:12]
+
 
 def spearman(est, act):
     """Deterministic Spearman over player ids (ties broken by id)."""
@@ -357,6 +375,17 @@ def main(argv=None):
             raise SystemExit('row cache missing: %s' % args.out)
         with open(args.out) as fh:
             rows = json.load(fh)
+        meta_path = args.out + '.meta.json'
+        if os.path.exists(meta_path):
+            with open(meta_path) as fh:
+                meta = json.load(fh)
+            if meta.get('fingerprint') != code_fingerprint():
+                print('WARNING: row cache was built by fingerprint %s, code is now %s '
+                      '— regenerate before trusting these numbers' % (
+                          meta.get('fingerprint'), code_fingerprint()))
+        else:
+            print('WARNING: no %s — cannot tell whether this row cache matches the code'
+                  % os.path.basename(meta_path))
     else:
         if not os.path.exists(args.goals):
             raise SystemExit('goals file missing: %s (run Core.tools.goals_extract first)' % args.goals)
@@ -369,7 +398,15 @@ def main(argv=None):
         with open(tmp, 'w') as fh:
             json.dump(rows, fh, sort_keys=True)
         os.replace(tmp, args.out)
-        print('rows written: %s' % args.out)
+        from datetime import datetime, timezone
+        with open(args.out + '.meta.json', 'w') as fh:
+            json.dump({'fingerprint': code_fingerprint(),
+                       'goals': os.path.basename(args.goals),
+                       'seasons': args.seasons,
+                       'lineup_filter': args.lineup_filter,
+                       'generated_at': datetime.now(timezone.utc).isoformat()},
+                      fh, indent=1, sort_keys=True)
+        print('rows written: %s (fingerprint %s)' % (args.out, code_fingerprint()))
 
     if args.selftest or args.gate:
         gate_rows = [r for r in rows if r['season'] in args.test_seasons]

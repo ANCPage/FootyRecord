@@ -16,6 +16,9 @@ import pytest
 from Core.engine_core import MatchupEngine, fingerprint_overlay
 from Core.models import TransitionEdge
 
+# Needs the CSV data dir (engine load); fails rather than skips when absent.
+pytestmark = pytest.mark.needs_data
+
 
 def T(s, t):
     return TransitionEdge(s, t)

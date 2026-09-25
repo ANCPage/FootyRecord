@@ -14,6 +14,8 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
+import _guards  # noqa: E402
+
 from Core.config import DATA_DIR  # noqa: E402
 from Core.engine_data import DataIngestor  # noqa: E402
 from Core import fingerprint_export as fe  # noqa: E402
@@ -24,12 +26,14 @@ def _have_data():
     return bool(glob.glob(os.path.join(DATA_DIR, 'flattened_stats_202*.csv')))
 
 
-pytestmark = pytest.mark.skipif(
-    not _have_data(), reason='engine CSVs not present (mirror has no data)')
+# Needs the CSV data dir: FAILS with instructions rather than skipping
+# (Austin 2026-09-14, audit finding 10). Deselect with -m "not needs_data".
+pytestmark = pytest.mark.needs_data
 
 
 @pytest.fixture(scope='module')
 def ing():
+    _guards.require(_have_data(), 'engine CSVs not present')
     i = DataIngestor(DATA_DIR)
     i.load_all_data(light=True)
     return i

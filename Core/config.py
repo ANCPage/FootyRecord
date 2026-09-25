@@ -46,6 +46,14 @@ class Settings:
         'elo_k': (1.0, None),
         'elo_margin_divisor': (0.01, None),
     }
+    # Settings attribute -> module constant of the same value. Kept in step on
+    # every assignment so `config.config.data_dir = X` and `config.DATA_DIR` can
+    # never disagree (audit 2026-09-14, finding 6: 18 call sites read one, 26 read
+    # the other, and a runtime override silently changed only one of them).
+    _MIRRORS = {'data_dir': 'DATA_DIR', 'output_dir': 'OUTPUT_DIR',
+                'fonts_dir': 'FONTS_DIR', 'decay_factor': 'DECAY_FACTOR',
+                'window_size': 'WINDOW_SIZE', 'elo_k': 'ELO_K',
+                'elo_margin_divisor': 'ELO_MARGIN_DIVISOR'}
 
     def __setattr__(self, name, value):
         if name in self._RANGES:
@@ -55,6 +63,9 @@ class Settings:
                 raise ValueError(
                     f"config.{name} must be within [{lo}, {hi if hi is not None else 'inf'}], got {value}")
         super().__setattr__(name, value)
+        mirror = self._MIRRORS.get(name)
+        if mirror:
+            globals()[mirror] = value
 
     def __init__(self):
         self.decay_factor = DECAY_FACTOR

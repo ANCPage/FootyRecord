@@ -10,17 +10,20 @@ import sqlite3
 
 import pytest
 
+import _guards
 import Core.chains as chains
+
+pytestmark = pytest.mark.needs_data
 
 
 def _conn():
     try:
         conn = chains.connect()
     except Exception as exc:                      # pragma: no cover
-        pytest.skip('no results DB: %s' % exc)
+        _guards.require(False, 'no results DB: %s' % exc)
     n = conn.execute('SELECT COUNT(*) FROM player_history').fetchone()[0]
     if n < 100:
-        pytest.skip('no player history in DB')
+        _guards.require(False, 'no player history in DB')
     return conn
 
 
@@ -31,7 +34,7 @@ def _fixture(conn):
         "WHERE p.season=2026 AND p.delta IS NOT NULL AND p.delta != '' "
         "ORDER BY p.round DESC LIMIT 1").fetchone()
     if not row:
-        pytest.skip('no stored predictions with a delta')
+        _guards.require(False, 'no stored predictions with a delta')
     return row
 
 
