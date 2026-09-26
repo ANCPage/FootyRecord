@@ -118,8 +118,13 @@ def process_single_match(data, year, r, g, wf, ws):
         period = chain.get('period'); oc = classify_chain_outcome(chain.get('finalState'))
         to = str(c_idx+1) if oc == 'TURNOVER' and c_idx+1 < len(data.get('matchChains', [])) else ''
         for stat in chain.get('stats', []):
-            pid = stat.get('playerId')
-            if not pid: continue
+            pid = stat.get('playerId') or ''
+            # 2026-09-14: DO NOT drop rows with no player. A rushed behind counts
+            # on the scoreboard even though nobody is credited with it, and dropping
+            # these rows made every stored score light (98.4% of 2026 games, mean
+            # ~9 points) and flipped the winner in 8 of 207 games. Empty-player rows
+            # are SCORES ONLY: the engine keeps them out of the spatial/player
+            # accumulation (engine_data: the grid/player branch requires a player id).
             sec, sx, sy, desc = stat.get('periodSeconds'), stat.get('x'), stat.get('y'), stat.get('description')
             sc = classify_stat(desc); key = (period, sec, sx, sy, pid)
             if key in seen: continue

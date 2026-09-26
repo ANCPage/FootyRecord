@@ -1,4 +1,5 @@
 import csv
+import json
 import glob
 import logging
 import os
@@ -184,7 +185,12 @@ class DataIngestor:
                         chains_raw[c_id]['team'] = row['chain_teamId']
                         chains_raw[c_id]['outcome'] = row['chain_finalState_class']
                         chains_raw[c_id]['matchId'] = m_id
-                        if row['x'] and row['y'] and row['stat_class'] in ['POSSESSION', 'DISPOSAL', 'SCORE']:
+                        # Requires a player id: rows without one are scoreboard-only
+                        # (rushed behinds) and must not enter the grid/player arrays —
+                        # grids and players are parallel lists, so an empty entry would
+                        # attribute a position to a phantom player (2026-09-14).
+                        if (row['x'] and row['y'] and row['stat_playerId']
+                                and row['stat_class'] in ['POSSESSION', 'DISPOSAL', 'SCORE']):
                             grid_cell = xy_to_grid(row['x'], row['y'], row['venueLength'], row['venueWidth'])
                             if grid_cell:
                                 chains_raw[c_id]['grids'].append(grid_cell)
@@ -201,6 +207,34 @@ class DataIngestor:
             raise RuntimeError(
                 'the CSV files in %r parsed to ZERO matches — the data is empty or '
                 'malformed; refusing to continue with an empty engine.' % self.csv_dir)
+        # Scores come from the OFFICIAL score block when we have it (audit finding
+        # 14): the chain feed omits scoring events with no player (rushed behinds)
+        # and is short goals in some matches, which made 98.4% of 2026 scores light
+        # and flipped 8 winners. Chains remain the spatial truth; only the
+        # scoreboard is corrected. Sidecar: <data dir>/official_scores_<season>.json
+        # written by Core.tools.official_scores.
+        seasons_in_play = sorted({int(self.match_info[m].season) for m in match_scores})
+        official_overrides = 0
+        for season in seasons_in_play:
+            sidecar = os.path.join(self.csv_dir, 'official_scores_%d.json' % season)
+            try:
+                with open(sidecar) as fh:
+                    official = json.load(fh)
+            except Exception:
+                continue
+            for m_id, scores in match_scores.items():
+                info = self.match_info.get(m_id)
+                if not info or int(info.season) != season:
+                    continue
+                fixed = official.get(m_id)
+                if not fixed:
+                    continue
+                scores.clear()
+                scores[info.home] = int(fixed['home'])
+                scores[info.away] = int(fixed['away'])
+                official_overrides += 1
+        if official_overrides:
+            logger.info('official scores applied to %d matches', official_overrides)
         for m_id, scores in match_scores.items():
             h_team = self.match_info[m_id].home; a_team = self.match_info[m_id].away
             h_s, a_s = scores.get(h_team, 0), scores.get(a_team, 0)
