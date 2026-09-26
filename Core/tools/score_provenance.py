@@ -20,6 +20,7 @@ import Core.chains as chains  # noqa: E402
 from Core import config  # noqa: E402
 from Core.mappings import get_full_name  # noqa: E402
 
+SQUIGGLE_URL = 'https://api.squiggle.com.au/'
 MATCH_ITEM_URL = 'https://api.afl.com.au/cfs/afl/matchItem/{}'
 PROBE_URLS = (
     'https://api.afl.com.au/cfs/afl/matchItem/{}',
@@ -54,10 +55,14 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--rounds', type=int, nargs='*', default=[3, 9, 16, 22, 24, 26])
     ap.add_argument('--limit', type=int, default=14)
+    ap.add_argument('--squiggle', action='store_true',
+                    help='compare the DB with the official scores via the Squiggle API')
     ap.add_argument('--ladder', action='store_true',
                     help='rebuild the 2026 ladder from official scores and test the seeding')
     args = ap.parse_args(argv)
 
+    if args.squiggle:
+        return cmd_squiggle(args)
     if args.ladder:
         return cmd_ladder(args)
 
@@ -210,6 +215,108 @@ def cmd_ladder(args):
     print('official-score ladder top 10: ' + ', '.join(
         '%d:%s' % (i + 1, get_full_name(order_off[i])) for i in range(min(10, len(order_off)))))
     return 0
+
+
+
+def _word(name):
+    return (name or '').split()[0].lower() if name else ''
+
+
+def cmd_squiggle(args):
+    """Third-party check: Squiggle's public API carries official scores for every
+    game. Compare them with the DB and with our chain-derived scores. This decides
+    which AFL endpoint is authoritative (findings 13/14)."""
+    r = requests.get(SQUIGGLE_URL, params={'q': 'games', 'year': 2026},
+                     headers={'User-Agent': 'footyrecord-audit/1.0'}, timeout=30)
+    games = (r.json() or {}).get('games') or []
+    print('squiggle games for 2026: %d' % len(games))
+
+    by_round_teams = {}
+    for g in games:
+        by_round_teams[(int(g['round']), _word(g['hteam']), _word(g['ateam']))] = g
+
+    conn = chains.connect()
+    rows = conn.execute(
+        'SELECT m_id, round, home, away, home_score, away_score FROM matches '
+        'WHERE season=2026 AND round<=24 ORDER BY round, m_id').fetchall()
+
+    # Squiggle numbers rounds from 0 (Opening Round); find the offset that fits.
+    best_offset, best_hits = None, -1
+    for offset in (0, 1, -1):
+        hits = 0
+        for _m, rnd, home, away, _hs, _as in rows:
+            key = (rnd - offset, _word(get_full_name(home)), _word(get_full_name(away)))
+            if key in by_round_teams:
+                hits += 1
+        if hits > best_hits:
+            best_offset, best_hits = offset, hits
+    print('round offset that matches best: %d (%d/%d fixtures matched)' % (
+        best_offset, best_hits, len(rows)))
+    print()
+
+    same = diff = 0
+    winner_flips = []
+    deltas = []
+    offender = []
+    for m_id, rnd, home, away, hs, as_ in rows:
+        key = (rnd - best_offset, _word(get_full_name(home)), _word(get_full_name(away)))
+        g = by_round_teams.get(key)
+        if not g:
+            continue
+        sg = (int(g['hscore']), int(g['ascore']))
+        db = (hs or 0, as_ or 0)
+        if (sg[0] > sg[1]) != (db[0] > db[1]):
+            winner_flips.append((rnd, get_full_name(home), get_full_name(away), db, sg))
+        if sg == db:
+            same += 1
+        else:
+            diff += 1
+            deltas.append(sum(sg) - sum(db))
+            offender.append((rnd, get_full_name(home), get_full_name(away), db, sg,
+                             int(g['hgoals']), int(g['hbehinds']), int(g['agoals']), int(g['abehinds'])))
+    print('DB vs squiggle (official): identical %d | different %d' % (same, diff))
+    print('  -> in %.1f%% of home-and-away games the stored score is not the official one'
+          % (100.0 * diff / max(1, same + diff)))
+    print('games where the DB and the OFFICIAL result disagree on the winner: %d of %d (%.1f%%)'
+          % (len(winner_flips), same + diff, 100.0 * len(winner_flips) / max(1, same + diff)))
+    for rnd, h, a, db, sg in winner_flips:
+        print('   R%-3s %-34s DB %-9s official %s' % (rnd, '%s v %s' % (h, a),
+                                                      '%d-%d' % db, '%d-%d' % sg))
+    if deltas:
+        print()
+        print('%-4s %-34s %-12s %-12s %s' % ('rnd', 'fixture', 'DB', 'official', 'official line'))
+        for rnd, h, a, db, sg, hg, hb, ag, ab in sorted(offender, key=lambda x: x[0])[:8]:
+            print('%-4s %-34s %-12s %-12s %dg %db - %dg %db' % (
+                rnd, '%s v %s' % (h, a), '%d-%d' % db, '%d-%d' % sg, hg, hb, ag, ab))
+
+    # ladder from the official scores, tested against the finals seeding
+    wins, pf, pa = (defaultdict(int) for _ in range(3))
+    for g in games:
+        rnd = int(g['round'])
+        if rnd - best_offset > 24 or rnd - best_offset < 1:
+            continue
+        if not g.get('complete'):
+            continue
+        h, a = _word(g['hteam']), _word(g['ateam'])
+        hs, as_ = int(g['hscore']), int(g['ascore'])
+        pf[h] += hs
+        pa[h] += as_
+        pf[a] += as_
+        pa[a] += hs
+        if hs > as_:
+            wins[h] += 1
+        elif as_ > hs:
+            wins[a] += 1
+    def pct(t):
+        return 100.0 * pf[t] / pa[t] if pa.get(t) else 0.0
+    order = sorted(wins, key=lambda t: (-wins[t], -pct(t), t))
+    print()
+    print('official ladder (squiggle, top 10): ' + ', '.join(
+        '%d:%s %dW' % (i + 1, order[i], wins[order[i]]) for i in range(min(10, len(order)))))
+    print('seeding the played finals imply:   1:Fremantle, 2:Sydney, 3:Brisbane, 4:Hawthorn, '
+          '5:Geelong, 6:Adelaide, 7:Melbourne, 8:Bulldogs, 9:Collingwood, 10:Carlton')
+    return 0
+
 
 if __name__ == '__main__':
     raise SystemExit(main())

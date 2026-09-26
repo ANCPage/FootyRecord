@@ -164,38 +164,46 @@ and these are the ones to use. The leverage diagnostic still passes on both mark
     Fremantle v Sydney, premier flipped from Fremantle to Geelong) — which is exactly why the
     change was reverted.
 
-14. **🔴 The stored 2026 results are built from a partial scoring feed, so some "actuals" are wrong**
-    (found chasing finding 13; 2026-09-14). Two AFL endpoints disagree about the same match:
-    - `sapi.afl.com.au/afl/matchPlays/{m_id}` — what the project ingests. Its chain rows carry only
-      player-attributed stats, so scoring events with no player (rushed behinds, and in at least one
-      case a goal) never reach the CSV. R15 example, Gold Coast v Collingwood: chains give
-      **15g 5b = 95** and **14g 7b = 91**.
-    - `api.afl.com.au/cfs/afl/matchItem/{m_id}` — the AFL's own match score block for the same match:
-      **15g 8b = 98** and **15g 14b = 104**.
-    The DB matches the chain-derived numbers (95-91), so the model is graded against, and updates Elo
-    from, the lower set. Measured over all 207 home-and-away matches, the **winner differs in 8 games
-    (3.9%)** once the match score block is used, and the total shortfall averages ~3 points a match.
-    Example: R4 Hawthorn v Geelong — chains 83-90 (Geelong), score block 92-91 (Hawthorn by 1).
-    **What this means:** the 2026 accuracy numbers (71% tipping, 147/207), the margin/edge analysis and
-    every 2026 backtest are measured against results that are wrong for roughly one game in 25.
-    **Why it is not fixed here:** correcting the scores changes the actuals, therefore Elo, therefore
-    calibration and every published figure — a model-changing re-ingest that needs its own validation
-    pass, not a silent patch.
-    **Verification still open:** the winner-change count (8) rests on the `matchItem` score block. The
-    two endpoints disagree, so before any re-ingest, an independent check is needed that the score
-    block is the authoritative one (per-period sums in the payload came back empty, so that route did
-    not work). The *direction* of the gap (DB light) is consistent across every sample checked, so the
-    finding's substance is not in doubt; its exact size is.
-    **Tool:** `Core/tools/score_provenance.py` (default mode compares DB vs chains; `--ladder` rebuilds
-    the season's ladder from the score block and tests it against the finals seeding).
+14. **🔴 CONFIRMED against an independent source: the stored 2026 scores are not the official
+    scores, and 8 games have the wrong winner.** Verified 2026-09-14 by comparing all 207 DB
+    home-and-away matches with the AFL's public results (Squiggle API, `?q=games&year=2026`):
+    - **181 of 184 matched fixtures (98.4%) have a score that is not the official one**, and the
+      stored figure is always **lower** — the DB is systematically light.
+    - **8 games (4.3%) have the wrong winner:**
 
-15. **The finals seeding cannot be reproduced from the stored season** (this is finding 13, restated
-    with its cause now known): the ladder derived from the DB's light scores puts Geelong 3rd (17W) and
-    Brisbane 4th; the played finals were seeded Brisbane 3rd and Geelong 5th. Rebuilt from the match
-    score block, the ladder matches the played seeding in **8 of 10 places** — only Geelong/Hawthorn
-    are swapped at 4th/5th (both 15W; 122.3% v 120.1%, so a tiebreak, or one more light game).
-    **Consequence:** `Core/finals_project.py` keeps the explicit seed snapshot and now *checks* the DB
-    ladder and warns on disagreement rather than deriving from it.
+      | round | fixture | DB | official |
+      |---|---|---|---|
+      | R4 | Hawthorn v Geelong | 83-90 (Geelong) | 92-91 (Hawthorn by 1) |
+      | R6 | Melbourne v Brisbane | 100-100 (draw) | 104-102 (Melbourne) |
+      | R8 | Collingwood v Hawthorn | 92-89 (Collingwood) | 93-93 (draw) |
+      | R13 | Adelaide v Geelong | 69-69 (draw) | 75-74 (Adelaide) |
+      | R17 | Geelong v Brisbane | 95-89 (Geelong) | 101-123 (Brisbane by 22) |
+      | R17 | Gold Coast v Collingwood | 95-91 (Gold Coast) | 98-104 (Collingwood) |
+      | R22 | Adelaide v Richmond | 47-51 (Richmond) | 63-54 (Adelaide by 9) |
+      | R23 | Hawthorn v Collingwood | 91-90 (Hawthorn) | 92-92 (draw) |
+    - **Cause (two parts, both upstream of the model):** the ingested `matchPlays` feed carries
+      only player-attributed stats, so scoring nobody is credited with (rushed behinds) never
+      reaches the CSV; and in some matches whole goals are absent too (R22 is missing ~19 points
+      ≈ 3 goals), which means those matches' *chains* are short — not just their scoreboard.
+    - **What it invalidates:** the "actuals" the model is graded against and updates Elo from, so
+      the 2026 accuracy figures (71% tipping = 147/207), the margin/edge analysis and the props
+      backtest are all measured against results that are wrong for roughly one game in 25, and low
+      by a few points in almost every game. For matches with missing goals, the model's *inputs*
+      (positions, matrices, ratings) are short too.
+    - **Not fixed:** correcting this changes the actuals, therefore Elo, therefore calibration and
+      every published number. It needs a deliberate re-ingest (scores and, for the affected
+      matches, chains) plus a full re-validation — not a silent patch.
+    - **Tool:** `Core/tools/score_provenance.py` — default mode compares DB against the chain feed;
+      `--ladder` rebuilds the ladder from the match score block; `--squiggle` compares against the
+      official results and lists the flipped winners (the verification above).
+
+15. **The finals seeding now has an explanation** (this was finding 13): with the *official*
+    scores the ladder's top three match the played seeding (Fremantle, Sydney, Brisbane), which the
+    stored scores could not produce (they put Geelong 3rd on 17 wins). Geelong/Hawthorn remain
+    swapped at 4th/5th in both third-party ladders and the 8-10 tail still differs slightly from
+    the seeding's Bulldogs/Collingwood/Carlton order — a small, still-unexplained residual
+    (tiebreak detail, or further missing scoring). `Core/finals_project.py` keeps the explicit seed
+    snapshot and warns when the DB ladder disagrees instead of deriving from it.
 
 12. **Cross-project coupling for odds credentials:** `Core/tools/odds_fetch.py` reads the
     Betfair cert, key and creds from `~/racing-model/`. Documented in the file, but this repo
