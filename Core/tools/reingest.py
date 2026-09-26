@@ -80,7 +80,19 @@ def main(argv=None):
     ap.add_argument('--csv-dir', default=config.DATA_DIR)
     ap.add_argument('--no-save', action='store_true',
                     help='ingest and verify but do not write the state')
+    ap.add_argument('--force', action='store_true',
+                    help='clear the cached fingerprint first, so the CSVs are re-parsed '
+                         'even when the DB believes its state is current')
     args = ap.parse_args(argv)
+
+    if args.force:
+        # The fingerprint gate happily loads the DB when nothing *it* tracks changed,
+        # which silently skipped the corrected score sidecars for 2021-2025
+        # (2026-09-14). Clearing it forces a fresh parse of the CSVs.
+        conn = chains.connect()
+        for key in ('fingerprint', 'csv_fingerprint'):
+            state_store.meta_set(conn, key, '')
+        print('fingerprint cleared: next load re-parses the CSVs')
 
     print('re-ingesting %s from %s' % (args.season, args.csv_dir))
     ing = DataIngestor(args.csv_dir)

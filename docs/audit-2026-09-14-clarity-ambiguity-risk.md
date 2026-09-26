@@ -190,9 +190,27 @@ and these are the ones to use. The leverage diagnostic still passes on both mark
       backtest are all measured against results that are wrong for roughly one game in 25, and low
       by a few points in almost every game. For matches with missing goals, the model's *inputs*
       (positions, matrices, ratings) are short too.
-    - **Not fixed:** correcting this changes the actuals, therefore Elo, therefore calibration and
-      every published number. It needs a deliberate re-ingest (scores and, for the affected
-      matches, chains) plus a full re-validation — not a silent patch.
+    - **FIXED 2026-09-14 (same day).** Scores now come from the official score block, fetched per
+      season into `<data dir>/official_scores_<season>.json` (`Core/tools/official_scores.py`) and
+      applied during ingest (`engine_data.load_all_data`, falling back to chain-derived scores when
+      a match is missing from the sidecar). Chains remain the spatial truth — the engine keeps
+      empty-player rows out of the grid/player arrays, so positions and matrices are unchanged.
+      `Core/tools/reingest.py [--force]` does ingest + profile + save and then VERIFIES against the
+      official feed, so "re-ingested" cannot be mistaken for "done".
+      **Verified after the re-ingest:** 2021 179/179, 2022 180/180, 2023 184/184, 2024 183/183,
+      2025 184/184 exact against the official scores with **0 winner flips**; 2026 has zero stored
+      matches differing from its sidecar (the only two without an official score are the unplayed
+      round-28 preliminary finals).
+      **What it changed in the model (refit at ingest):** totals baseline **164.9 -> 173.7** (+8.8
+      points — the old "+6.2 totals bias" was the light data, not the model), margin slope
+      **110.03 -> 113.17**, Elo term 3.48 -> 3.69. 2026 tipping measured on corrected results:
+      **72.9%** (quoted as ~71%); margin bias **−6.5** points (was −7.0, so the shrinkage is real and
+      slightly less severe than measured); margin MAE 21.8.
+      **Consequence for the cards:** projected scorelines have been ~9 points light; the next
+      render will move.
+      **Still outstanding:** the stored projections were made with the old history. They have been
+      re-graded, but rebuilding them means re-running the season's predictions end to end — a
+      separate, larger job.
     - **Tool:** `Core/tools/score_provenance.py` — default mode compares DB against the chain feed;
       `--ladder` rebuilds the ladder from the match score block; `--squiggle` compares against the
       official results and lists the flipped winners (the verification above).
