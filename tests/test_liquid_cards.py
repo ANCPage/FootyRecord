@@ -22,16 +22,18 @@ def _conn():
     return chains.connect()
 
 
-# R24 2026: Sydney (home, CD_T160) 120-65 North Melbourne (CD_T100).
+# R24 2026: Sydney (home, CD_T160) 123-70 North Melbourne (CD_T100).
+# Values re-baselined 2026-09-14 when the scoreboard was corrected to the official
+# feed (audit finding 14): this game was stored as 120-65 under the light scores.
 # Stored projection: Sydney by 23 (94-70). Gold recap grammar: BY = model margin.
 def test_recap_r24_verdict_is_the_stored_model_call():
     conn = _conn()
     p, stats = cards.recap_payload(conn, 2026, 24, 'CD_T100', 'CD_T160',
                                    'CD_T160', label='ROUND 24')
     assert p['verdict']['winner'] == 'Sydney Swans'
-    assert p['verdict']['margin'] == 23            # model margin, not 55
-    assert p['result']['home_score'] == 120        # actuals from matches
-    assert p['result']['away_score'] == 65
+    assert p['verdict']['margin'] == 23            # model margin, not 53
+    assert p['result']['home_score'] == 123        # actuals from matches
+    assert p['result']['away_score'] == 70
     assert p['result']['correct'] == 1
 
 
@@ -40,8 +42,8 @@ def test_net_r24_verdict_is_the_actual_result():
     p, _ = cards.net_payload(conn, 2026, 24, 'CD_T100', 'CD_T160',
                              'CD_T160', label='ROUND 24')
     assert p['verdict']['winner'] == 'Sydney Swans'
-    assert p['verdict']['margin'] == 55            # actual margin for the net card
-    assert p['result']['home_score'] == 120
+    assert p['verdict']['margin'] == 53            # actual margin for the net card
+    assert p['result']['home_score'] == 123
 
 
 def test_pred_r24_matches_the_shipped_row_exactly():
