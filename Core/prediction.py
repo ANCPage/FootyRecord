@@ -78,13 +78,24 @@ def compute_matchup(ingestor, home_id: str, away_id: str, season: int,
     # Calibration comes from the ingestor that loaded the state (Phase 1,
     # 2026-08-26 — was a module global; a stale/unset global silently fell
     # back to shipped coefficients on the decision path).
-    cal = getattr(ingestor, 'calibration', None) or Calibration.fallback()
+    cal = getattr(ingestor, 'calibration', None)
+    if cal is None:
+        # FAIL LOUDLY (calibration audit 2026-09-14, finding 1). This used to
+        # substitute Calibration.fallback() silently — and once the scoreboard was
+        # corrected those constants were ~37% low on margin scaling and ~15 points
+        # light on totals, so a missing fit produced plausible-looking wrong cards.
+        # An ingestor that has loaded its data always carries a calibration (the fit
+        # path falls back on its own, marking source='fallback').
+        raise RuntimeError(
+            'no calibration on the ingestor: refusing to project with the bootstrap '
+            'constants. Load data through DataIngestor.load_all_data() (which fits and '
+            'attaches one), or pass a Calibration explicitly for tests.')
     # size from the fit, direction from the raw signal (2026-08-11: the
     # fitted margin can never flip the delta)
     edge = align_margin(cal.margin(net_delta, elo_diff), net_delta, elo_diff)
     winner_id = home_id if home_favored(net_delta, h_elo, a_elo) else away_id
     margin_pred = round(edge)
-    total = cal.total_mean
+    total = cal.projected_total()
     home_score = max(10, round((total + margin_pred) / 2.0))
     away_score = max(10, round((total - margin_pred) / 2.0))
 

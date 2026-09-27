@@ -28,6 +28,7 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+import Core.calibration as calibration  # noqa: E402
 import Core.chains as chains  # noqa: E402
 import Core.config as config  # noqa: E402
 import Core.results_db as results_db  # noqa: E402
@@ -40,8 +41,18 @@ DEFAULT_TABLE = 'predictions_rebuilt'
 def rebuild(ing, conn, seasons=None, table=DEFAULT_TABLE, limit_rounds=None, verbose=True):
     """Walk every season/round in order and write a fresh set of projections."""
     results_db.ensure_predictions_table(conn, table)
-    snapshot = results_db.build_calibration_snapshot(
-        ing.calibration, datetime.now(timezone.utc).isoformat(timespec='seconds'))
+    fitted_at = datetime.now(timezone.utc).isoformat(timespec='seconds')
+    # ONE fit row set, reused per round (cheap), so each round is fitted only on
+    # matches STRICTLY BEFORE it (calibration audit finding 3): the ingest fit sees
+    # the whole season it predicts, which flatters a re-record.
+    fit_rows = ing._build_fit_rows()
+    per_round_fits = {}
+    # Decay and tier cutoffs come from the ingest fit, NOT from the per-round fit:
+    # they shape the engine's MATRICES, and a re-record must change only the
+    # margin/total calibration. Dropping them silently changed every delta and the
+    # fingerprint gate caught it (2026-09-14).
+    base_decay = getattr(ing.calibration, 'decay_factor', None)
+    base_tiers = getattr(ing.calibration, 'tier_cutoffs', ())
 
     by_slot = defaultdict(list)
     for m_id, info in ing.match_info.items():
@@ -56,6 +67,14 @@ def rebuild(ing, conn, seasons=None, table=DEFAULT_TABLE, limit_rounds=None, ver
     written = skipped = 0
     per_round = []
     for (season, rnd) in sorted(by_slot):
+        cal_r = calibration.fit_walk_forward(fit_rows, season, rnd)
+        if base_decay is not None:
+            cal_r.decay_factor = base_decay
+        if not cal_r.tier_cutoffs:
+            cal_r.tier_cutoffs = base_tiers
+        ing.calibration = cal_r          # the prediction path reads this
+        per_round_fits[(season, rnd)] = (cal_r.margin_b1, cal_r.margin_b2,
+                                         cal_r.projected_total(), cal_r.source)
         games = []
         for m_id in sorted(by_slot[(season, rnd)]):
             info = ing.match_info[m_id]
@@ -67,8 +86,9 @@ def rebuild(ing, conn, seasons=None, table=DEFAULT_TABLE, limit_rounds=None, ver
             # computed against the CORRECTED results — that is the whole point.
             played = bool(info.home_score or info.away_score)
             games.append(results_db.game_row_from_prediction(
-                pred, info, season, rnd, ing.calibration, m_id, played=played))
+                pred, info, season, rnd, cal_r, m_id, played=played))
         if games:
+            snapshot = results_db.build_calibration_snapshot(cal_r, fitted_at)
             results_db.upsert_round(conn, season, rnd, games, snapshot, table=table,
                                     log_calibration=False)
             written += len(games)
@@ -76,7 +96,7 @@ def rebuild(ing, conn, seasons=None, table=DEFAULT_TABLE, limit_rounds=None, ver
             if verbose and len(per_round) % 20 == 0:
                 print('  ... %d rounds, %d games written' % (len(per_round), written))
     return {'written': written, 'skipped': skipped, 'rounds': len(per_round),
-            'table': table}
+            'table': table, 'fits': per_round_fits}
 
 
 STAT_COLUMNS = ('season', 'margin', 'total', 'winner', 'home', 'away', 'match_id')
@@ -158,6 +178,14 @@ def main(argv=None):
         print('rebuilt %d games across %d rounds (%d skipped) in %.1fs -> %s'
               % (result['written'], result['rounds'], result['skipped'],
                  time.time() - t1, result['table']))
+        # Evidence the fit is walk-forward: it should move as rounds pass.
+        fits = result.get('fits') or {}
+        keys = sorted(fits)
+        if keys:
+            for k in (keys[0], keys[len(keys) // 2], keys[-1]):
+                b1, b2, tot, src = fits[k]
+                print('    fit for %s R%s: margin_b1 %.2f b2 %.2f total %.1f (%s)'
+                      % (k[0], k[1], b1, b2, tot, src))
 
     if not args.no_verify:
         print()

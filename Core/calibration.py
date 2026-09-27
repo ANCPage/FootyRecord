@@ -31,11 +31,19 @@ import Core.config as _config
 from Core.engine_core import home_favored
 
 MIN_FIT_MATCHES = 60
-WINDOW_SEASONS = 2  # production default: rolling last N seasons
+WINDOW_SEASONS = 2       # FIT window, in SEASONS (not games — see config.matrix_window_games)
+TRAILING_MATCHES = 60    # the trailing window for the projected total, in MATCHES
 
-# Shipped constants (fit on 2024-25, 2026-08-09/10) — bootstrap fallback only.
-FALLBACK_MARGIN = (70.9755, 4.8817)       # b1(net), b2(elo/100)
-FALLBACK_TOTAL = 159.26
+# Bootstrap fallback ONLY (used when there is too little history to fit).
+#
+# RE-FITTED 2026-09-14 on the SCORE-CORRECTED data — the previous pair
+# (70.9755, 4.8817) / 159.26 was fitted 2026-08-09/10 against the light scores and
+# was by then ~37% low on margin scaling and ~15 points light on totals, while
+# still being reachable from the live prediction path (calibration audit, findings
+# 1-2). Values come from Core.tools.refit_fallbacks --seasons 2024 2025
+# (413 rows, r=0.548): re-run that tool after any engine or data-scale change.
+FALLBACK_MARGIN = (66.3774, 5.8006)       # b1(net), b2(elo/100)
+FALLBACK_TOTAL = 168.6320
 
 FitRow = Tuple[int, int, float, float, float, float, float, str, str, str]  # season, round, net, elo_diff, margin, total, actual_delta, match_id, home, away
 
@@ -45,6 +53,8 @@ class Calibration:
     margin_b1: float = FALLBACK_MARGIN[0]
     margin_b2: float = FALLBACK_MARGIN[1]
     total_mean: float = FALLBACK_TOTAL
+    total_trailing: float = 0.0       # mean total over the most recent TRAILING_MATCHES
+                                      # (walk-forward); 0 = not available, use total_mean
     margin_divisor: float = _config.config.elo_margin_divisor  # dynamic: median|actual_delta|/1.1
     decay_factor: float = _config.DECAY_FACTOR                # dynamic: fitted on ingestion (Option B)
     tier_cutoffs: tuple = ()          # (elite_min, contender_min, mid_min) — dynamic percentiles
@@ -64,6 +74,17 @@ class Calibration:
 
     def margin(self, net_delta: float, elo_diff100: float) -> float:
         return self.margin_b1 * net_delta + self.margin_b2 * elo_diff100
+
+    def projected_total(self) -> float:
+        """The total to project a scoreline onto.
+
+        Prefers the TRAILING mean (the last TRAILING_MATCHES games) over the
+        two-season mean: using a fixed anchor makes the totals error purely the gap
+        between the anchor and the season being played (calibration audit finding 5,
+        measured: +14.8 in 2021 down to -5.1 in 2026). Falls back to total_mean when
+        no trailing value was fitted.
+        """
+        return self.total_trailing or self.total_mean
 
     def tier(self, elo: float) -> str:
         """Distribution-relative tier (top-4 ELITE, next-4 CONTENDER, next-5
@@ -114,6 +135,30 @@ def fit_or_fallback(rows: List[FitRow], window_label: str) -> Calibration:
     tots = [r[5] for r in rows]
     acts = [r[6] for r in rows]
     return Calibration.fit(nets, elos, marg, tots, acts, window=window_label)
+
+
+def fit_walk_forward(rows: List[FitRow], season: int, round_num: int,
+                     window_seasons: int = WINDOW_SEASONS,
+                     trailing: int = TRAILING_MATCHES) -> "Calibration":
+    """Fit on matches STRICTLY BEFORE (season, round) — the honest, out-of-sample
+    fit used by the record path.
+
+    The ingest path (`profiler.fit_calibration`) fits ONCE over a rolling window
+    that INCLUDES the season being predicted, so its coefficients have already seen
+    that season's outcomes. That is fine for a live round (the results do not exist
+    yet) and wrong for a re-record or a backtest, where it flatters the accuracy
+    (calibration audit finding 3). This function removes that: rows are filtered by
+    (season, round), so a projection for R5 knows only R1-R4 plus prior seasons.
+    """
+    usable = [r for r in rows if (r[0], r[1]) < (season, round_num)]
+    if len(usable) < MIN_FIT_MATCHES:
+        return Calibration.fallback()
+    sel = select_window(usable, season, window_seasons)
+    c = fit_or_fallback(sel, f'wf-roll{window_seasons}')
+    recent = usable[-trailing:] if trailing else []
+    if recent:
+        c.total_trailing = float(np.mean([r[5] for r in recent]))
+    return c
 
 
 def compute_tier_cutoffs(team_elos: List[float]) -> Tuple:

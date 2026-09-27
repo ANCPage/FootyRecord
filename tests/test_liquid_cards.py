@@ -58,12 +58,13 @@ def test_pred_r24_matches_the_shipped_row_exactly():
 
 
 def test_pred_r12_stored_decision():
-    # R12 2026: Carlton home; re-recorded = Geelong by 26 (Carlton 88-84).
+    # R12 2026: Carlton home; re-recorded = Geelong by 25 (Carlton 88-84), using the
+    # walk-forward fit for that round.
     conn = _conn()
     p, _ = cards.pred_payload(None, conn, 'CD_T30', 'CD_T70', 'CD_T30',
                               2026, 11, label='ROUND 12')
     assert p['verdict']['winner'] == 'Geelong Cats'
-    assert p['verdict']['margin'] == 26            # re-recorded 2026-09-14 (was 24)
+    assert p['verdict']['margin'] == 25            # re-recorded 2026-09-14 (was 24)
     assert p['verdict']['projected'] == [88, 84]   # stored scores, corrected
 
 
