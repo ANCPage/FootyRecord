@@ -90,12 +90,32 @@ def build_calibration_snapshot(cal, fitted_at: str) -> dict:
             'fitted_at': fitted_at}
 
 
-def upsert_round(conn, season, round_num, games, calibration):
+def predictions_ddl(table='predictions'):
+    """The predictions table shape (one definition, used for rebuilds too)."""
+    return (f"CREATE TABLE IF NOT EXISTS {table} ("
+            "season INTEGER, round INTEGER, match_id TEXT, home TEXT, away TEXT,"
+            " net_delta REAL, elo_diff REAL, margin REAL, winner TEXT,"
+            " home_elo REAL, away_elo REAL, home_tier TEXT, away_tier TEXT,"
+            " home_rank INTEGER, away_rank INTEGER, total REAL, home_score INTEGER,"
+            " away_score INTEGER, grade TEXT, actual_margin REAL, correct INTEGER,"
+            " delta TEXT, PRIMARY KEY (season, round, match_id))")
+
+
+def ensure_predictions_table(conn, table='predictions'):
+    conn.execute(predictions_ddl(table))
+    conn.commit()
+
+
+def upsert_round(conn, season, round_num, games, calibration, table='predictions',
+                 log_calibration=True):
     """Insert/replace one round's predictions + calibration snapshot.
     games: list of dicts with the keys of the predictions table.
+    table='predictions_rebuilt' writes a re-recorded set without touching the
+    historical record (the calibration log is skipped for non-default tables, so a
+    rebuild never rewrites the live audit trail).
     Returns the number of games written."""
     conn.executemany(
-        "INSERT OR REPLACE INTO predictions (season, round, match_id, home, away,"
+        f"INSERT OR REPLACE INTO {table} (season, round, match_id, home, away,"
         " net_delta, elo_diff, margin, winner, home_elo, away_elo, home_tier, away_tier,"
         " home_rank, away_rank, total, home_score, away_score, grade, actual_margin, correct, delta)"
         " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -106,6 +126,9 @@ def upsert_round(conn, season, round_num, games, calibration):
           g.get('delta'))
          for g in games],
     )
+    if not log_calibration:
+        conn.commit()
+        return len(games)
     conn.execute(
         "INSERT OR REPLACE INTO calibration_log (season, round, decay, margin_b1, margin_b2,"
         " total_mean, divisor, window, fitted_at)"
