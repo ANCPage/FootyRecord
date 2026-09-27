@@ -55,7 +55,8 @@ def test_fit_recovers_margin_and_total():
 def test_fit_computes_dynamic_margin_divisor():
     rows = _synthetic_rows(n=200)
     acts = [r[6] for r in rows]
-    expected = float(np.median(np.abs(acts))) / 1.1
+    from Core.calibration import DIVISOR_FACTOR
+    expected = float(np.median(np.abs(acts))) / DIVISOR_FACTOR
     cal = Calibration.fit([r[2] for r in rows], [r[3] for r in rows],
                           [r[4] for r in rows], [r[5] for r in rows], acts)
     assert abs(cal.margin_divisor - expected) < 1e-9
@@ -63,20 +64,36 @@ def test_fit_computes_dynamic_margin_divisor():
 
 
 def test_tier_cutoffs_and_tier():
-    from Core.calibration import compute_tier_cutoffs
-    elos = [1400 + i * 12 for i in range(18)]  # 1400..1604
+    """Cutoffs are the midpoints of the biggest gaps in the live field.
+
+    The old contract pinned the tier SIZES (s[3]/s[4], s[7]/s[8], s[12]/s[13] — a
+    hardcoded 4/4/5). Those literals are gone, so what gets tested now is the
+    property: one cutoff per tier boundary, each at a gap midpoint, monotone.
+    """
+    from Core.calibration import TIER_NAMES, compute_tier_cutoffs
+    elos = [1400 + i * 12 for i in range(18)]  # 1400..1604, evenly spaced
     cutoffs = compute_tier_cutoffs(elos)
-    assert len(cutoffs) == 3
-    elite_min, contender_min, mid_min = cutoffs
+    assert len(cutoffs) == len(TIER_NAMES) - 1 == 3
     s = sorted(elos, reverse=True)
-    # midpoints between tiers — no team sits ON a boundary (2026-08-26)
-    assert elite_min == (s[3] + s[4]) / 2 and contender_min == (s[7] + s[8]) / 2 and mid_min == (s[12] + s[13]) / 2
+    mids = {(s[i] + s[i + 1]) / 2 for i in range(len(s) - 1)}
+    assert all(c in mids for c in cutoffs)          # every cutoff is a gap midpoint
+    assert cutoffs == tuple(sorted(cutoffs, reverse=True))   # monotone
     cal = Calibration(tier_cutoffs=cutoffs)
     assert cal.tier(s[0]) == 'ELITE'
-    assert cal.tier(s[3]) == 'ELITE'      # last ELITE is above the midpoint line
-    assert cal.tier(s[4]) == 'CONTENDER'  # first CONTENDER is below it
-    assert cal.tier(s[8]) == 'MID-TABLE'
-    assert cal.tier(s[17]) == 'REBUILDING'
+    assert cal.tier(s[-1]) == 'REBUILDING'
+    assert cal.tier(cutoffs[0] + 1e-6) == 'ELITE'   # just above the line
+    assert cal.tier(cutoffs[0] - 1e-6) != 'ELITE'   # just below it
+    assert [cal.tier(s[i]) for i in range(len(s))].count('REBUILDING') >= 1
+
+    # The point of natural breaks: a field with two obvious clusters must be split
+    # between them, which the fixed 4/4/5 sizes could not do.
+    clustered = [1700, 1695, 1690, 1685, 1680, 1675,
+                 1450, 1445, 1440, 1435, 1430, 1425]
+    cut = compute_tier_cutoffs(clustered)
+    assert len(cut) == 3
+    assert any(1675 > c > 1450 for c in cut)   # a break lands in the empty middle
+
+    # small field -> absolute fallback
     # small field -> absolute fallback
     assert compute_tier_cutoffs([1500.0, 1501.0]) == ()
     assert Calibration().tier(1650.0) == 'ELITE'

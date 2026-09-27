@@ -1,0 +1,6 @@
+param,value,acc,mae,rmse,n,seconds
+divisor_factor,0.75,0.6729,27.0,34.5,1232,1
+divisor_factor,1.0,0.6729,27.0,34.5,1232,1
+divisor_factor,1.1,0.6729,27.0,34.5,1232,1
+divisor_factor,1.25,0.6729,27.0,34.5,1232,1
+divisor_factor,1.5,0.6729,27.0,34.5,1232,1

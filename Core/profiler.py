@@ -190,11 +190,8 @@ def fit_calibration(rows: List[tuple], team_elo_history, window_seasons=None):
     label = f'roll{window_seasons}' if window_seasons else 'expanding'
     c = cal.fit_or_fallback(sel, label)
     # Trailing total for the projected scoreline (calibration audit 2026-09-14,
-    # finding 5): the last TRAILING_MATCHES games, independent of the fit window.
-    recent = rows[-cal.TRAILING_MATCHES:] if rows else []
-    if recent:
-        import numpy as _np
-        c.total_trailing = float(_np.mean([r[5] for r in recent]))
+    # finding 5): the current season's own scoring level, not a fixed anchor.
+    c.total_trailing = cal._trailing_total(list(rows))
     # Tier cutoffs: top-4/next-4/next-5 from the CURRENT Elo distribution
     # (tiers read as relative strength — E1 watch item, midpoint cutoffs).
     latest = {}

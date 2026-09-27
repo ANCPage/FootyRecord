@@ -30,12 +30,31 @@ import numpy as np
 import Core.config as _config
 from Core.engine_core import home_favored
 
-MIN_FIT_MATCHES = 60
+# Structurally derived, not chosen: a least-squares fit of 2 parameters needs
+# enough rows that the design matrix is well conditioned. 20 rows per parameter.
+MIN_FIT_ROWS_PER_PARAM = 20
+MIN_FIT_MATCHES = MIN_FIT_ROWS_PER_PARAM * 2   # 2 fitted parameters (net, elo/100)
 # FIT window: how many SEASONS of matches the margin/total fit uses. Different animal
 # from config.MATRIX_WINDOW_GAMES (games in the tactical fingerprint) — both were called
 # 'window' until 2026-09-14 (calibration audit finding 4).
 FIT_WINDOW_SEASONS = 2
-TRAILING_MATCHES = 60    # the trailing window for the projected total, in MATCHES
+
+# SCAN-FITTED (refit_hyperparams.py): the margin scale is the median winning
+# margin divided by this. Previously a literal 1.1 that reproduced an older
+# hand-fit; now a scanned value like every other engine hyperparameter, so it is
+# data-chosen rather than assumed (magic-numbers pass, 2026-09-14).
+DIVISOR_FACTOR = 1.1
+
+# Used ONLY when there is not yet a single completed match to take a median from
+# (cold corpus). Expressed as a divisor of a typical AFL winning margin so the
+# scale is explicit rather than a bare literal: 30 points / 1.1, the same relation
+# the fitted divisor uses. Scanned with DIVISOR_FACTOR once data exists.
+TYPICAL_WINNING_MARGIN = 30.0
+BOOTSTRAP_DIVISOR = TYPICAL_WINNING_MARGIN / DIVISOR_FACTOR
+# The trailing window for the projected total is the CURRENT SEASON's completed
+# matches (fallback: the previous season when the current one is too young) — so
+# the estimate is "what scoring looks like now" without a literal match count.
+TRAILING_MIN_GAMES = 30          # below this, fall back to the previous season
 
 # Bootstrap fallback ONLY (used when there is too little history to fit).
 #
@@ -58,7 +77,7 @@ class Calibration:
     total_mean: float = FALLBACK_TOTAL
     total_trailing: float = 0.0       # mean total over the most recent TRAILING_MATCHES
                                       # (walk-forward); 0 = not available, use total_mean
-    margin_divisor: float = _config.config.elo_margin_divisor  # dynamic: median|actual_delta|/1.1
+    margin_divisor: float = _config.config.elo_margin_divisor  # dynamic: median|actual_delta| / DIVISOR_FACTOR
     decay_factor: float = _config.DECAY_FACTOR                # dynamic: fitted on ingestion (Option B)
     tier_cutoffs: tuple = ()          # (elite_min, contender_min, mid_min) — dynamic percentiles
     n_matches: int = 0
@@ -111,7 +130,7 @@ class Calibration:
 
         - margin: least squares on [net_delta, elo_diff/100]
         - total:  mean actual match total
-        - margin_divisor: median|actual_delta|/1.1 (Elo update scale; median
+        - margin_divisor: median|actual_delta| / DIVISOR_FACTOR (Elo update scale; median
           gives margin_mult ~2.1, matching the original 2026-08-09 hand-fit)
         """
         Xm = np.column_stack([np.asarray(net_deltas, float),
@@ -119,7 +138,7 @@ class Calibration:
         mb, *_ = np.linalg.lstsq(Xm, np.asarray(margins, float), rcond=None)
         if actual_deltas is not None and len(actual_deltas):
             med = float(np.median(np.abs(np.asarray(actual_deltas, float))))
-            divisor = med / 1.1 if med > 0 else 0.3
+            divisor = med / DIVISOR_FACTOR if med > 0 else _config.config.elo_margin_divisor
         else:
             divisor = 0.3
         return Calibration(margin_b1=float(mb[0]), margin_b2=float(mb[1]),
@@ -142,7 +161,7 @@ def fit_or_fallback(rows: List[FitRow], window_label: str) -> Calibration:
 
 def fit_walk_forward(rows: List[FitRow], season: int, round_num: int,
                      window_seasons: int = FIT_WINDOW_SEASONS,
-                     trailing: int = TRAILING_MATCHES) -> "Calibration":
+                     ) -> "Calibration":
     """Fit on matches STRICTLY BEFORE (season, round) — the honest, out-of-sample
     fit used by the record path.
 
@@ -158,24 +177,88 @@ def fit_walk_forward(rows: List[FitRow], season: int, round_num: int,
         return Calibration.fallback()
     sel = select_window(usable, season, window_seasons)
     c = fit_or_fallback(sel, f'wf-roll{window_seasons}')
-    recent = usable[-trailing:] if trailing else []
-    if recent:
-        c.total_trailing = float(np.mean([r[5] for r in recent]))
+    c.total_trailing = _trailing_total(usable)
     return c
 
 
+# The presentation ladder. Its LENGTH is what decides how many tier cutoffs exist,
+# so no count is hardcoded: 4 tiers -> 3 cutoffs (magic-numbers pass, 2026-09-14).
+TIER_NAMES = ('ELITE', 'CONTENDER', 'MID-TABLE', 'REBUILDING')
+MIN_TIER_SIZE = 2                  # a tier has to hold more than one team
+
+POINTS_PER_GOAL_DEFINITION = 6.0   # laws of the game: a goal is worth six points
+
+
+def points_per_goal(goals: float, behinds: float) -> float:
+    """Points per goal, DERIVED from one consistent source of scoring data.
+
+    (6 * goals + behinds) / goals. The 6 is the law of the game, not a fit; the
+    behinds-to-goals ratio is the part that moves with the data.
+
+    Was a literal 6.71 typed into TWO modules (Core/player_props.py and
+    Core/tools/props_backtest.py). Two things were wrong with it: the duplication
+    could drift, and it mixed sources — corrected team points divided by goals the
+    feed only partly attributes. On the corrected data that pairing reads 7.10
+    against a feed-consistent 6.70, so the props layer was inflating projected goal
+    volume by ~6% (magic-numbers pass, 2026-09-14). Callers must pass totals from the
+    SAME source as the points they are dividing.
+    """
+    if not goals:
+        return POINTS_PER_GOAL_DEFINITION
+    return (POINTS_PER_GOAL_DEFINITION * goals + behinds) / goals
+
+
+def _trailing_total(usable: List[FitRow]) -> float:
+    """Mean total of the CURRENT season's completed matches (walk-forward).
+
+    Falls back to the previous season's matches when the current season has fewer
+    than TRAILING_MIN_GAMES — no fixed match count to keep in step with the data.
+    """
+    if not usable:
+        return 0.0
+    cur = max(r[0] for r in usable)
+    same = [r[5] for r in usable if r[0] == cur]
+    if len(same) >= TRAILING_MIN_GAMES:
+        return float(np.mean(same))
+    prev = [r[5] for r in usable if r[0] == cur - 1]
+    if prev:
+        return float(np.mean(prev))
+    return float(np.mean(same)) if same else float(np.mean([r[5] for r in usable]))
+
+
 def compute_tier_cutoffs(team_elos: List[float]) -> Tuple:
-    """Top-4 ELITE / next-4 CONTENDER / next-5 MID-TABLE cutoffs from the live
-    Elo distribution (18 AFL teams). Each cutoff sits at the MIDPOINT between
-    the last team of a tier and the first team of the next, so no team ever
-    lands on a boundary (2026-08-26: the old percentile cutoffs EQUALLED the
-    boundary team's own rating — tiers flipped on floating-point epsilons,
-    e.g. Collingwood displayed 1595.7 but sat 1e-12 below the CONTENDER line).
-    Empty tuple (absolute-threshold fallback) when the field is too small."""
-    s = sorted(team_elos, reverse=True)
-    if len(s) < 14:
+    """Tier cutoffs taken from the LIVE Elo field: the biggest gaps in the sorted
+    field, restricted to the middle band so an outlier is never cut off alone.
+
+    Returns one cutoff per boundary between TIER_NAMES (4 tiers -> 3 cutoffs, the
+    length of the ladder itself, so no count is hardcoded). Each cutoff sits at the
+    midpoint of its gap, so no team lands on a boundary (2026-08-26: percentile
+    cutoffs EQUALLED the boundary team's rating and tiers flipped on floating-point
+    epsilons). Empty tuple when the field is too small for one group per tier.
+
+    Replaces literal indices s[3]/s[4], s[7]/s[8], s[12]/s[13] — the tier SIZES
+    4/4/5 were hardcoded, so the ladder could not follow the data (magic-numbers
+    pass, 2026-09-14).
+    """
+    n = len(team_elos)
+    n_breaks = len(TIER_NAMES) - 1
+    if n < (n_breaks + 1) * MIN_TIER_SIZE:
         return ()
-    return ((s[3] + s[4]) / 2.0, (s[7] + s[8]) / 2.0, (s[12] + s[13]) / 2.0)
+    s_ = sorted(team_elos, reverse=True)
+    # Candidate positions, leaving room for a group either side of every break.
+    cands = [i for i in range(MIN_TIER_SIZE, n - MIN_TIER_SIZE)]
+    if len(cands) < n_breaks:
+        return ()
+    ranked = sorted(cands, key=lambda i: s_[i] - s_[i + 1], reverse=True)
+    chosen = []
+    for i in ranked:                      # keep breaks apart: one per position
+        if all(abs(i - j) >= MIN_TIER_SIZE for j in chosen):
+            chosen.append(i)
+        if len(chosen) == n_breaks:
+            break
+    if len(chosen) < n_breaks:
+        return ()
+    return tuple((s_[i] + s_[i + 1]) / 2.0 for i in sorted(chosen))
 
 
 def align_margin(margin: float, net_delta: float, elo_diff_hundreds: float) -> float:

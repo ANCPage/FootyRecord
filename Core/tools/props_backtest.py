@@ -34,7 +34,8 @@ from Core.cards import mirror_delta, parse_delta  # noqa: E402
 from Core import player_attribution as pa  # noqa: E402
 from Core.player_props import dmap, logloss, poisson_ge  # noqa: E402  (single source of maths)
 
-PPG = 6.71          # points per goal, 2021-2026 league average
+PPG = 6.71          # fallback only: replaced at row-build time by
+                    # Core.calibration.points_per_goal() over the feed's own totals
 N_SMOOTH = 0.5      # pseudo-count pulling a thin history toward equal shares
 DEFAULT_GOALS = os.path.expanduser('~/.cache/footy-props/goals.json')
 BOOTSTRAP = 1000
@@ -391,6 +392,18 @@ def main(argv=None):
             raise SystemExit('goals file missing: %s (run Core.tools.goals_extract first)' % args.goals)
         from Core.tools.goals_extract import load as load_goals
         goals = load_goals(args.goals)
+        # PPG is DERIVED from this same source (calibration.points_per_goal) rather
+        # than a typed literal, so the divisor can never drift from the data it is
+        # applied to (magic-numbers pass, 2026-09-14).
+        import Core.calibration as _cal
+        _g = sum(p.get('g', 0) for m in goals.values()
+                 for p in (m.get('players') or {}).values()) if isinstance(goals, dict) else 0
+        _b = sum(p.get('b', 0) for m in goals.values()
+                 for p in (m.get('players') or {}).values()) if isinstance(goals, dict) else 0
+        if _g:
+            PPG = _cal.points_per_goal(_g, _b)
+            print('points per goal (derived from the feed): %.4f  (%d goals, %d behinds)'
+                  % (PPG, _g, _b))
         rows = build_rows(chains.connect(), goals, seasons=args.seasons,
                           lineup_filter=args.lineup_filter, limit_rounds=args.limit_rounds)
         os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)

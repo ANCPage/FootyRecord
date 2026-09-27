@@ -19,6 +19,8 @@ Interface:
 """
 import math
 import os
+
+from Core import calibration as _calibration
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -27,7 +29,30 @@ import Core.state_store as state_store  # noqa: E402
 from Core.cards import mirror_delta, parse_delta  # noqa: E402
 from Core import player_attribution as pa  # noqa: E402
 
-PPG = 6.71              # points per goal, 2021-2026 league average
+# Fallback only, and DERIVED rather than typed: read from the same goals cache the
+# tools use, so it tracks the data. If that cache is absent we fall back to the laws
+# of the game (a goal is six points, no behinds) and say so loudly — never a
+# hand-edited number that silently goes stale (magic-numbers pass, 2026-09-14).
+def _derived_ppg():
+    import json
+    import os as _os
+    path = _os.path.expanduser('~/.cache/footy-props/goals.json')
+    try:
+        with open(path) as fh:
+            g = json.load(fh).get('matches', {})
+        goals = sum(p.get('g', 0) for m in g.values() for p in (m.get('players') or {}).values())
+        behinds = sum(p.get('b', 0) for m in g.values() for p in (m.get('players') or {}).values())
+        if goals:
+            return _calibration.points_per_goal(goals, behinds)
+    except (OSError, ValueError, AttributeError):
+        pass
+    import sys as _sys
+    print('WARNING: no goals cache — points per goal falls back to the laws of the '
+          'game (6.0); run Core.tools.goals_extract first.', file=_sys.stderr)
+    return _calibration.points_per_goal(0, 0)
+
+
+PPG = _derived_ppg()
 WINDOW = 30             # games for the volume fallback
 MIN_GAMES = 3           # below this, fall back to the league-ish default total
 

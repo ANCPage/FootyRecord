@@ -73,7 +73,17 @@ class EloEngine:
                        for m in sorted_matches
                        if match_info[m].home_score + match_info[m].away_score > 0
                        and match_info[m].home_score != match_info[m].away_score]
-            score_divisor = (sorted(margins)[len(margins) // 2] / 1.1) if margins else 30.0
+            # ONE definition of the divisor factor (calibration.DIVISOR_FACTOR).
+            # This line used to divide by a literal 1.1 of its own, so the factor in
+            # calibration.py was NOT the value the Elo update used - which made the
+            # parameter unfittable: refit_hyperparams varied the calibration copy and
+            # every variant measured the same run (magic-numbers pass, 2026-09-14).
+            # Falls back to the ingestor's fitted divisor when no margins exist yet.
+            from Core import calibration as _calibration
+            _factor = _calibration.DIVISOR_FACTOR
+            _fallback = _calibration.FALLBACK_MARGIN  # not used for scale; see below
+            score_divisor = ((sorted(margins)[len(margins) // 2] / _factor)
+                             if margins else _calibration.BOOTSTRAP_DIVISOR)
         else:
             score_divisor = None
 

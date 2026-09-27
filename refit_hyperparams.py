@@ -13,6 +13,7 @@ change is a human decision. Result table: refit_results.csv.
 """
 import time
 
+import Core.calibration as calibration
 import Core.config as config
 from Core.engine_data import DataIngestor
 from evaluate import aggregate, collect_rows, run_mode
@@ -22,15 +23,14 @@ OUT = 'refit_results.csv'
 # Grid: the measured neighbourhood of each parameter (decay 0.3-0.5 was best
 # on the 2026-08-10 scan; window peaked ~30-35; Elo K / regression flat).
 VARIANTS = [
-    ('decay_factor', 0.2), ('decay_factor', 0.3), ('decay_factor', 0.4),
-    ('decay_factor', 0.5), ('decay_factor', 0.7), ('decay_factor', 0.9),
-    ('matrix_window_games', 25), ('matrix_window_games', 30), ('matrix_window_games', 35),
-    ('elo_k', 25.6), ('elo_k', 32.0), ('elo_k', 38.4),
-    ('regression_factor', 0.60), ('regression_factor', 0.75), ('regression_factor', 0.90),
+    # The margin-scale divisor: the last hand-fit in the engine. Divisor =
+    # median|actual_delta| / factor, and the factor scales every Elo update.
+    ('divisor_factor', 0.75), ('divisor_factor', 1.00), ('divisor_factor', 1.10),
+    ('divisor_factor', 1.25), ('divisor_factor', 1.50),
 ]
 
 
-def set_all(decay=None, window=None, elo_k=None, regression=None):
+def set_all(decay=None, window=None, elo_k=None, regression=None, divisor=None):
     """Set the engine to the given params (None = current config values)."""
     if decay is not None:
         config.config.decay_factor = decay
@@ -60,7 +60,8 @@ def main():
     sorted_matches = sorted(ing.match_info.keys(),
                             key=lambda x: (ing.match_info[x].season, ing.match_info[x].round))
     shipped = {'elo_k': config.config.elo_k,
-               'regression': ing.elo_engine.regression_factor}
+               'regression': ing.elo_engine.regression_factor,
+               'divisor_factor': calibration.DIVISOR_FACTOR}
     results = []
     for param, value in VARIANTS:
         t0 = time.time()
@@ -70,10 +71,21 @@ def main():
         # ing.calibration.decay_factor in its finally block — Phase 1.)
         config.config.elo_k = shipped['elo_k']
         ing.elo_engine.regression_factor = shipped['regression']
+        calibration.DIVISOR_FACTOR = shipped['divisor_factor']
         if param == 'decay_factor':
             rows = collect_rows(ing, seasons, decay=value)
         elif param == 'matrix_window_games':
             rows = collect_rows(ing, seasons, window=value)
+        elif param == 'divisor_factor':
+            # The divisor scales the Elo UPDATE, so the history must be replayed —
+            # without this the variant is a silent no-op (it was, first run:
+            # three identical rows in 0s; the calibration fit itself never reads
+            # the divisor). Same replay the elo_k branch does.
+            calibration.DIVISOR_FACTOR = value
+            ing._fit_calibration()
+            ing.team_elo_history = ing.elo_engine.compute_elo_history(
+                sorted_matches, ing.match_info, ing.actual_match_matrices)
+            rows = collect_rows(ing, seasons)
         elif param in ('elo_k', 'regression_factor'):
             # Elo parameters need the Elo history recomputed (no re-profile —
             # Option B keeps positions; Elo is a pure replay).

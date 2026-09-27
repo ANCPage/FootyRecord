@@ -96,8 +96,8 @@ def compute_matchup(ingestor, home_id: str, away_id: str, season: int,
     winner_id = home_id if home_favored(net_delta, h_elo, a_elo) else away_id
     margin_pred = round(edge)
     total = cal.projected_total()
-    home_score = max(10, round((total + margin_pred) / 2.0))
-    away_score = max(10, round((total - margin_pred) / 2.0))
+    home_score = round((total + margin_pred) / 2.0)
+    away_score = round((total - margin_pred) / 2.0)
 
     rankings = ingestor.get_league_rankings(season, round_num)
     return MatchupPrediction(

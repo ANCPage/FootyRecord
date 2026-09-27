@@ -44,7 +44,12 @@ def test_compute_matchup_returns_full_prediction(tmp_path):
     assert pred.winner_id in ('H', 'A')
     assert pred.home == 'H' and pred.away == 'A'
     assert pred.net_delta == sum(pred.delta.values())
-    assert pred.home_score >= 10 and pred.away_score >= 10
+    # No score FLOOR any more (it was a `max(10, ...)` magic number that never once
+    # fired on real data: 0 of 1,232 rows). Assert the arithmetic instead — the
+    # scoreline is the projected total split by the projected margin.
+    assert abs((pred.home_score - pred.away_score) - pred.margin_pred) <= 1
+    assert pred.home_score + pred.away_score > 0
+    assert pred.home_score >= 0 and pred.away_score >= 0
     assert pred.h_elo > 1000 and pred.a_elo > 1000
     assert pred.h_tier in ('ELITE', 'CONTENDER', 'MID-TABLE', 'REBUILDING')
     assert pred.a_rank >= 1 and pred.h_rank >= 1
