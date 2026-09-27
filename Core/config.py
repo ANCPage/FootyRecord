@@ -20,12 +20,16 @@ RESULTS_DB = os.environ.get(
     'FOOTYRECORD_DB', os.path.expanduser('~/footyrecord-results/footyrecord.db'))
 
 # Engine Settings
-# decay_factor + window_size are SCAN-FITTED (2026-08-10): walk-forward grid
+# decay_factor + matrix_window_games are SCAN-FITTED (2026-08-10): walk-forward grid
 # over 1,189 matches found the optimum at decay 0.3 / window 30 (65.0% -> 66.4%
 # acc, Brier 0.2125 -> 0.2107; Elo K and regression were flat). Re-run with
 # `python refit_hyperparams.py` when the game or data changes materially.
 DECAY_FACTOR = 0.3
-WINDOW_SIZE = 30
+# MATRIX window: how many of a team's recent GAMES build its tactical fingerprint.
+# Not to be confused with calibration.FIT_WINDOW_SEASONS (how many SEASONS the
+# margin/total fit uses) — the two were both called 'window' until 2026-09-14, which
+# made a wrong pick silent (calibration audit finding 4).
+MATRIX_WINDOW_GAMES = 30
 ELO_K = 32
 # Margin calibration is DYNAMIC (Core/calibration.py, fitted on ingestion —
 # audit follow-up 2026-08-10). Fallback constants live in calibration.py.
@@ -42,7 +46,7 @@ class Settings:
     # (min, max) validation for runtime-mutable settings (audit #15).
     _RANGES = {
         'decay_factor': (0.0, 1.0),
-        'window_size': (1, None),
+        'matrix_window_games': (1, None),
         'elo_k': (1.0, None),
         'elo_margin_divisor': (0.01, None),
     }
@@ -52,7 +56,7 @@ class Settings:
     # the other, and a runtime override silently changed only one of them).
     _MIRRORS = {'data_dir': 'DATA_DIR', 'output_dir': 'OUTPUT_DIR',
                 'fonts_dir': 'FONTS_DIR', 'decay_factor': 'DECAY_FACTOR',
-                'window_size': 'WINDOW_SIZE', 'elo_k': 'ELO_K',
+                'matrix_window_games': 'MATRIX_WINDOW_GAMES', 'elo_k': 'ELO_K',
                 'elo_margin_divisor': 'ELO_MARGIN_DIVISOR'}
 
     def __setattr__(self, name, value):
@@ -69,7 +73,7 @@ class Settings:
 
     def __init__(self):
         self.decay_factor = DECAY_FACTOR
-        self.window_size = WINDOW_SIZE
+        self.matrix_window_games = MATRIX_WINDOW_GAMES
         self.elo_k = ELO_K
         self.elo_margin_divisor = ELO_MARGIN_DIVISOR
         self.data_dir = DATA_DIR

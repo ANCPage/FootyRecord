@@ -24,7 +24,7 @@ OUT = 'refit_results.csv'
 VARIANTS = [
     ('decay_factor', 0.2), ('decay_factor', 0.3), ('decay_factor', 0.4),
     ('decay_factor', 0.5), ('decay_factor', 0.7), ('decay_factor', 0.9),
-    ('window_size', 25), ('window_size', 30), ('window_size', 35),
+    ('matrix_window_games', 25), ('matrix_window_games', 30), ('matrix_window_games', 35),
     ('elo_k', 25.6), ('elo_k', 32.0), ('elo_k', 38.4),
     ('regression_factor', 0.60), ('regression_factor', 0.75), ('regression_factor', 0.90),
 ]
@@ -35,7 +35,7 @@ def set_all(decay=None, window=None, elo_k=None, regression=None):
     if decay is not None:
         config.config.decay_factor = decay
     if window is not None:
-        config.config.window_size = window
+        config.config.matrix_window_games = window
     if elo_k is not None:
         config.config.elo_k = elo_k
     if regression is not None:
@@ -72,7 +72,7 @@ def main():
         ing.elo_engine.regression_factor = shipped['regression']
         if param == 'decay_factor':
             rows = collect_rows(ing, seasons, decay=value)
-        elif param == 'window_size':
+        elif param == 'matrix_window_games':
             rows = collect_rows(ing, seasons, window=value)
         elif param in ('elo_k', 'regression_factor'):
             # Elo parameters need the Elo history recomputed (no re-profile —

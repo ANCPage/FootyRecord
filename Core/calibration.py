@@ -31,7 +31,10 @@ import Core.config as _config
 from Core.engine_core import home_favored
 
 MIN_FIT_MATCHES = 60
-WINDOW_SEASONS = 2       # FIT window, in SEASONS (not games — see config.matrix_window_games)
+# FIT window: how many SEASONS of matches the margin/total fit uses. Different animal
+# from config.MATRIX_WINDOW_GAMES (games in the tactical fingerprint) — both were called
+# 'window' until 2026-09-14 (calibration audit finding 4).
+FIT_WINDOW_SEASONS = 2
 TRAILING_MATCHES = 60    # the trailing window for the projected total, in MATCHES
 
 # Bootstrap fallback ONLY (used when there is too little history to fit).
@@ -138,7 +141,7 @@ def fit_or_fallback(rows: List[FitRow], window_label: str) -> Calibration:
 
 
 def fit_walk_forward(rows: List[FitRow], season: int, round_num: int,
-                     window_seasons: int = WINDOW_SEASONS,
+                     window_seasons: int = FIT_WINDOW_SEASONS,
                      trailing: int = TRAILING_MATCHES) -> "Calibration":
     """Fit on matches STRICTLY BEFORE (season, round) — the honest, out-of-sample
     fit used by the record path.
@@ -226,6 +229,6 @@ def select_window(rows: List[FitRow], cur_season: int,
 # NOTE (Phase 1, 2026-08-26): the module-level `current` global was REMOVED.
 # Calibration now travels with the ingestor (`ing.calibration`) — every
 # decision path takes it explicitly. Hidden mutable module state was the bug
-# class behind the `config.config.window_size` family of errors: two places
+# class behind the old `config.config.window_size` family of errors: two places
 # disagreed about which calibration was active and nothing complained.
 # tests/test_no_global_calibration.py guards against reintroduction.

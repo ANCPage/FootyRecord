@@ -26,7 +26,7 @@ def average_matrix(team_positions: Dict, match_info: Dict, calibration: Any,
     from Core.profiler import recombine
 
     if window is None:
-        window = config.config.window_size
+        window = config.config.matrix_window_games
     decay = getattr(calibration, 'decay_factor', None) or config.config.decay_factor
     history = team_positions.get(team_id, [])
     filtered_history = []
@@ -67,7 +67,7 @@ def player_matrix(team_player_history: Dict, match_info: Dict,
     """Average per-player transition matrix over the team's recent window
     (same filter semantics as average_matrix)."""
     if window is None:
-        window = config.config.window_size
+        window = config.config.matrix_window_games
     history = team_player_history.get(team_id, [])
     filtered_history = []
     for m_id, mat in history:

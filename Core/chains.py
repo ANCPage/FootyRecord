@@ -70,7 +70,7 @@ def window_counter(conn, season, up_to_round, team, window=None):
     in the team's own frame. Used by the prediction card's top80 selection.
     """
     from collections import defaultdict
-    window = window or config.config.window_size
+    window = window or config.config.matrix_window_games
     hist = state_store.team_match_history(conn, team, season, up_to_round)
     mids = {m_id for (m_id, _s, _r) in hist[:window]}
     if not mids:
@@ -95,7 +95,7 @@ def window_edges(conn, season, up_to_round, team, window=None):
     matches before the slot. This is the unsigned shape of the matrix the
     model aggregates (its unit is the edge, never the whole path)."""
     from collections import defaultdict
-    window = window or config.config.window_size
+    window = window or config.config.matrix_window_games
     hist = state_store.team_match_history(conn, team, season, up_to_round)
     mids = {m_id for (m_id, _s, _r) in hist[:window]}
     if not mids:

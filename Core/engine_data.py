@@ -78,8 +78,8 @@ class DataIngestor:
 
         import Core.calibration as cal
         c = config.config
-        raw = (f"{CACHE_VERSION}|{c.decay_factor}|{c.window_size}"
-               f"|{c.elo_k}|{c.elo_margin_divisor}|{cal.WINDOW_SEASONS}")
+        raw = (f"{CACHE_VERSION}|{c.decay_factor}|{c.matrix_window_games}"
+               f"|{c.elo_k}|{c.elo_margin_divisor}|{cal.FIT_WINDOW_SEASONS}")
         return hashlib.sha1(raw.encode()).hexdigest()[:12]
 
     @staticmethod
@@ -309,7 +309,7 @@ class DataIngestor:
         # Dynamic calibration (audit follow-up 2026-08-10): fit the decision
         # coefficients on matches strictly before the latest round, rolling
         # window. Becomes the active calibration for all decision paths.
-        self.calibration = self._fit_calibration(cal.WINDOW_SEASONS)
+        self.calibration = self._fit_calibration(cal.FIT_WINDOW_SEASONS)
         self.calibration.decay_factor = fitted_decay
         # Provenance (2026-09-12, metadata only — no effect on the numbers):
         # record the data identity this fit was made from so a stale fit can

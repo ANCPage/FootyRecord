@@ -39,11 +39,11 @@ def collect_rows(ing, seasons, decay=None, window=None):
     # Calibration travels with the ingestor (no module global — Phase 1).
     # The decay override is temporary and restored in the finally block.
     saved_decay = ing.calibration.decay_factor
-    saved_window = cfg.config.window_size
+    saved_window = cfg.config.matrix_window_games
     if decay is not None:
         ing.calibration.decay_factor = decay
     if window is not None:
-        cfg.config.window_size = window
+        cfg.config.matrix_window_games = window
     try:
         rows = []
         for m_id, info in ing.match_info.items():
@@ -72,7 +72,7 @@ def collect_rows(ing, seasons, decay=None, window=None):
         return rows
     finally:
         ing.calibration.decay_factor = saved_decay
-        cfg.config.window_size = saved_window
+        cfg.config.matrix_window_games = saved_window
 
 
 def run_mode(rows, window_seasons, label):

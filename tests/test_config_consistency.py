@@ -20,13 +20,13 @@ def test_setting_the_object_moves_the_constant():
 
 
 def test_the_other_mirrors_agree_too():
-    original = config.config.window_size
+    original = config.config.matrix_window_games
     try:
-        config.config.window_size = 42
-        assert config.WINDOW_SIZE == 42
+        config.config.matrix_window_games = 42
+        assert config.MATRIX_WINDOW_GAMES == 42
     finally:
-        config.config.window_size = original
-        assert config.WINDOW_SIZE == original
+        config.config.matrix_window_games = original
+        assert config.MATRIX_WINDOW_GAMES == original
 
 
 def test_validation_still_rejects_nonsense():
