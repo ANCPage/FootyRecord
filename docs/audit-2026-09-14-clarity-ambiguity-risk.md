@@ -208,9 +208,21 @@ and these are the ones to use. The leverage diagnostic still passes on both mark
       slightly less severe than measured); margin MAE 21.8.
       **Consequence for the cards:** projected scorelines have been ~9 points light; the next
       render will move.
-      **Still outstanding:** the stored projections were made with the old history. They have been
-      re-graded, but rebuilding them means re-running the season's predictions end to end — a
-      separate, larger job.
+      **Re-recorded and PROMOTED (2026-09-14, same day).** `Core/tools/rerecord.py` rebuilds every
+      season's projections in one process (47s wall clock: 6s load, 40.5s compute, 17s save — the
+      state load per script invocation was the real cost, not the maths), writing to
+      `predictions_rebuilt`; `Core/tools/promote_rebuilt.py` then promoted it over `predictions`,
+      archiving the old set as `predictions_pre_rescore_20260914` (1,222 rows, never dropped — it is
+      the evidence of what was published at the time). Verified vs the rebuilt record: 2026 tipping
+      68.7% (stored 70.0), margin bias −7.23 (stored −7.19 — the shrinkage is a model property, not
+      a data artefact), totals bias −5.09 (stored −15.09). The totals bias is exactly the gap
+      between the fitted anchor (173.7) and the season's own mean, in every season: 2021 159.2
+      (+14.8), 2022 166.1 (+7.4), 2023 167.4 (+6.2), 2024 168.7 (+4.9), 2025 168.6 (+4.8),
+      2026 178.6 (−5.1) — so the model's projected total is effectively a constant, and the fix is a
+      trailing estimate rather than a refit.
+      Golden-record and card tests were re-baselined for the corrected record; the dead-even
+      projection case (margin exactly 0, winner decided by the documented Elo tie-break, 16 rows
+      that the light-era record never contained) is now handled explicitly in the rule test.
     - **Tool:** `Core/tools/score_provenance.py` — default mode compares DB against the chain feed;
       `--ladder` rebuilds the ladder from the match score block; `--squiggle` compares against the
       official results and lists the flipped winners (the verification above).
@@ -222,6 +234,19 @@ and these are the ones to use. The leverage diagnostic still passes on both mark
     the seeding's Bulldogs/Collingwood/Carlton order — a small, still-unexplained residual
     (tiebreak detail, or further missing scoring). `Core/finals_project.py` keeps the explicit seed
     snapshot and warns when the DB ladder disagrees instead of deriving from it.
+
+16. **🟠 `predictions.home_score` / `away_score` hold the ACTUAL scores, not the projection**
+    (found 2026-09-14 while re-baselining the card tests after the re-record). The row builder
+    (`results_db.game_row_from_prediction`) writes `info.home_score/away_score` into those columns
+    and `pred.home_score + pred.away_score` into `total`; the projected scoreline exists only as
+    `margin` + `total`. The prediction card then labels the pair it reads from those columns
+    `verdict.projected` (`Core/cards.py:141-150`), so for a fixture that has been played the card
+    shows the **actual** scoreline under a "projected" key (R24 2026 shows 70-123 — the corrected
+    actual — while the model's call was Sydney by 24). Impact is small in practice (pred cards are
+    used for upcoming games, which take the compute path), but any consumer reading those columns
+    as projections is wrong, and the field name invites that reading.
+    **Fix (not done):** either store the projected pair explicitly (pred margin/total already imply
+    it) or rename the card key. Until then, read `margin` + `total` for the model's opinion.
 
 12. **Cross-project coupling for odds credentials:** `Core/tools/odds_fetch.py` reads the
     Betfair cert, key and creds from `~/racing-model/`. Documented in the file, but this repo

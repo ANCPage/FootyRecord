@@ -19,8 +19,13 @@ pytestmark = pytest.mark.needs_data
 
 from Core import results_db
 
-GOLDEN_ALL = (813, 1222)
-GOLDEN_2026 = (147, 207)
+# RE-BASELINED 2026-09-14: the scoreboard was corrected to the official feed (audit
+# finding 14) and the season projections were re-recorded, then promoted over the
+# stored set. The counts below are the RE-RECORDED record; the pre-correction set is
+# archived in `predictions_pre_rescore_20260914` (813/1222) if you need to compare.
+GOLDEN_ALL = (822, 1232)
+GOLDEN_2026 = (150, 217)            # all rounds, incl. the played finals
+GOLDEN_2026_SUMMARY = (145, 207)    # cumulative_record(2026, 24) = home-and-away only
 
 PLAYED = "correct IS NOT NULL"
 
@@ -50,7 +55,7 @@ def test_2026_record_unchanged(conn):
 def test_season_summary_matches_golden(conn):
     """The summary helper (single source of truth) must agree with the golden values."""
     s_c, s_t = results_db.cumulative_record(conn, 2026, 24)
-    assert (s_c, s_t) == GOLDEN_2026
+    assert (s_c, s_t) == GOLDEN_2026_SUMMARY
 
 
 def test_no_duplicate_predictions(conn):
@@ -67,10 +72,25 @@ def test_correct_flag_consistent_with_margins(conn):
 
     Guards the decision rule itself: margin and actual_margin must share a sign
     when correct=1, and differ when correct=0 (draws excluded — they count as misses).
+
+    Dead-even projections are handled separately (added 2026-09-14, after the
+    re-record): when the model's net delta is exactly even the margin is 0 and the
+    winner is decided by the documented Elo tie-break, so the margin sign cannot
+    carry the verdict there. The pre-correction record contained no such rows, which
+    is why the original rule did not allow for them.
     """
     bad = conn.execute(
         "SELECT season, round, match_id, margin, actual_margin, correct "
-        "FROM predictions WHERE correct IS NOT NULL AND actual_margin != 0 "
+        "FROM predictions WHERE correct IS NOT NULL AND actual_margin != 0 AND margin != 0 "
         "AND ((margin > 0) = (actual_margin > 0)) != (correct = 1)"
     ).fetchall()
     assert bad == [], f"correct flag disagrees with margin signs: {bad[:5]}"
+
+    bad_even = conn.execute(
+        "SELECT season, round, match_id, winner, home, away, actual_margin, correct "
+        "FROM predictions WHERE correct IS NOT NULL AND actual_margin != 0 AND margin = 0 "
+        "AND (correct = 1) != ((winner = home AND actual_margin > 0) "
+        "                      OR (winner = away AND actual_margin < 0))"
+    ).fetchall()
+    assert bad_even == [], (
+        f"dead-even rows where the winner/graded flag disagree: {bad_even[:5]}")

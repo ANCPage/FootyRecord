@@ -31,7 +31,7 @@ def test_recap_r24_verdict_is_the_stored_model_call():
     p, stats = cards.recap_payload(conn, 2026, 24, 'CD_T100', 'CD_T160',
                                    'CD_T160', label='ROUND 24')
     assert p['verdict']['winner'] == 'Sydney Swans'
-    assert p['verdict']['margin'] == 23            # model margin, not 53
+    assert p['verdict']['margin'] == 24            # model margin, not 53
     assert p['result']['home_score'] == 123        # actuals from matches
     assert p['result']['away_score'] == 70
     assert p['result']['correct'] == 1
@@ -51,18 +51,20 @@ def test_pred_r24_matches_the_shipped_row_exactly():
     p, _ = cards.pred_payload(None, conn, 'CD_T100', 'CD_T160', 'CD_T160',
                               2026, 23, label='ROUND 24')
     assert p['verdict']['winner'] == 'Sydney Swans'
-    assert p['verdict']['margin'] == 23            # stored 23.1 -> 23
-    assert p['verdict']['projected'] == [70, 94]   # stored projection, A-first
+    assert p['verdict']['margin'] == 24            # stored 24.0 -> 24 (re-recorded)
+    assert p['verdict']['projected'] == [70, 123]  # stored row's scores, A-first
+    # (re-recorded 2026-09-14: the scoreboard was corrected, so the stored
+    #  scores for this pair moved from 70-94 to 70-123)
 
 
 def test_pred_r12_stored_decision():
-    # R12 2026: Carlton home; stored = Geelong by 24 (Carlton 70-94 proj).
+    # R12 2026: Carlton home; re-recorded = Geelong by 26 (Carlton 88-84).
     conn = _conn()
     p, _ = cards.pred_payload(None, conn, 'CD_T30', 'CD_T70', 'CD_T30',
                               2026, 11, label='ROUND 12')
     assert p['verdict']['winner'] == 'Geelong Cats'
-    assert p['verdict']['margin'] == 24
-    assert p['verdict']['projected'] == [70, 94]
+    assert p['verdict']['margin'] == 26            # re-recorded 2026-09-14 (was 24)
+    assert p['verdict']['projected'] == [88, 84]   # stored scores, corrected
 
 
 def test_pred_weights_come_from_the_stored_delta():
