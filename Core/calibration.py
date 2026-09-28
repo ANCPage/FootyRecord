@@ -209,10 +209,17 @@ def points_per_goal(goals: float, behinds: float) -> float:
 
 
 def _trailing_total(usable: List[FitRow]) -> float:
-    """Mean total of the CURRENT season's completed matches (walk-forward).
+    """The total to project a scoreline onto: this season's own scoring level.
 
-    Falls back to the previous season's matches when the current season has fewer
-    than TRAILING_MIN_GAMES — no fixed match count to keep in step with the data.
+    No fixed match count (that was a magic 60) and no bare-bones early season either.
+    A pooled version — this season shrunk toward the previous season by sample size —
+    was TRIED and REVERTED on 2026-09-14: measured mean absolute bias 2.08 against
+    1.76 for this rule, and it did not move 2021 at all, because 2021 is the FIRST
+    season in the corpus and has no previous season to borrow from. 2021's early-round
+    totals bias (+4.88) is therefore a COLD-START data boundary, not an estimator
+    flaw: no estimator can know the scoring level before any games exist. The real
+    fixes are more history (2020 scores) or not publishing a totals claim for those
+    rounds — not a cleverer formula.
     """
     if not usable:
         return 0.0
