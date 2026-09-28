@@ -56,6 +56,20 @@ BOOTSTRAP_DIVISOR = TYPICAL_WINNING_MARGIN / DIVISOR_FACTOR
 # the estimate is "what scoring looks like now" without a literal match count.
 TRAILING_MIN_GAMES = 30          # below this, fall back to the previous season
 
+# FITTED BY MEASUREMENT (scan_window.py): how many recent matches the projected total
+# is estimated over. None = fall back to the season-derived rule.
+#
+# Scored on mean absolute per-season totals bias over a full walk-forward rebuild
+# (2026-09-14):
+#     15 -> 0.745 | 20 -> 0.602 | 25 -> 0.691 | 30 -> 0.773 | 40 -> 1.011
+#     60 -> 1.214 | 90 -> 1.751 | 120 -> 2.211 | season-derived -> 1.758
+# A clean interior optimum at 20. The 60 that sat here originally was a literal nobody
+# had measured: it is TWICE as bad as the fitted value. The season-derived rule, which
+# briefly replaced it, is the worst of the lot. Per-season bias at 20: 2021 +0.79,
+# 2022 -0.01, 2023 -0.53, 2024 -0.74, 2025 -0.08, 2026 -1.47.
+# Re-run scan_window.py when the game or the data changes.
+TRAILING_WINDOW_FIT = 20
+
 # Bootstrap fallback ONLY (used when there is too little history to fit).
 #
 # RE-FITTED 2026-09-14 on the SCORE-CORRECTED data — the previous pair
@@ -223,6 +237,9 @@ def _trailing_total(usable: List[FitRow]) -> float:
     """
     if not usable:
         return 0.0
+    if TRAILING_WINDOW_FIT:
+        recent = usable[-TRAILING_WINDOW_FIT:]
+        return float(np.mean([r[5] for r in recent])) if recent else 0.0
     cur = max(r[0] for r in usable)
     same = [r[5] for r in usable if r[0] == cur]
     if len(same) >= TRAILING_MIN_GAMES:
